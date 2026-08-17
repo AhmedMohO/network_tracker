@@ -10,7 +10,7 @@ Date: 2026-08-18
 - Round-trip from app → Settings → back detects the change: PENDING — no physical Android device available in this environment; requires manual verification
 
 ## Q2 — Per-app totals accuracy
-(filled in Task 2)
+PENDING — no physical Android device available in this environment; requires manual verification (probe total vs Settings total, top-5 app lists, tag/state/metered/roaming combos, bucket durations)
 
 ## Q3 — Time bucket granularity
 (filled in Task 3)

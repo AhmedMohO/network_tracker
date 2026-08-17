@@ -15,5 +15,13 @@ class NetworkUsageModule : Module() {
         Function("hasUsageAccess") { UsageAccess.has(context) }
 
         Function("openUsageAccessSettings") { UsageAccess.open(context) }
+
+        AsyncFunction("getAppUsage") { q: UsageQuery ->
+            StatsReader(context).appUsage(q)
+        }
+
+        AsyncFunction("dumpBuckets") { q: UsageQuery ->
+            StatsReader(context).dumpBuckets(q)
+        }
     }
 }
