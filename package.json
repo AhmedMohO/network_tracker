@@ -37,6 +37,7 @@
   },
   "scripts": {
     "test": "jest",
+    "typecheck": "tsc --noEmit",
     "start": "expo start",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "expo start --android",

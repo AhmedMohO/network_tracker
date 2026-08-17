@@ -4,6 +4,7 @@ import android.app.usage.NetworkStats
 import android.app.usage.NetworkStatsManager
 import android.content.Context
 import android.net.ConnectivityManager
+import android.os.Build
 import expo.modules.kotlin.exception.CodedException
 
 class UsageAccessDeniedException :
@@ -161,9 +162,9 @@ class StatsReader(private val context: Context) {
                         "uid" to b.uid,
                         "tag" to b.tag,
                         "state" to b.state,
-                        "metered" to b.metered,
+                        "metered" to if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) b.metered else null,
                         "roaming" to b.roaming,
-                        "defaultNetwork" to b.defaultNetwork,
+                        "defaultNetwork" to if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) b.defaultNetworkStatus else null,
                         "startTime" to b.startTimeStamp,
                         "endTime" to b.endTimeStamp,
                         "rxBytes" to b.rxBytes,

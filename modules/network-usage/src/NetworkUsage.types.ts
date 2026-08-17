@@ -23,9 +23,9 @@ export type RawBucket = {
   uid: number;
   tag: number;
   state: number;
-  metered: number;
+  metered: number | null;
   roaming: number;
-  defaultNetwork: number;
+  defaultNetwork: number | null;
   startTime: number;
   endTime: number;
   rxBytes: number;

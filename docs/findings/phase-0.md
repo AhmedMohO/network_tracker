@@ -15,6 +15,8 @@ PENDING — no physical Android device available in this environment; requires m
 ## Q3 — Time bucket granularity
 PENDING — no physical Android device available in this environment; requires manual verification (requested vs covered range, observed bin resolution, smallest range with distinct data, outcome A or B)
 
+**Retention-window check (add to device verification):** `appUsage()` (feeds dashboard totals via `getAppUsage`) queries `NetworkStatsManager.querySummary()`, while `series()` (feeds chart totals via `getSeries`) queries `queryDetails()`/`queryDetailsForUid()`. These are different underlying APIs with different data-retention windows — detailed per-UID history is pruned more aggressively than summary history. Device verification must check whether `getAppUsage` totals and `getSeries` totals agree over the same time range at various window sizes (7d, 30d); a legitimate mismatch once retention limits are hit is expected and should not be treated as a bug.
+
 ## Q4 — Live per-app feasibility
 PENDING — no physical Android device available in this environment; requires manual verification (device-level live speed plausibility, per-app 10-second-window freshness). GO/NO-GO decision cannot be made without this data.
 
