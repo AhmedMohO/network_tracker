@@ -25,5 +25,7 @@ class NetworkUsageModule : Module() {
         }
 
         AsyncFunction("getSeries") { q: SeriesQuery -> StatsReader(context).series(q) }
+
+        Function("getDeviceCounters") { LiveProbe.counters() }
     }
 }

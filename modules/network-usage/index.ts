@@ -13,6 +13,12 @@ declare class NetworkUsageModule {
   getAppUsage(q: UsageQuery): Promise<AppUsageRow[]>;
   dumpBuckets(q: UsageQuery): Promise<RawBucket[]>;
   getSeries(q: SeriesQuery): Promise<SeriesResult>;
+  getDeviceCounters(): {
+    mobileRx: number;
+    mobileTx: number;
+    totalRx: number;
+    totalTx: number;
+  };
 }
 
 export * from "./src/NetworkUsage.types";
