@@ -88,10 +88,11 @@ class StatsReader(private val context: Context) {
     @Suppress("DEPRECATION")
     fun series(q: SeriesQuery): Map<String, Any?> {
         require(q.bucketMs > 0) { "bucketMs must be positive" }
-        val binCount = ((q.end - q.start) / q.bucketMs).toInt() + 1
-        if (binCount > 2000) {
-            throw CodedException("Requested range needs $binCount bins; widen bucketMs")
+        val binCountLong = (q.end - q.start) / q.bucketMs + 1
+        if (binCountLong > 2000) {
+            throw CodedException("Requested range needs $binCountLong bins; widen bucketMs")
         }
+        val binCount = binCountLong.toInt()
 
         val rx = LongArray(binCount)
         val tx = LongArray(binCount)
@@ -118,7 +119,7 @@ class StatsReader(private val context: Context) {
                     // A bucket is assigned whole to the bin containing its start.
                     // System buckets are hours wide, so this is an attribution
                     // choice, not a measurement — the UI must show coveredStart/End.
-                    val idx = ((b.startTimeStamp - q.start) / q.bucketMs).toInt()
+                    val idx = Math.floorDiv(b.startTimeStamp - q.start, q.bucketMs).toInt()
                     if (idx in 0 until binCount) {
                         rx[idx] += b.rxBytes
                         tx[idx] += b.txBytes
