@@ -85,6 +85,70 @@ class StatsReader(private val context: Context) {
         }
     }
 
+    @Suppress("DEPRECATION")
+    fun series(q: SeriesQuery): Map<String, Any?> {
+        require(q.bucketMs > 0) { "bucketMs must be positive" }
+        val binCount = ((q.end - q.start) / q.bucketMs).toInt() + 1
+        if (binCount > 2000) {
+            throw CodedException("Requested range needs $binCount bins; widen bucketMs")
+        }
+
+        val rx = LongArray(binCount)
+        val tx = LongArray(binCount)
+        var coveredStart = Long.MAX_VALUE
+        var coveredEnd = Long.MIN_VALUE
+
+        for (type in networkTypes(q.network)) {
+            val stats = try {
+                if (q.uid != null) {
+                    nsm.queryDetailsForUid(type, null, q.start, q.end, q.uid)
+                } else {
+                    nsm.queryDetails(type, null, q.start, q.end)
+                }
+            } catch (e: SecurityException) {
+                throw UsageAccessDeniedException()
+            }
+
+            stats.use { s ->
+                val b = NetworkStats.Bucket()
+                while (s.hasNextBucket()) {
+                    s.getNextBucket(b)
+                    if (b.tag != NetworkStats.Bucket.TAG_NONE) continue
+
+                    // A bucket is assigned whole to the bin containing its start.
+                    // System buckets are hours wide, so this is an attribution
+                    // choice, not a measurement — the UI must show coveredStart/End.
+                    val idx = ((b.startTimeStamp - q.start) / q.bucketMs).toInt()
+                    if (idx in 0 until binCount) {
+                        rx[idx] += b.rxBytes
+                        tx[idx] += b.txBytes
+                    }
+                    if (b.startTimeStamp < coveredStart) coveredStart = b.startTimeStamp
+                    if (b.endTimeStamp > coveredEnd) coveredEnd = b.endTimeStamp
+                }
+            }
+        }
+
+        if (coveredStart == Long.MAX_VALUE) {
+            coveredStart = q.start
+            coveredEnd = q.end
+        }
+
+        val bins = (0 until binCount).map { i ->
+            mapOf(
+                "start" to q.start + i * q.bucketMs,
+                "end" to q.start + (i + 1) * q.bucketMs,
+                "rxBytes" to rx[i],
+                "txBytes" to tx[i]
+            )
+        }
+        return mapOf(
+            "bins" to bins,
+            "coveredStart" to coveredStart,
+            "coveredEnd" to coveredEnd
+        )
+    }
+
     /** Diagnostics only: raw rows with no filtering or summing. */
     fun dumpBuckets(q: UsageQuery): List<Map<String, Any?>> {
         val out = ArrayList<Map<String, Any?>>()

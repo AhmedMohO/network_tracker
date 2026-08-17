@@ -31,3 +31,24 @@ export type RawBucket = {
   rxBytes: number;
   txBytes: number;
 };
+
+export type SeriesQuery = {
+  start: number;
+  end: number;
+  network: NetworkFilter;
+  bucketMs: number;
+  uid?: number | null;
+};
+
+export type SeriesBin = {
+  start: number;
+  end: number;
+  rxBytes: number;
+  txBytes: number;
+};
+
+export type SeriesResult = {
+  bins: SeriesBin[];
+  coveredStart: number;
+  coveredEnd: number;
+};

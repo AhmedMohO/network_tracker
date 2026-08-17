@@ -23,5 +23,7 @@ class NetworkUsageModule : Module() {
         AsyncFunction("dumpBuckets") { q: UsageQuery ->
             StatsReader(context).dumpBuckets(q)
         }
+
+        AsyncFunction("getSeries") { q: SeriesQuery -> StatsReader(context).series(q) }
     }
 }

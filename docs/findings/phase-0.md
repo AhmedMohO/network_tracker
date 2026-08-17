@@ -13,7 +13,7 @@ Date: 2026-08-18
 PENDING — no physical Android device available in this environment; requires manual verification (probe total vs Settings total, top-5 app lists, tag/state/metered/roaming combos, bucket durations)
 
 ## Q3 — Time bucket granularity
-(filled in Task 3)
+PENDING — no physical Android device available in this environment; requires manual verification (requested vs covered range, observed bin resolution, smallest range with distinct data, outcome A or B)
 
 ## Q4 — Live per-app feasibility
 (filled in Task 4)

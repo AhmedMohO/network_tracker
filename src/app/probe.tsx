@@ -1,12 +1,14 @@
 import { useCallback, useState } from "react";
 import { AppState, Button, ScrollView, Text, View } from "react-native";
 import { useFocusEffect } from "expo-router";
-import NetworkUsage, { AppUsageRow, NetworkFilter } from "@modules/network-usage";
+import NetworkUsage, { AppUsageRow, NetworkFilter, SeriesResult } from "@modules/network-usage";
 
 export default function Probe() {
   const [granted, setGranted] = useState(false);
   const [rows, setRows] = useState<AppUsageRow[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [series, setSeries] = useState<SeriesResult | null>(null);
+  const [seriesError, setSeriesError] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
     setGranted(NetworkUsage.hasUsageAccess());
@@ -37,6 +39,28 @@ export default function Probe() {
       setRows(result);
     } catch (e) {
       setError(String(e));
+    }
+  };
+
+  // Granularity probe: deliberately unaligned window (14:37-16:12) at a
+  // 15-min bucket, to see whether the OS honours sub-hour ranges or snaps
+  // them out to hour boundaries.
+  const runSeriesProbe = async () => {
+    setSeriesError(null);
+    const today = new Date();
+    today.setHours(14, 37, 0, 0);
+    const start = today.getTime();
+    const end = start + (16 * 60 + 12 - (14 * 60 + 37)) * 60_000; // 16:12:00 same day
+    try {
+      const result = await NetworkUsage.getSeries({
+        start,
+        end,
+        network: "MOBILE",
+        bucketMs: 900_000,
+      });
+      setSeries(result);
+    } catch (e) {
+      setSeriesError(String(e));
     }
   };
 
@@ -79,6 +103,27 @@ export default function Probe() {
           </Text>
         </View>
       ))}
+
+      <Text style={{ fontSize: 20, fontWeight: "600" }}>Granularity probe</Text>
+      <Text>Requested: 14:37:00 - 16:12:00, MOBILE, 15-min bins</Text>
+      <Button title="Run granularity probe" onPress={runSeriesProbe} />
+      {seriesError && <Text style={{ color: "red" }}>{seriesError}</Text>}
+      {series && (
+        <View>
+          <Text>
+            Covered: {new Date(series.coveredStart).toISOString()} -{" "}
+            {new Date(series.coveredEnd).toISOString()}
+          </Text>
+          {series.bins
+            .filter((b) => b.rxBytes > 0 || b.txBytes > 0)
+            .map((b) => (
+              <Text key={b.start}>
+                {new Date(b.start).toISOString()} - {new Date(b.end).toISOString()} · rx{" "}
+                {b.rxBytes} · tx {b.txBytes}
+              </Text>
+            ))}
+        </View>
+      )}
     </ScrollView>
   );
 }
