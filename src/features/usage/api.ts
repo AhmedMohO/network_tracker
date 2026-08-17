@@ -5,6 +5,8 @@ import NetworkUsage, {
 import { type AppUsage, sumUsage, toAppUsage } from "./aggregate";
 import { coverageNote, type Range } from "./range";
 
+export type { NetworkFilter };
+
 export type UsageResult = {
   apps: AppUsage[];
   totals: { download: number; upload: number; total: number };
