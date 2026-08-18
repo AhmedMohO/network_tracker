@@ -78,7 +78,7 @@ export default function Dashboard() {
             ListHeaderComponent={
               <View style={styles.header}>
                 {network === 'MOBILE' && limitStatus ? (
-                  <LimitCard status={limitStatus} />
+                  <LimitCard status={limitStatus.status} coverage={limitStatus.coverage} />
                 ) : null}
                 <TotalsCard totals={data.totals} coverage={data.coverage} hidden={hidden} />
                 <UsageChartCard />

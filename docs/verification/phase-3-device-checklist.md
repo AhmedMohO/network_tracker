@@ -124,9 +124,9 @@ npx expo run:android
       `"quiet"` with no notification.
 - [ ] **Once-per-cycle rule.** Immediately after any `"posted"` result above,
       call `runUsageCheck(Date.now())` again. Confirm it returns `"quiet"`
-      and no second notification appears. Confirm `Settings.lastAlert` in
-      storage carries the fired key.
-- [ ] **New cycle re-arms.** With `lastAlert` set from a prior cycle, advance
+      and no second notification appears. Confirm `Settings.alertedKeys` in
+      storage carries the fired key (the Probe tab prints it).
+- [ ] **New cycle re-arms.** With `alertedKeys` set from a prior cycle, advance
       past the next `cycleStartDay` (or change `cycleStartDay` to force a new
       cycle) and confirm a still-qualifying state posts again — the alert key
       includes the cycle start, so a new cycle is a new key.
@@ -160,3 +160,49 @@ npx expo run:android
       per-app notification settings. Note: the channel name is fixed at
       whichever language was active when the channel was first created — this
       is an accepted limitation, not a bug to fix.
+
+---
+
+## 7. Phase 3 review fixes (C1, C2, I2, I4, I5)
+
+These items exist because the end-of-phase review found defects that unit
+tests now cover but only hardware can confirm in the running app.
+
+- [ ] **The projection moves (C1).** With a limit set, leave the dashboard
+      open across a real cycle. At roughly a quarter of the way through the
+      cycle the card must read about 25%, the elapsed marker bar must be about
+      a quarter wide, and "At this rate you will use …" must differ from the
+      used figure. Previously both were pinned at 100% / equal.
+- [ ] **The elapsed figure updates without a reload (C1).** The hook ticks
+      once a minute. Leave the screen open across a minute boundary and
+      confirm the elapsed percentage is not frozen at the value it had on
+      first render (the React Compiler is on, so this is the specific failure
+      mode being checked).
+- [ ] **Alerts land on the `usage-alerts` channel (C2).** Force an alert, then
+      open Android Settings → Apps → network_tracker → Notifications. It must
+      appear under **Usage alerts** / **تنبيهات الاستهلاك**, not under
+      "Miscellaneous" or any fallback channel. Turn "Usage alerts" off and
+      confirm the next alert is suppressed.
+- [ ] **Re-arm matrix (I2).** Let a warn fire, raise the limit, then cross
+      80% of the *new* limit — a second warn must arrive. Then trigger a spike
+      alert and re-run the check: the already-fired warn must **not** repeat.
+- [ ] **Alerted keys stay bounded (I2).** After several days of alerts, check
+      `Settings.alertedKeys` from the Probe tab. It must hold only keys for
+      the current cycle plus at most today's spike key.
+- [ ] **Coverage disclosure against a real cycle boundary (I4).** Set
+      `cycleStartDay` to a mid-month date and compare the card's used figure
+      with Android's own Data usage screen for the identical window. Record
+      how far apart they are — that number decides whether the new coverage
+      line on `LimitCard` is cosmetic or load-bearing.
+- [ ] **Spike short-circuit (I5).** After today's spike alert has fired,
+      re-run `runUsageCheck` from the Probe tab. It must return `"quiet"`
+      quickly — the 15 sequential `NetworkStatsManager` queries are now
+      skipped. With the app backgrounded overnight, check
+      `adb shell dumpsys jobscheduler` for how often the worker ran and
+      whether any invocation was killed part-way through those queries. This
+      is also the cheapest de-risking of the `HISTORY_DAYS = 14` timeout
+      question above.
+- [ ] **DST boundary (deferred M1).** `backgroundCheck.ts` still steps history
+      days by a fixed 86,400,000 ms. Only observable by running the spike
+      check across an actual DST transition, or by moving the device clock
+      across one. Not fixed in this pass.

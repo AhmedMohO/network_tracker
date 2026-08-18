@@ -1,3 +1,6 @@
+import { runUsageCheck } from "@/features/limits/backgroundCheck";
+import { ensureNotificationSetup, notify } from "@/features/limits/notify";
+import { loadSettings, saveSettings } from "@/features/usage/settings";
 import NetworkUsage, {
 	AppUsageRow,
 	NetworkFilter,
@@ -28,6 +31,7 @@ export default function Probe() {
 	const [error, setError] = useState<string | null>(null);
 	const [series, setSeries] = useState<SeriesResult | null>(null);
 	const [seriesError, setSeriesError] = useState<string | null>(null);
+	const [notificationStatus, setNotificationStatus] = useState<string | null>(null);
 
 	const [deviceSamples, setDeviceSamples] = useState<DeviceSample[]>([]);
 	const [deviceProbeRunning, setDeviceProbeRunning] = useState(false);
@@ -326,6 +330,58 @@ export default function Probe() {
 					{s.changed.length > 0 ? s.changed.join(", ") : "(none)"}
 				</Text>
 			))}
+
+			<Text style={{ fontSize: 20, fontWeight: "600" }}>
+				Notification & Alert Tests
+			</Text>
+			<Text>
+				Directly test notifications, run threshold checks, or reset cycle alert state.
+			</Text>
+			<View style={{ gap: 8 }}>
+				<Button
+					title="Send Direct Test Notification"
+					onPress={async () => {
+						setNotificationStatus("Requesting permissions and sending test notification...");
+						const ok = await ensureNotificationSetup();
+						if (!ok) {
+							setNotificationStatus("Permission DENIED by user.");
+							return;
+						}
+						await notify(
+							"Test Alert Title",
+							"This is a direct test notification from Network Tracker."
+						);
+						setNotificationStatus("Direct notification scheduled/delivered!");
+					}}
+				/>
+				<Button
+					title="Run Usage Check (runUsageCheck)"
+					onPress={async () => {
+						setNotificationStatus("Running runUsageCheck(Date.now())...");
+						try {
+							const result = await runUsageCheck(Date.now());
+							const settings = await loadSettings();
+							setNotificationStatus(
+								`Result: "${result}" (alerted keys: ${settings.alertedKeys.join(", ") || "none"})`
+							);
+						} catch (e) {
+							setNotificationStatus(`Error: ${String(e)}`);
+						}
+					}}
+				/>
+				<Button
+					title="Reset alerted keys in Settings"
+					onPress={async () => {
+						await saveSettings({ alertedKeys: [] });
+						setNotificationStatus("Alerted keys cleared! You can now re-trigger cycle alerts.");
+					}}
+				/>
+			</View>
+			{notificationStatus && (
+				<Text style={{ color: "#0066cc", marginVertical: 4, fontWeight: "500" }}>
+					{notificationStatus}
+				</Text>
+			)}
 		</ScrollView>
 	);
 }

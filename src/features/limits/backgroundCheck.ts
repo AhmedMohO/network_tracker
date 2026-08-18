@@ -5,9 +5,14 @@ import { Platform } from "react-native";
 import i18n from "@/i18n";
 import { fetchUsage } from "@/features/usage/api";
 import { formatBytes } from "@/features/usage/format";
-import { billingCycleRange, presetRange } from "@/features/usage/range";
+import {
+  billingCycleRange,
+  nextCycleStart,
+  presetRange,
+} from "@/features/usage/range";
 import { loadSettings, saveSettings } from "@/features/usage/settings";
 
+import { decideAlert, limitAlertKey, spikeAlertKey } from "./alerts";
 import { detectSpike, limitStatus } from "./limits";
 import { notify } from "./notify";
 
@@ -17,59 +22,88 @@ const DAY = 86_400_000;
 const HISTORY_DAYS = 14;
 
 /**
- * One alert per key per cycle. Without this, a crossed threshold would
- * re-notify every time the background task runs.
+ * One alert per threshold per cycle. Without this, a crossed threshold would
+ * re-notify every time the background task runs. The decision is pure and
+ * lives in `alerts.ts`; this function is only the storage around it.
  */
-async function alertOnce(key: string, title: string, body: string) {
+async function alertOnce(
+  key: string,
+  cycleStart: number,
+  todaySpikeKey: string,
+  title: string,
+  body: string
+) {
   const settings = await loadSettings();
-  if (settings.lastAlert?.key === key) return "quiet" as const;
+  const decision = decideAlert(
+    settings.alertedKeys,
+    key,
+    cycleStart,
+    todaySpikeKey
+  );
+  if (!decision.fire) return "quiet" as const;
   await notify(title, body);
-  await saveSettings({ lastAlert: { key, at: Date.now() } });
+  await saveSettings({ alertedKeys: decision.alertedKeys });
   return "posted" as const;
 }
 
 export async function runUsageCheck(now: number) {
   const settings = await loadSettings();
   const cycle = billingCycleRange(settings.cycleStartDay, now);
+  const today = presetRange("today", now);
+  const spikeKey = spikeAlertKey(today.start);
 
   // Limit thresholds.
-  if (settings.mobileLimitBytes) {
+  const limitBytes = settings.mobileLimitBytes;
+  if (limitBytes) {
     const { totals } = await fetchUsage(cycle, "MOBILE");
     const status = limitStatus(
       totals.total,
-      settings.mobileLimitBytes,
-      cycle,
+      limitBytes,
+      // The query above has to stop at `now`, but elapsed time and the
+      // projection are measured against the whole cycle.
+      { ...cycle, end: nextCycleStart(settings.cycleStartDay, now) },
       now,
       settings.warnAtPercent
     );
 
-    // Key includes the cycle start so a new cycle re-arms the alert.
-    const cycleKey = `${cycle.start}`;
-
-    if (status.state === "over") {
-      return alertOnce(
-        `over:${cycleKey}`,
-        i18n.t("alerts.overTitle"),
-        i18n.t("alerts.overBody", {
-          used: formatBytes(status.usedBytes),
-          limit: formatBytes(status.limitBytes),
-        })
+    if (status.state !== "ok") {
+      const key = limitAlertKey(
+        status.state,
+        cycle.start,
+        limitBytes,
+        settings.warnAtPercent
       );
-    }
-    if (status.state === "warn") {
-      return alertOnce(
-        `warn:${cycleKey}`,
-        i18n.t("alerts.warnTitle", { percent: Math.round(status.usedPercent) }),
-        i18n.t("alerts.warnBody", {
-          remaining: formatBytes(status.remainingBytes),
-          cycleRemaining: Math.round(100 - status.elapsedPercent),
-        })
-      );
+      return status.state === "over"
+        ? alertOnce(
+            key,
+            cycle.start,
+            spikeKey,
+            i18n.t("alerts.overTitle"),
+            i18n.t("alerts.overBody", {
+              used: formatBytes(status.usedBytes),
+              limit: formatBytes(status.limitBytes),
+            })
+          )
+        : alertOnce(
+            key,
+            cycle.start,
+            spikeKey,
+            i18n.t("alerts.warnTitle", {
+              percent: Math.round(status.usedPercent),
+            }),
+            i18n.t("alerts.warnBody", {
+              remaining: formatBytes(status.remainingBytes),
+              cycleRemaining: Math.round(100 - status.elapsedPercent),
+            })
+          );
     }
   }
 
-  // Spike detection over the last 14 complete days.
-  const today = presetRange("today", now);
+  // Spike detection over the last 14 complete days. Once today's spike alert
+  // has fired nothing below can change the outcome, so skip the 15 sequential
+  // NetworkStatsManager queries it would take to re-derive it.
+  if (settings.alertedKeys.includes(spikeKey)) return "quiet" as const;
+
   const todayTotal = (await fetchUsage(today, "MOBILE")).totals.total;
 
   const history: number[] = [];
@@ -83,9 +117,10 @@ export async function runUsageCheck(now: number) {
   }
 
   if (detectSpike(history, todayTotal)) {
-    const dayKey = new Date(today.start).toISOString().slice(0, 10);
     return alertOnce(
-      `spike:${dayKey}`,
+      spikeKey,
+      cycle.start,
+      spikeKey,
       i18n.t("alerts.spikeTitle"),
       i18n.t("alerts.spikeBody", { bytes: formatBytes(todayTotal) })
     );

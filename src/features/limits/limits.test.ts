@@ -1,4 +1,8 @@
-import type { Range } from "@/features/usage/range";
+import {
+  billingCycleRange,
+  nextCycleStart,
+  type Range,
+} from "@/features/usage/range";
 import { detectSpike, limitStatus, median } from "./limits";
 
 const GB = 1024 ** 3;
@@ -45,6 +49,31 @@ describe("limitStatus", () => {
   it("does not project beyond the end of the cycle", () => {
     const s = limitStatus(9 * GB, 10 * GB, range, range.end, 80);
     expect(s.projectedBytes).toBeCloseTo(9 * GB);
+  });
+
+  // Regression: every caller builds its range from billingCycleRange, whose
+  // `end` for the current cycle is `now` — a query window, not the cycle. Fed
+  // that directly, elapsed time is the whole span and the "projection" is just
+  // the current reading wearing a forecast's clothes.
+  it("measures elapsed time against the cycle, not the query window", () => {
+    const cycleStartDay = 1;
+    // Noon on day 5 of a 31-day cycle: 4.5 of 31 days gone.
+    const now = new Date(2026, 7, 5, 12, 0, 0).getTime();
+    const query = billingCycleRange(cycleStartDay, now);
+    const cycle: Range = {
+      ...query,
+      end: nextCycleStart(cycleStartDay, now),
+    };
+
+    const s = limitStatus(2 * GB, 10 * GB, cycle, now, 80);
+    expect(s.elapsedPercent).toBeGreaterThan(0);
+    expect(s.elapsedPercent).toBeLessThan(100);
+    // 4.5 / 31 ≈ 14.5%. Precision 0 so a DST hour cannot flip the assertion.
+    expect(s.elapsedPercent).toBeCloseTo((4.5 / 31) * 100, 0);
+    // A projection that equals the measurement is not a projection: 2 GB in
+    // 4.5 of 31 days extrapolates to roughly 6.9x that.
+    expect(s.projectedBytes).toBeGreaterThan(6 * s.usedBytes);
+    expect(s.projectedBytes).toBeLessThan(8 * s.usedBytes);
   });
 });
 

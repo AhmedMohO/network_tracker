@@ -6,6 +6,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Spacing, type ThemeColor } from '@/constants/theme';
 import { formatBytes } from '@/features/usage/format';
 import { useTheme } from '@/hooks/use-theme';
+import { formatDateTime } from '@/i18n/format';
 
 import type { LimitState, LimitStatus } from './limits';
 
@@ -20,7 +21,14 @@ const STATE_COLOR: Record<LimitState, ThemeColor> = {
  * through the cycle we are. Being at 60% of the data on day 3 of 30 is the
  * thing worth seeing, and one number cannot show it.
  */
-export function LimitCard({ status }: { status: LimitStatus }) {
+export function LimitCard({
+  status,
+  coverage = null,
+}: {
+  status: LimitStatus;
+  /** Window Android actually covered, when it is not the one requested. */
+  coverage?: { start: number; end: number } | null;
+}) {
   const theme = useTheme();
   const { t } = useTranslation();
   const color = STATE_COLOR[status.state];
@@ -93,6 +101,18 @@ export function LimitCard({ status }: { status: LimitStatus }) {
           ? t('limits.projectedOver', { bytes: formatBytes(status.projectedBytes) })
           : t('limits.projected', { bytes: formatBytes(status.projectedBytes) })}
       </ThemedText>
+
+      {/* A billing cycle starts on an arbitrary day, which is the worst case
+          for Android's bucket boundaries — so disclose the drift here exactly
+          as TotalsCard does for its own total. */}
+      {coverage ? (
+        <ThemedText type="small" themeColor="textSecondary">
+          {t('chart.coverage', {
+            from: formatDateTime(coverage.start),
+            to: formatDateTime(coverage.end),
+          })}
+        </ThemedText>
+      ) : null}
     </ThemedView>
   );
 }

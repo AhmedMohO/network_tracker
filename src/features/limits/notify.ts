@@ -5,6 +5,16 @@ import i18n from "@/i18n";
 
 const CHANNEL_ID = "usage-alerts";
 
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
+    shouldPlaySound: false,
+    shouldSetBadge: false,
+  }),
+});
+
 export async function ensureNotificationSetup(): Promise<boolean> {
   if (Platform.OS === "android") {
     // Required on Android 8+; without it notifications are silently dropped.
@@ -24,7 +34,9 @@ export async function ensureNotificationSetup(): Promise<boolean> {
 export async function notify(title: string, body: string): Promise<void> {
   await Notifications.scheduleNotificationAsync({
     content: { title, body },
-    trigger: null, // deliver immediately
-    ...(Platform.OS === "android" ? { channelId: CHANNEL_ID } : {}),
+    // deliver immediately — a channel-only trigger carries no schedule, it
+    // just tells Android which channel to post on. `channelId` is only read
+    // here; at the top level of the request it is silently ignored.
+    trigger: Platform.OS === "android" ? { channelId: CHANNEL_ID } : null,
   });
 }

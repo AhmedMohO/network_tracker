@@ -153,7 +153,7 @@ export default function SettingsScreen() {
             </ThemedText>
 
             {limitStatus ? (
-              <LimitCard status={limitStatus} />
+              <LimitCard status={limitStatus.status} coverage={limitStatus.coverage} />
             ) : (
               <ThemedText type="small" themeColor="textSecondary">
                 {t('limits.none')}

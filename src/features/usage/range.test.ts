@@ -1,4 +1,9 @@
-import { billingCycleRange, coverageDrift, presetRange } from "./range";
+import {
+  billingCycleRange,
+  coverageDrift,
+  nextCycleStart,
+  presetRange,
+} from "./range";
 
 // 2026-08-18T10:30:00 local time
 const NOW = new Date(2026, 7, 18, 10, 30, 0).getTime();
@@ -77,5 +82,34 @@ describe("coverageDrift", () => {
       start: 0,
       end: 7_200_000,
     });
+  });
+});
+
+describe("nextCycleStart", () => {
+  it("is the cycle day of the following month", () => {
+    const next = nextCycleStart(11, NOW);
+    expect(new Date(next).getMonth()).toBe(8); // September
+    expect(new Date(next).getDate()).toBe(11);
+    expect(new Date(next).getHours()).toBe(0);
+  });
+
+  it("is this month's cycle day when that day has not arrived yet", () => {
+    // On the 18th with a cycle day of 25, the current cycle began last month.
+    const next = nextCycleStart(25, NOW);
+    expect(new Date(next).getMonth()).toBe(7); // August
+    expect(new Date(next).getDate()).toBe(25);
+  });
+
+  it("clamps to the last day of a shorter following month", () => {
+    const jan31 = new Date(2026, 0, 31, 9, 0, 0).getTime();
+    const next = nextCycleStart(31, jan31);
+    expect(new Date(next).getMonth()).toBe(1); // February
+    expect(new Date(next).getDate()).toBe(28); // 2026 is not a leap year
+  });
+
+  it("is strictly after the current cycle's query window", () => {
+    const cycle = billingCycleRange(11, NOW);
+    expect(nextCycleStart(11, NOW)).toBeGreaterThan(cycle.end);
+    expect(cycle.end).toBe(NOW);
   });
 });
