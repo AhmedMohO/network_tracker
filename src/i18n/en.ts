@@ -14,6 +14,7 @@ export const en = {
   tabs: {
     home: 'Usage',
     compare: 'Compare',
+    live: 'Live',
     settings: 'Settings',
     probe: 'Probe',
   },
@@ -81,6 +82,12 @@ export const en = {
     errorTitle: 'Could not compare the two periods.',
     empty: 'Nothing to compare in this range.',
     rowA11y: '{{name}}, {{previous}} before, {{current}} now, {{change}}',
+  },
+  live: {
+    badge: 'Live · whole device',
+    a11y: 'Downloading {{down}}, uploading {{up}}.',
+    sparkA11y: 'Download speed over the last minute, peaking at {{peak}}.',
+    note: 'Live speed is measured for the whole device, while this screen is open. Android reports no live speed per app, and no reliable live split between mobile and Wi-Fi.',
   },
   app: {
     removed: 'Removed app (UID {{uid}})',
