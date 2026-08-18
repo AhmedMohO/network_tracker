@@ -18,6 +18,7 @@ export const ar: typeof en = {
   },
   tabs: {
     home: 'الاستهلاك',
+    compare: 'المقارنة',
     settings: 'الإعدادات',
     probe: 'الفحص',
   },
@@ -73,6 +74,16 @@ export const ar: typeof en = {
     emptyHint: 'جرّب نطاقًا أوسع، أو بدّل بين بيانات الجوال والواي فاي.',
     loading: 'جارٍ تحميل الاستهلاك',
     appsHeading: 'التطبيقات',
+  },
+  compare: {
+    was: 'وكان {{bytes}}',
+    versus: 'مقارنةً بالفترة {{from}} – {{to}}',
+    moversHeading: 'الأكثر تغيّرًا',
+    new: 'جديد',
+    loading: 'جارٍ تحميل المقارنة',
+    errorTitle: 'تعذّرت المقارنة بين الفترتين.',
+    empty: 'لا يوجد ما يُقارن في هذا النطاق.',
+    rowA11y: '{{name}}، {{previous}} سابقًا، {{current}} الآن، {{change}}',
   },
   app: {
     removed: 'تطبيق محذوف (المعرّف {{uid}})',

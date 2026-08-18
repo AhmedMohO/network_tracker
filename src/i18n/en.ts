@@ -13,6 +13,7 @@ export const en = {
   },
   tabs: {
     home: 'Usage',
+    compare: 'Compare',
     settings: 'Settings',
     probe: 'Probe',
   },
@@ -70,6 +71,16 @@ export const en = {
     emptyHint: 'Try a wider range, or switch between Mobile and Wi-Fi.',
     loading: 'Loading usage',
     appsHeading: 'Apps',
+  },
+  compare: {
+    was: 'was {{bytes}}',
+    versus: 'compared with {{from}} – {{to}}',
+    moversHeading: 'Biggest movers',
+    new: 'new',
+    loading: 'Loading comparison',
+    errorTitle: 'Could not compare the two periods.',
+    empty: 'Nothing to compare in this range.',
+    rowA11y: '{{name}}, {{previous}} before, {{current}} now, {{change}}',
   },
   app: {
     removed: 'Removed app (UID {{uid}})',
