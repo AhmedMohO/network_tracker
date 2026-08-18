@@ -9,6 +9,7 @@ import { ThemedView } from '@/components/themed-view';
 import { toast } from '@/components/toast';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { LimitCard } from '@/features/limits/LimitCard';
+import type { LimitNetwork } from '@/features/limits/limits';
 import { useLimitStatus } from '@/features/limits/useLimitStatus';
 import { saveSettings } from '@/features/usage/settings';
 import { useUsageContext } from '@/features/usage/useUsageContext';
@@ -59,20 +60,39 @@ function Field({
   );
 }
 
+const LIMIT_TABS: { id: LimitNetwork; key: string }[] = [
+  { id: 'MOBILE', key: 'network.mobile' },
+  { id: 'WIFI', key: 'network.wifi' },
+];
+
 export default function SettingsScreen() {
   const theme = useTheme();
   const { t, i18n } = useTranslation();
   const { settings, reloadSettings } = useUsageContext();
-  const limitStatus = useLimitStatus();
+  const [activeTab, setActiveTab] = useState<LimitNetwork>('MOBILE');
+  const isWifi = activeTab === 'WIFI';
+  // Only the visible tab's limit is queried; switching tabs refetches.
+  const limitStatus = useLimitStatus(activeTab);
 
-  const [limitGb, setLimitGb] = useState('');
-  const [warnPercent, setWarnPercent] = useState('80');
+  const [mobileLimitGb, setMobileLimitGb] = useState('');
+  const [mobileWarnPercent, setMobileWarnPercent] = useState('80');
+
+  const [wifiLimitGb, setWifiLimitGb] = useState('');
+  const [wifiWarnPercent, setWifiWarnPercent] = useState('80');
+
+  // One cycle day for both networks: it is also what the dashboard's cycle
+  // presets read, so a per-network day would put the range picker and the
+  // limit card on different windows.
   const [cycleDay, setCycleDay] = useState('1');
 
   useEffect(() => {
     if (!settings) return;
-    setLimitGb(settings.mobileLimitBytes ? String(settings.mobileLimitBytes / GB) : '');
-    setWarnPercent(String(settings.warnAtPercent));
+    setMobileLimitGb(settings.mobileLimitBytes ? String(settings.mobileLimitBytes / GB) : '');
+    setMobileWarnPercent(String(settings.mobileWarnAtPercent));
+
+    setWifiLimitGb(settings.wifiLimitBytes ? String(settings.wifiLimitBytes / GB) : '');
+    setWifiWarnPercent(String(settings.wifiWarnAtPercent));
+
     setCycleDay(String(settings.cycleStartDay));
   }, [settings]);
 
@@ -95,14 +115,25 @@ export default function SettingsScreen() {
     }
   };
 
+  /** Both networks are saved together, so edits made on the tab you switched
+   * away from are not silently dropped. */
   const saveLimit = async () => {
-    const gb = Number(limitGb);
-    const warn = Number(warnPercent);
+    const limitBytes = (value: string) => {
+      const gb = Number(value);
+      return Number.isFinite(gb) && gb > 0 ? gb * GB : null;
+    };
+    const percent = (value: string) => {
+      const warn = Number(value);
+      return Number.isFinite(warn) && warn > 0 && warn <= 100 ? warn : 80;
+    };
     const day = Number(cycleDay);
+
     try {
       await saveSettings({
-        mobileLimitBytes: Number.isFinite(gb) && gb > 0 ? gb * GB : null,
-        warnAtPercent: Number.isFinite(warn) && warn > 0 && warn <= 100 ? warn : 80,
+        mobileLimitBytes: limitBytes(mobileLimitGb),
+        mobileWarnAtPercent: percent(mobileWarnPercent),
+        wifiLimitBytes: limitBytes(wifiLimitGb),
+        wifiWarnAtPercent: percent(wifiWarnPercent),
         cycleStartDay: Number.isInteger(day) && day >= 1 && day <= 31 ? day : 1,
       });
       reloadSettings();
@@ -148,26 +179,61 @@ export default function SettingsScreen() {
           </Section>
 
           <Section title={t('limits.title')}>
+            {/* Outside the tabs on purpose: one cycle day serves both
+                networks and the dashboard's cycle presets. */}
+            <Field label={t('limits.cycleDay')} value={cycleDay} onChangeText={setCycleDay} />
+
+            <View style={styles.chipRow} accessibilityRole="tablist">
+              {LIMIT_TABS.map(({ id, key }) => {
+                const selected = activeTab === id;
+                return (
+                  <Pressable
+                    key={id}
+                    onPress={() => setActiveTab(id)}
+                    accessibilityRole="tab"
+                    accessibilityLabel={t(key)}
+                    accessibilityState={{ selected }}
+                    style={({ pressed }) => [
+                      styles.chip,
+                      {
+                        backgroundColor: selected ? theme.accent : 'transparent',
+                        borderColor: selected ? theme.accent : theme.border,
+                        opacity: pressed ? 0.8 : 1,
+                      },
+                    ]}>
+                    <ThemedText
+                      type={selected ? 'smallBold' : 'small'}
+                      themeColor={selected ? 'accentForeground' : 'text'}>
+                      {t(key)}
+                    </ThemedText>
+                  </Pressable>
+                );
+              })}
+            </View>
+
             <ThemedText type="small" themeColor="textSecondary">
-              {t('limits.hint')}
+              {t(isWifi ? 'limits.wifiHint' : 'limits.hint')}
             </ThemedText>
 
             {limitStatus ? (
               <LimitCard status={limitStatus.status} coverage={limitStatus.coverage} />
             ) : (
               <ThemedText type="small" themeColor="textSecondary">
-                {t('limits.none')}
+                {t(isWifi ? 'limits.noneWifi' : 'limits.noneMobile')}
               </ThemedText>
             )}
 
             <Field
-              label={t('limits.limitGb')}
-              value={limitGb}
-              onChangeText={setLimitGb}
+              label={t(isWifi ? 'limits.wifiLimitGb' : 'limits.mobileLimitGb')}
+              value={isWifi ? wifiLimitGb : mobileLimitGb}
+              onChangeText={isWifi ? setWifiLimitGb : setMobileLimitGb}
               placeholder={t('limits.limitPlaceholder')}
             />
-            <Field label={t('limits.warnAt')} value={warnPercent} onChangeText={setWarnPercent} />
-            <Field label={t('limits.cycleDay')} value={cycleDay} onChangeText={setCycleDay} />
+            <Field
+              label={t('limits.warnAt')}
+              value={isWifi ? wifiWarnPercent : mobileWarnPercent}
+              onChangeText={isWifi ? setWifiWarnPercent : setMobileWarnPercent}
+            />
 
             <Pressable
               onPress={saveLimit}

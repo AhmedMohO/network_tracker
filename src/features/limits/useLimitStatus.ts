@@ -3,7 +3,12 @@ import { useEffect, useState } from "react";
 import { useUsage } from "@/features/usage/useUsage";
 import { useUsageContext } from "@/features/usage/useUsageContext";
 
-import { cycleRanges, limitStatus, type LimitStatus } from "./limits";
+import {
+  cycleRanges,
+  limitStatus,
+  type LimitNetwork,
+  type LimitStatus,
+} from "./limits";
 
 /**
  * How often `now` advances. It drives both the elapsed marker and the native
@@ -20,13 +25,17 @@ export type LimitView = {
 };
 
 /**
- * A data limit is always about mobile data over the billing cycle, not
- * whatever range/filter the dashboard has selected — so this runs its own
- * query rather than reading `range`/`network` off the context.
+ * A data limit is always about data over the billing cycle, not whatever
+ * range the dashboard has selected — so this runs its own query rather than
+ * reading `range` off the context. Supports both Mobile and Wi-Fi limits.
  */
-export function useLimitStatus(): LimitView | null {
+export function useLimitStatus(network: LimitNetwork): LimitView | null {
   const { settings } = useUsageContext();
+  const isWifi = network === "WIFI";
   const cycleStartDay = settings?.cycleStartDay ?? 1;
+  const limitBytes = isWifi ? settings?.wifiLimitBytes : settings?.mobileLimitBytes;
+  const warnAtPercent =
+    (isWifi ? settings?.wifiWarnAtPercent : settings?.mobileWarnAtPercent) ?? 80;
 
   // `now` has to come from state: with `reactCompiler` on, a bare `Date.now()`
   // in the render body has no dependency that could ever invalidate it, so the
@@ -42,16 +51,16 @@ export function useLimitStatus(): LimitView | null {
   // (ends at the next cycle start). `useUsage` keys on start/end, so this
   // refetches once a tick and no more.
   const { query, measurement } = cycleRanges(cycleStartDay, now);
-  const { data } = useUsage(query, "MOBILE");
+  const { data } = useUsage(query, network);
 
-  if (!data || !settings?.mobileLimitBytes) return null;
+  if (!data || !limitBytes) return null;
   return {
     status: limitStatus(
       data.totals.total,
-      settings.mobileLimitBytes,
+      limitBytes,
       measurement,
       now,
-      settings.warnAtPercent
+      warnAtPercent
     ),
     coverage: data.coverage,
   };

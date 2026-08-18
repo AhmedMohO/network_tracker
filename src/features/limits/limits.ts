@@ -6,6 +6,9 @@ import {
 
 export type LimitState = "ok" | "warn" | "over";
 
+/** The networks a limit can be set on. `NetworkFilter`'s "ALL" is not one. */
+export type LimitNetwork = "MOBILE" | "WIFI";
+
 export type LimitStatus = {
   usedBytes: number;
   limitBytes: number;

@@ -9,7 +9,12 @@ import { presetRange } from "@/features/usage/range";
 import { loadSettings, saveSettings } from "@/features/usage/settings";
 
 import { decideAlert, limitAlertKey, spikeAlertKey } from "./alerts";
-import { cycleRanges, detectSpike, limitStatus } from "./limits";
+import {
+  cycleRanges,
+  detectSpike,
+  limitStatus,
+  type LimitNetwork,
+} from "./limits";
 import { notify } from "./notify";
 
 export const USAGE_CHECK_TASK = "usage-threshold-check";
@@ -51,19 +56,30 @@ async function alertOnce(
   return "posted" as const;
 }
 
-export async function runUsageCheck(now: number) {
-  const settings = await loadSettings();
-  const { query: cycle, measurement } = cycleRanges(
-    settings.cycleStartDay,
-    now
-  );
+/**
+ * One network's limit, then — only if that stayed silent — its spike scan.
+ *
+ * A crossed threshold ends the check for this network whether it notified or
+ * was already remembered: the spike scan costs `HISTORY_DAYS + 1` sequential
+ * NetworkStatsManager queries, and nothing it could find would change the
+ * outcome for a network already over its line.
+ */
+async function checkNetwork(
+  network: LimitNetwork,
+  limitBytes: number | null,
+  warnAtPercent: number,
+  cycleStartDay: number,
+  now: number,
+  alertedKeys: string[]
+): Promise<"posted" | "quiet"> {
+  const strings = network === "WIFI" ? "alerts.wifi" : "alerts.mobile";
+  const { query: cycle, measurement } = cycleRanges(cycleStartDay, now);
   const today = presetRange("today", now);
-  const spikeKey = spikeAlertKey(today.start);
+  const spikeKey = spikeAlertKey(today.start, network);
 
   // Limit thresholds.
-  const limitBytes = settings.mobileLimitBytes;
   if (limitBytes) {
-    const { totals } = await fetchUsage(cycle, "MOBILE");
+    const { totals } = await fetchUsage(cycle, network);
     // The query above has to stop at `now`, but elapsed time and the
     // projection are measured against the whole cycle.
     const status = limitStatus(
@@ -71,7 +87,7 @@ export async function runUsageCheck(now: number) {
       limitBytes,
       measurement,
       now,
-      settings.warnAtPercent
+      warnAtPercent
     );
 
     if (status.state !== "ok") {
@@ -79,15 +95,16 @@ export async function runUsageCheck(now: number) {
         status.state,
         cycle.start,
         limitBytes,
-        settings.warnAtPercent
+        warnAtPercent,
+        network
       );
       return status.state === "over"
         ? alertOnce(
             key,
             cycle.start,
             spikeKey,
-            i18n.t("alerts.overTitle"),
-            i18n.t("alerts.overBody", {
+            i18n.t(`${strings}.overTitle`),
+            i18n.t(`${strings}.overBody`, {
               used: formatBytes(status.usedBytes),
               limit: formatBytes(status.limitBytes),
             })
@@ -96,10 +113,10 @@ export async function runUsageCheck(now: number) {
             key,
             cycle.start,
             spikeKey,
-            i18n.t("alerts.warnTitle", {
+            i18n.t(`${strings}.warnTitle`, {
               percent: Math.round(status.usedPercent),
             }),
-            i18n.t("alerts.warnBody", {
+            i18n.t(`${strings}.warnBody`, {
               remaining: formatBytes(status.remainingBytes),
               cycleRemaining: Math.round(100 - status.elapsedPercent),
             })
@@ -107,19 +124,24 @@ export async function runUsageCheck(now: number) {
     }
   }
 
+  // Mobile data is metered whether or not a limit is set, so a spike there is
+  // always worth a word. Wi-Fi usually is not: only a configured Wi-Fi limit
+  // says this user cares about Wi-Fi volume enough to pay for the scan below.
+  if (network === "WIFI" && !limitBytes) return "quiet";
+
   // Spike detection over the last 14 complete days. Once today's spike alert
   // has fired nothing below can change the outcome, so skip the 15 sequential
   // NetworkStatsManager queries it would take to re-derive it.
-  if (settings.alertedKeys.includes(spikeKey)) return "quiet" as const;
+  if (alertedKeys.includes(spikeKey)) return "quiet";
 
-  const todayTotal = (await fetchUsage(today, "MOBILE")).totals.total;
+  const todayTotal = (await fetchUsage(today, network)).totals.total;
 
   const history: number[] = [];
   for (let i = 1; i <= HISTORY_DAYS; i++) {
     const dayStart = today.start - i * DAY;
     const { totals } = await fetchUsage(
       { start: dayStart, end: dayStart + DAY, preset: "custom" },
-      "MOBILE"
+      network
     );
     history.push(totals.total);
   }
@@ -129,12 +151,37 @@ export async function runUsageCheck(now: number) {
       spikeKey,
       cycle.start,
       spikeKey,
-      i18n.t("alerts.spikeTitle"),
-      i18n.t("alerts.spikeBody", { bytes: formatBytes(todayTotal) })
+      i18n.t(`${strings}.spikeTitle`),
+      i18n.t(`${strings}.spikeBody`, { bytes: formatBytes(todayTotal) })
     );
   }
 
-  return "quiet" as const;
+  return "quiet";
+}
+
+export async function runUsageCheck(now: number) {
+  const settings = await loadSettings();
+  // Sequentially, not in parallel: both checks read-modify-write `alertedKeys`,
+  // and the native queries underneath are serialised anyway.
+  const mobile = await checkNetwork(
+    "MOBILE",
+    settings.mobileLimitBytes,
+    settings.mobileWarnAtPercent,
+    settings.cycleStartDay,
+    now,
+    settings.alertedKeys
+  );
+  const wifi = await checkNetwork(
+    "WIFI",
+    settings.wifiLimitBytes,
+    settings.wifiWarnAtPercent,
+    settings.cycleStartDay,
+    now,
+    settings.alertedKeys
+  );
+  return mobile === "posted" || wifi === "posted"
+    ? ("posted" as const)
+    : ("quiet" as const);
 }
 
 if (Platform.OS === "android") {

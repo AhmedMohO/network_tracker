@@ -134,10 +134,13 @@ export const en = {
     privacyBody: 'Every number here is read from Android on this device. Nothing is uploaded.',
   },
   limits: {
-    title: 'Mobile data limit',
+    title: 'Data limits',
     hint: 'Set a monthly limit to track it against your billing cycle.',
-    none: 'Set a mobile data limit to track it.',
-    limitGb: 'Monthly mobile limit (GB)',
+    wifiHint: 'Set a monthly Wi-Fi limit to track it against your billing cycle.',
+    noneMobile: 'Set a mobile data limit to track it.',
+    noneWifi: 'Set a Wi-Fi data limit to track it.',
+    mobileLimitGb: 'Monthly mobile limit (GB)',
+    wifiLimitGb: 'Monthly Wi-Fi limit (GB)',
     limitPlaceholder: 'e.g. 10',
     warnAt: 'Warn me at (%)',
     cycleDay: 'Billing cycle starts on day',
@@ -153,12 +156,24 @@ export const en = {
     a11y: '{{used}} of {{limit}} used, {{percent}} percent, {{elapsed}} percent through the cycle.',
   },
   alerts: {
-    overTitle: 'Mobile data limit reached',
-    overBody: 'You have used {{used}} of {{limit}}.',
-    warnTitle: '{{percent}}% of your data used',
-    warnBody: '{{remaining}} left, with {{cycleRemaining}}% of the cycle to go.',
-    spikeTitle: 'Unusual mobile data usage',
-    spikeBody: '{{bytes}} today, well above your recent average.',
+    // Keyed by network so `backgroundCheck` picks a set instead of branching
+    // on every string.
+    mobile: {
+      overTitle: 'Mobile data limit reached',
+      overBody: 'You have used {{used}} of {{limit}}.',
+      warnTitle: '{{percent}}% of your mobile data used',
+      warnBody: '{{remaining}} left, with {{cycleRemaining}}% of the cycle to go.',
+      spikeTitle: 'Unusual mobile data usage',
+      spikeBody: '{{bytes}} today, well above your recent average.',
+    },
+    wifi: {
+      overTitle: 'Wi-Fi data limit reached',
+      overBody: 'You have used {{used}} of {{limit}}.',
+      warnTitle: '{{percent}}% of your Wi-Fi data used',
+      warnBody: '{{remaining}} left, with {{cycleRemaining}}% of the cycle to go.',
+      spikeTitle: 'Unusual Wi-Fi data usage',
+      spikeBody: '{{bytes}} today, well above your recent average.',
+    },
     channelName: 'Usage alerts',
   },
 };

@@ -26,8 +26,10 @@ export default function Dashboard() {
   const { range, network, settings } = useUsageContext();
   const { data, loading, error, reload } = useUsage(range, network);
   // The limit is always about the billing cycle, not the dashboard's own
-  // selected range, so it runs its own query — see useLimitStatus.
-  const limitStatus = useLimitStatus();
+  // selected range, so it runs its own query — see useLimitStatus. Only the
+  // filtered network's limit is fetched; 'ALL' has no limit of its own and
+  // borrows mobile's query, which the card below then declines to show.
+  const limitStatus = useLimitStatus(network === 'WIFI' ? 'WIFI' : 'MOBILE');
 
   // The headline stays the device total, so the apps the list leaves out are
   // kept around for TotalsCard to disclose rather than silently dropped.
@@ -77,7 +79,7 @@ export default function Dashboard() {
             contentContainerStyle={styles.list}
             ListHeaderComponent={
               <View style={styles.header}>
-                {network === 'MOBILE' && limitStatus ? (
+                {network !== 'ALL' && limitStatus ? (
                   <LimitCard status={limitStatus.status} coverage={limitStatus.coverage} />
                 ) : null}
                 <TotalsCard totals={data.totals} coverage={data.coverage} hidden={hidden} />
