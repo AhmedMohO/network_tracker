@@ -1,27 +1,27 @@
 import { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
+import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
+import { ThemedView } from '@/components/themed-view';
+import { toast } from '@/components/toast';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { formatDateTime, formatSpan } from '@/i18n/format';
 
 import { validateCustomRange } from './customRange';
 import { presetRange, type PresetId } from './range';
 import { useUsageContext } from './useUsageContext';
 
-const CUSTOM_LABEL = 'Custom';
-
-// Labels are identical to the ones `presetRange` puts on the Range it returns,
-// which is what makes the `range.label` comparison below a valid active check.
-const PRESETS: { id: PresetId; label: string }[] = [
-  { id: 'today', label: 'Today' },
-  { id: 'yesterday', label: 'Yesterday' },
-  { id: 'last24h', label: 'Last 24 hours' },
-  { id: 'last7d', label: 'Last 7 days' },
-  { id: 'last30d', label: 'Last 30 days' },
-  { id: 'thisCycle', label: 'This cycle' },
-  { id: 'lastCycle', label: 'Last cycle' },
+const PRESETS: PresetId[] = [
+  'today',
+  'yesterday',
+  'last24h',
+  'last7d',
+  'last30d',
+  'thisCycle',
+  'lastCycle',
 ];
 
 /** Android's date dialog compares `minimumDate` loosely, so bound it by day. */
@@ -55,24 +55,58 @@ function pickDateTime(initial: number, onDone: (ts: number) => void, minimum?: n
   });
 }
 
+/** One editable end of the range: what it is set to, tappable to change. */
+function Endpoint({
+  label,
+  value,
+  onPress,
+}: {
+  label: string;
+  value: number;
+  onPress: () => void;
+}) {
+  const theme = useTheme();
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${label}: ${formatDateTime(value)}`}
+      style={({ pressed }) => [
+        styles.endpoint,
+        { borderColor: theme.border, opacity: pressed ? 0.7 : 1 },
+      ]}>
+      <ThemedText type="small" themeColor="textSecondary">
+        {label}
+      </ThemedText>
+      <ThemedText type="default">{formatDateTime(value)}</ThemedText>
+    </Pressable>
+  );
+}
+
+/**
+ * Preset chips plus a custom-range sheet. The sheet edits a draft the user can
+ * see in full before applying it, rather than the old blind chain of four
+ * system dialogs whose result only became visible once it was already active.
+ */
 export function RangePicker() {
   const theme = useTheme();
+  const { t } = useTranslation();
   const { range, setRange, settings } = useUsageContext();
-  const [error, setError] = useState<string | null>(null);
+  const [draft, setDraft] = useState<{ start: number; end: number } | null>(null);
 
-  const applyCustom = (start: number, end: number) => {
-    const problem = validateCustomRange(start, end, Date.now());
-    setError(problem);
-    if (problem) return;
-    setRange({ start, end, label: CUSTOM_LABEL });
-  };
+  const problem = draft ? validateCustomRange(draft.start, draft.end, Date.now()) : null;
 
-  // The end dialog opens on the start the user just picked and cannot go
-  // below it, so the pair can never come back reversed.
-  const startCustom = () =>
-    pickDateTime(range.start, (start) =>
-      pickDateTime(start, (end) => applyCustom(start, end), start)
+  const apply = () => {
+    if (!draft || problem) return;
+    setRange({ ...draft, preset: 'custom' });
+    setDraft(null);
+    toast(
+      t('range.applied', {
+        from: formatDateTime(draft.start),
+        to: formatDateTime(draft.end),
+      })
     );
+  };
 
   const chip = (label: string, onPress: () => void, active: boolean) => (
     <Pressable
@@ -101,23 +135,105 @@ export function RangePicker() {
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.chipRow}>
-        {PRESETS.map((p) =>
+        {PRESETS.map((id) =>
           chip(
-            p.label,
-            () => {
-              setError(null);
-              setRange(presetRange(p.id, Date.now(), settings?.cycleStartDay ?? 1));
-            },
-            range.label === p.label
+            t(`range.${id}`),
+            () => setRange(presetRange(id, Date.now(), settings?.cycleStartDay ?? 1)),
+            range.preset === id
           )
         )}
-        {chip('Custom…', startCustom, range.label === CUSTOM_LABEL)}
+        {chip(
+          t('range.customChip'),
+          () => setDraft({ start: range.start, end: range.end }),
+          range.preset === 'custom'
+        )}
       </ScrollView>
-      {error ? (
-        <ThemedText type="small" themeColor="danger" style={styles.error} accessibilityRole="alert">
-          {error}
-        </ThemedText>
-      ) : null}
+
+      {/* The active window in words: a chip alone never says which days it is. */}
+      <ThemedText type="small" themeColor="textSecondary" style={styles.summary} numberOfLines={1}>
+        {formatDateTime(range.start)} – {formatDateTime(range.end)}
+      </ThemedText>
+
+      <Modal
+        visible={draft !== null}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setDraft(null)}>
+        <Pressable
+          style={styles.backdrop}
+          accessibilityRole="button"
+          accessibilityLabel={t('common.close')}
+          onPress={() => setDraft(null)}
+        />
+        <ThemedView style={styles.sheet}>
+          {draft ? (
+            <>
+              <ThemedText type="default">{t('range.customTitle')}</ThemedText>
+              <ThemedText type="small" themeColor="textSecondary">
+                {t('range.customHint')}
+              </ThemedText>
+
+              <Endpoint
+                label={t('range.from')}
+                value={draft.start}
+                onPress={() =>
+                  pickDateTime(draft.start, (start) => setDraft((d) => d && { ...d, start }))
+                }
+              />
+              <Endpoint
+                label={t('range.to')}
+                value={draft.end}
+                onPress={() =>
+                  pickDateTime(
+                    draft.end,
+                    (end) => setDraft((d) => d && { ...d, end }),
+                    draft.start
+                  )
+                }
+              />
+
+              {problem ? (
+                <ThemedText type="small" themeColor="danger" accessibilityRole="alert">
+                  {t(problem)}
+                </ThemedText>
+              ) : (
+                <ThemedText type="small" themeColor="textSecondary">
+                  {t('range.duration', { duration: formatSpan(draft.end - draft.start) })}
+                </ThemedText>
+              )}
+
+              <View style={styles.actions}>
+                <Pressable
+                  onPress={() => setDraft(null)}
+                  accessibilityRole="button"
+                  style={({ pressed }) => [
+                    styles.action,
+                    { borderColor: theme.border, opacity: pressed ? 0.7 : 1 },
+                  ]}>
+                  <ThemedText type="default">{t('common.cancel')}</ThemedText>
+                </Pressable>
+                <Pressable
+                  onPress={apply}
+                  disabled={problem !== null}
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: problem !== null }}
+                  style={({ pressed }) => [
+                    styles.action,
+                    {
+                      backgroundColor: theme.accent,
+                      borderColor: theme.accent,
+                      opacity: problem ? 0.5 : pressed ? 0.8 : 1,
+                    },
+                  ]}>
+                  <ThemedText type="default" themeColor="accentForeground">
+                    {t('common.apply')}
+                  </ThemedText>
+                </Pressable>
+              </View>
+            </>
+          ) : null}
+        </ThemedView>
+      </Modal>
     </View>
   );
 }
@@ -132,5 +248,29 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     borderWidth: 1,
   },
-  error: { paddingHorizontal: Spacing.three, paddingTop: Spacing.two },
+  summary: { paddingHorizontal: Spacing.three, paddingTop: Spacing.two },
+  backdrop: { flex: 1, backgroundColor: '#00000080' },
+  sheet: {
+    padding: Spacing.four,
+    gap: Spacing.three,
+    borderTopLeftRadius: Spacing.four,
+    borderTopRightRadius: Spacing.four,
+  },
+  endpoint: {
+    borderWidth: 1,
+    borderRadius: Spacing.three,
+    padding: Spacing.three,
+    gap: Spacing.half,
+    minHeight: 64,
+    justifyContent: 'center',
+  },
+  actions: { flexDirection: 'row', gap: Spacing.two },
+  action: {
+    flex: 1,
+    minHeight: 48,
+    borderRadius: Spacing.three,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });

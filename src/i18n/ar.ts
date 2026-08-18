@@ -1,0 +1,138 @@
+import type { en } from './en';
+
+/**
+ * Arabic. Typed against `en` so a missing or misspelled key is a build error
+ * rather than a silent fallback to English at runtime.
+ *
+ * Byte units (KB/MB/GB) and digits stay Latin: that is what Android's own
+ * Arabic data-usage screen shows, and `formatBytes` is a pure, tested module.
+ */
+export const ar: typeof en = {
+  common: {
+    retry: 'إعادة المحاولة',
+    cancel: 'إلغاء',
+    apply: 'تطبيق',
+    close: 'إغلاق',
+    loading: 'جارٍ التحميل',
+  },
+  tabs: {
+    home: 'الاستهلاك',
+    settings: 'الإعدادات',
+    probe: 'الفحص',
+  },
+  network: {
+    mobile: 'بيانات الجوال',
+    wifi: 'واي فاي',
+    all: 'الكل',
+    a11y: 'بيانات {{label}}',
+  },
+  range: {
+    today: 'اليوم',
+    yesterday: 'أمس',
+    last24h: 'آخر ٢٤ ساعة',
+    last7d: 'آخر ٧ أيام',
+    last30d: 'آخر ٣٠ يومًا',
+    thisCycle: 'الدورة الحالية',
+    lastCycle: 'الدورة السابقة',
+    custom: 'مخصص',
+    customChip: 'مخصص…',
+    customTitle: 'نطاق مخصص',
+    customHint: 'اختر أول وآخر لحظة تريد قياسها.',
+    from: 'من',
+    to: 'إلى',
+    duration: 'يغطي {{duration}}',
+    applied: 'عرض {{from}} – {{to}}',
+    errorOrder: 'يجب أن تكون البداية قبل النهاية.',
+    errorFuture: 'لا يمكن أن تكون النهاية في المستقبل.',
+    errorTooLong: 'لا يمكن أن يتجاوز النطاق سنة واحدة.',
+  },
+  duration: {
+    hours: '{{count}} ساعة',
+    days: '{{count}} يوم',
+    minutes: '{{count}} دقيقة',
+    hours_one: 'ساعة واحدة',
+    hours_other: '{{count}} ساعة',
+    days_one: 'يوم واحد',
+    days_other: '{{count}} يومًا',
+    minutes_one: 'دقيقة واحدة',
+    minutes_other: '{{count}} دقيقة',
+  },
+  totals: {
+    title: 'إجمالي الاستهلاك',
+    appTitle: 'استهلاك هذا التطبيق',
+    download: 'التنزيل',
+    upload: 'الرفع',
+    hidden: 'يشمل {{count}} من تطبيقات النظام غير المُدرجة بالأسفل ({{bytes}}).',
+    hidden_one: 'يشمل تطبيق نظام واحدًا غير مُدرج بالأسفل ({{bytes}}).',
+    hidden_other: 'يشمل {{count}} من تطبيقات النظام غير المُدرجة بالأسفل ({{bytes}}).',
+  },
+  dashboard: {
+    errorTitle: 'تعذّرت قراءة بيانات الاستهلاك.',
+    empty: 'لا يوجد استهلاك مُسجَّل في هذا النطاق.',
+    emptyHint: 'جرّب نطاقًا أوسع، أو بدّل بين بيانات الجوال والواي فاي.',
+    loading: 'جارٍ تحميل الاستهلاك',
+    appsHeading: 'التطبيقات',
+  },
+  app: {
+    removed: 'تطبيق محذوف (المعرّف {{uid}})',
+    tethering: 'نقطة الاتصال والتوصيل',
+    androidSystem: 'نظام أندرويد',
+    telephony: 'خدمات الاتصالات',
+    root: 'النظام (root)',
+    removedApps: 'تطبيقات مُزالة',
+    allTraffic: 'كل حركة البيانات',
+    unknown: 'تطبيق غير معروف',
+    unknownUid: 'المعرّف {{uid}}',
+    rowA11y: '{{name}}، {{bytes}}، {{percent}} بالمئة من الإجمالي',
+    rowHint: 'يفتح تفاصيل استهلاك هذا التطبيق',
+    badLink: 'هذا الرابط لا يشير إلى تطبيق. ارجع واختر تطبيقًا من القائمة.',
+    notInRange:
+      'لا يوجد استهلاك مُسجَّل لهذا التطبيق ضمن النطاق ونوع الشبكة المحددين. جرّب نطاقًا أوسع أو غيّر نوع الشبكة من الشاشة الرئيسية.',
+    openSettings: 'فتح في إعدادات أندرويد',
+    openSettingsA11y: 'فتح إعدادات أندرويد لتطبيق {{name}}',
+    openSettingsHint: 'يعرض عناصر التحكم في بيانات هذا التطبيق',
+    openSettingsFailed: 'تعذّر على أندرويد فتح شاشة الإعدادات لهذا التطبيق.',
+    noPackage: 'لا توجد حزمة مثبّتة لهذا المعرّف، لذا لا توجد شاشة إعدادات له في أندرويد.',
+    splitTitle: 'أثناء الاستخدام مقابل الخلفية',
+    foreground: 'أثناء استخدامك له',
+    background: 'في الخلفية',
+    splitA11y:
+      '{{foregroundPercent}} بالمئة أثناء الاستخدام، {{foreground}}؛ {{backgroundPercent}} بالمئة في الخلفية، {{background}}.',
+    splitEmptyA11y: 'لا يوجد استهلاك مُسجَّل أثناء الاستخدام أو في الخلفية.',
+  },
+  chart: {
+    title: 'الاستهلاك عبر الوقت',
+    peak: 'الذروة {{bytes}}',
+    empty: 'لا يوجد استهلاك في هذا النطاق.',
+    tapHint: 'اضغط على أي عمود لعرض وقته وحجمه.',
+    barSpan: 'كل عمود يغطي {{span}}، وموضعه حسب حدود الفترات التي يحددها أندرويد.',
+    errorTitle: 'تعذّر تحميل الرسم البياني.',
+    retryA11y: 'إعادة محاولة تحميل الرسم البياني',
+    loading: 'جارٍ تحميل الرسم البياني',
+    a11y:
+      'رسم بياني بالأعمدة للاستهلاك عبر الوقت. {{count}} عمودًا، كل عمود {{span}}، بإجمالي {{total}}، وأعلى قيمة {{peak}} قرب {{peakAt}}.',
+    coverage: 'عرض {{from}} – {{to}}، وهو أقرب نطاق تغطيه بيانات نظام أندرويد.',
+  },
+  permission: {
+    title: 'يلزم إذن الوصول إلى الاستخدام',
+    body: 'يحتفظ أندرويد بإحصاءات الشبكة لكل تطبيق خلف إذن خاص. اضغط بالأسفل، وابحث عن <1>{{app}}</1> في القائمة، ثم فعّل «السماح بالوصول إلى بيانات الاستخدام».',
+    privacy: 'لا شيء يغادر جهازك. لا يوجد حساب ولا أي اتصال بالشبكة.',
+    open: 'فتح الإعدادات',
+    openHint: 'يفتح شاشة إعدادات الوصول إلى بيانات الاستخدام في أندرويد',
+    androidOnly: 'أندرويد فقط',
+    androidOnlyBody: 'استهلاك الشبكة لكل تطبيق غير متاح على هذه المنصة.',
+  },
+  settings: {
+    title: 'الإعدادات',
+    language: 'اللغة',
+    english: 'English',
+    arabic: 'العربية',
+    restartNeeded: 'جارٍ إعادة التشغيل لتبديل اتجاه الواجهة…',
+    showSystemApps: 'إظهار تطبيقات النظام',
+    showSystemAppsHint:
+      'يعرض خدمات أندرويد وحركة نقطة الاتصال إلى جانب تطبيقاتك. مُعطَّل افتراضيًا.',
+    saveFailed: 'تعذّر حفظ هذا الإعداد.',
+    privacyTitle: 'الخصوصية',
+    privacyBody: 'كل رقم هنا مقروء من أندرويد على هذا الجهاز. لا يتم رفع أي شيء.',
+  },
+};

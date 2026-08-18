@@ -17,6 +17,7 @@ export const unavailableNetworkUsage: NetworkUsageModule = {
   openUsageAccessSettings: unavailable,
   openAppDataUsageSettings: unavailable,
   getAppUsage: unavailable,
+  getAppIcon: unavailable,
   dumpBuckets: unavailable,
   getSeries: unavailable,
   getDeviceCounters: unavailable,

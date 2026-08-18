@@ -1,10 +1,12 @@
 import { Stack, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { toast } from '@/components/toast';
+import { MaxContentWidth, Spacing, TextEnd } from '@/constants/theme';
+import { AppIcon } from '@/features/usage/AppIcon';
 import { TotalsCard } from '@/features/usage/TotalsCard';
 import { UsageChartCard } from '@/features/usage/UsageChart';
 import { openAppDataUsageSettings } from '@/features/usage/api';
@@ -13,18 +15,44 @@ import { useUsage } from '@/features/usage/useUsage';
 import { useUsageContext } from '@/features/usage/useUsageContext';
 import { useTheme } from '@/hooks/use-theme';
 
-const NETWORK_LABEL = { MOBILE: 'Mobile', WIFI: 'Wi-Fi', ALL: 'Mobile and Wi-Fi' } as const;
+/** One legend line: the colour that appears in the bar, then what it means. */
+function LegendRow({
+  color,
+  label,
+  bytes,
+  percent,
+}: {
+  color: string;
+  label: string;
+  bytes: number;
+  percent: number;
+}) {
+  return (
+    <View style={styles.legendRow}>
+      <View style={[styles.swatch, { backgroundColor: color }]} />
+      <ThemedText type="small" themeColor="textSecondary" style={styles.legendLabel}>
+        {label}
+      </ThemedText>
+      <ThemedText type="smallBold" style={styles.legendValue}>
+        {formatBytes(bytes)} · {percent}%
+      </ThemedText>
+    </View>
+  );
+}
 
 /** Two-part bar: how much of this app's traffic happened while it was on screen. */
 function StateSplit({ foreground, background }: { foreground: number; background: number }) {
   const theme = useTheme();
+  const { t } = useTranslation();
   const sum = foreground + background;
   const share = sum === 0 ? 0 : (foreground / sum) * 100;
+  const foregroundPercent = Math.round(share);
+  const backgroundPercent = 100 - foregroundPercent;
 
   return (
     <ThemedView type="backgroundElement" style={styles.card}>
       <ThemedText type="small" themeColor="textSecondary">
-        Foreground vs background
+        {t('app.splitTitle')}
       </ThemedText>
       <View
         style={[styles.track, { backgroundColor: theme.backgroundSelected }]}
@@ -32,29 +60,33 @@ function StateSplit({ foreground, background }: { foreground: number; background
         accessibilityRole="image"
         accessibilityLabel={
           sum === 0
-            ? 'No foreground or background usage recorded.'
-            : `${Math.round(share)} percent in the foreground, ${formatBytes(foreground)}; ` +
-              `${100 - Math.round(share)} percent in the background, ${formatBytes(background)}.`
+            ? t('app.splitEmptyA11y')
+            : t('app.splitA11y', {
+                foregroundPercent,
+                foreground: formatBytes(foreground),
+                backgroundPercent,
+                background: formatBytes(background),
+              })
         }>
         <View style={[styles.fill, { width: `${share}%`, backgroundColor: theme.accent }]} />
+        <View
+          style={[styles.fill, { width: `${100 - share}%`, backgroundColor: theme.accentAlt }]}
+        />
       </View>
-      <View style={styles.metrics}>
-        <View style={styles.metric}>
-          <ThemedText type="small" themeColor="textSecondary">
-            While you were using it
-          </ThemedText>
-          <ThemedText type="default" style={styles.number}>
-            {formatBytes(foreground)}
-          </ThemedText>
-        </View>
-        <View style={styles.metric}>
-          <ThemedText type="small" themeColor="textSecondary">
-            In the background
-          </ThemedText>
-          <ThemedText type="default" style={styles.number}>
-            {formatBytes(background)}
-          </ThemedText>
-        </View>
+      {/* The bar has two colours, so it needs to say which is which. */}
+      <View style={styles.legend}>
+        <LegendRow
+          color={theme.accent}
+          label={t('app.foreground')}
+          bytes={foreground}
+          percent={foregroundPercent}
+        />
+        <LegendRow
+          color={theme.accentAlt}
+          label={t('app.background')}
+          bytes={background}
+          percent={backgroundPercent}
+        />
       </View>
     </ThemedView>
   );
@@ -62,67 +94,70 @@ function StateSplit({ foreground, background }: { foreground: number; background
 
 export default function AppUsageDetail() {
   const theme = useTheme();
+  const { t } = useTranslation();
   const { uid: uidParam } = useLocalSearchParams<{ uid: string }>();
   const uid = Number(uidParam);
   const { range, network } = useUsageContext();
   const { data, loading, error, reload } = useUsage(range, network);
-  const [settingsError, setSettingsError] = useState<string | null>(null);
 
   // The same query the dashboard ran, so this total is the row's total by
   // construction rather than by a second, separately rounded calculation.
   const app = data?.apps.find((a) => a.uid === uid);
   const validUid = Number.isInteger(uid);
+  const networkLabel = t(`network.${network.toLowerCase()}`);
 
   const openSettings = () => {
     if (!app?.packageName) return;
     try {
-      setSettingsError(null);
       openAppDataUsageSettings(app.packageName);
     } catch {
-      setSettingsError('Android would not open the settings screen for this app.');
+      toast(t('app.openSettingsFailed'));
     }
   };
 
   return (
     <ThemedView style={styles.screen}>
-      <Stack.Screen options={{ title: app?.name ?? 'App usage' }} />
+      <Stack.Screen options={{ title: app?.name ?? t('app.unknown') }} />
       <ScrollView contentContainerStyle={styles.content}>
-        <View>
-          <ThemedText type="default" numberOfLines={2}>
-            {app?.name ?? (validUid ? `UID ${uid}` : 'Unknown app')}
-          </ThemedText>
-          <ThemedText type="small" themeColor="textSecondary" numberOfLines={2}>
-            {NETWORK_LABEL[network]} · {range.label}
-            {app?.packageName ? ` · ${app.packageName}` : ''}
-          </ThemedText>
+        <View style={styles.identity}>
+          {app ? <AppIcon packageName={app.packageName} name={app.name} size={44} /> : null}
+          <View style={styles.identityText}>
+            <ThemedText type="default" numberOfLines={2}>
+              {app?.name ?? (validUid ? t('app.unknownUid', { uid }) : t('app.unknown'))}
+            </ThemedText>
+            <ThemedText type="small" themeColor="textSecondary" numberOfLines={2}>
+              {networkLabel} · {t(`range.${range.preset}`)}
+              {app?.packageName ? ` · ${app.packageName}` : ''}
+            </ThemedText>
+          </View>
         </View>
 
         {!validUid ? (
           <ThemedText type="small" themeColor="textSecondary">
-            That link does not point at an app. Go back and pick one from the list.
+            {t('app.badLink')}
           </ThemedText>
         ) : null}
 
         {validUid && loading && !data ? (
-          <ActivityIndicator color={theme.accent} accessibilityLabel="Loading usage" />
+          <ActivityIndicator color={theme.accent} accessibilityLabel={t('dashboard.loading')} />
         ) : null}
 
         {validUid && error ? (
           <View style={styles.block}>
-            <ThemedText type="default">Could not read usage.</ThemedText>
+            <ThemedText type="default">{t('dashboard.errorTitle')}</ThemedText>
             <ThemedText type="small" themeColor="textSecondary">
               {error}
             </ThemedText>
             <Pressable
               onPress={reload}
               accessibilityRole="button"
-              accessibilityLabel="Retry"
+              accessibilityLabel={t('common.retry')}
               style={({ pressed }) => [
                 styles.button,
                 { backgroundColor: theme.accent, opacity: pressed ? 0.8 : 1 },
               ]}>
               <ThemedText type="default" themeColor="accentForeground">
-                Retry
+                {t('common.retry')}
               </ThemedText>
             </Pressable>
           </View>
@@ -130,18 +165,17 @@ export default function AppUsageDetail() {
 
         {validUid && data && !error && !app ? (
           <ThemedText type="small" themeColor="textSecondary">
-            No usage recorded for this app in the selected range and network filter. Try a wider
-            range, or switch the filter on the dashboard.
+            {t('app.notInRange')}
           </ThemedText>
         ) : null}
 
         {app ? (
           <>
-            {/* No note: `data.note` is the coverage window unioned across every
-                app, so it would not be a statement about this one. The chart
-                below carries this app's own coverage. */}
+            {/* No coverage note: `data.coverage` is the window unioned across
+                every app, so it would not be a statement about this one. The
+                chart below carries this app's own coverage. */}
             <TotalsCard
-              title="Used by this app"
+              title={t('totals.appTitle')}
               totals={{ download: app.download, upload: app.upload, total: app.total }}
             />
             <StateSplit foreground={app.foreground} background={app.background} />
@@ -150,27 +184,22 @@ export default function AppUsageDetail() {
               <Pressable
                 onPress={openSettings}
                 accessibilityRole="button"
-                accessibilityLabel={`Open Android settings for ${app.name}`}
-                accessibilityHint="Shows this app's own data usage controls"
+                accessibilityLabel={t('app.openSettingsA11y', { name: app.name })}
+                accessibilityHint={t('app.openSettingsHint')}
                 style={({ pressed }) => [
                   styles.button,
                   styles.wideButton,
                   { backgroundColor: theme.accent, opacity: pressed ? 0.8 : 1 },
                 ]}>
                 <ThemedText type="default" themeColor="accentForeground">
-                  Open in Android settings
+                  {t('app.openSettings')}
                 </ThemedText>
               </Pressable>
             ) : (
               <ThemedText type="small" themeColor="textSecondary">
-                This UID has no installed package, so Android has no settings screen for it.
+                {t('app.noPackage')}
               </ThemedText>
             )}
-            {settingsError ? (
-              <ThemedText type="small" themeColor="danger" accessibilityRole="alert">
-                {settingsError}
-              </ThemedText>
-            ) : null}
           </>
         ) : null}
       </ScrollView>
@@ -187,13 +216,17 @@ const styles = StyleSheet.create({
     maxWidth: MaxContentWidth,
     alignSelf: 'center',
   },
+  identity: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
+  identityText: { flex: 1 },
   card: { borderRadius: Spacing.three, padding: Spacing.three, gap: Spacing.two },
   block: { gap: Spacing.two },
-  track: { height: 8, borderRadius: 4, overflow: 'hidden' },
-  fill: { height: 8, borderRadius: 4 },
-  metrics: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.four },
-  metric: { minWidth: 140 },
-  number: { fontVariant: ['tabular-nums'] },
+  track: { height: 10, borderRadius: 5, overflow: 'hidden', flexDirection: 'row' },
+  fill: { height: 10 },
+  legend: { gap: Spacing.one },
+  legendRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  swatch: { width: 10, height: 10, borderRadius: 5 },
+  legendLabel: { flex: 1 },
+  legendValue: { fontVariant: ['tabular-nums'], textAlign: TextEnd },
   button: {
     minHeight: 48,
     borderRadius: Spacing.three,

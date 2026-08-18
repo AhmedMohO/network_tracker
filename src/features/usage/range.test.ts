@@ -1,4 +1,4 @@
-import { billingCycleRange, coverageNote, presetRange } from "./range";
+import { billingCycleRange, coverageDrift, presetRange } from "./range";
 
 // 2026-08-18T10:30:00 local time
 const NOW = new Date(2026, 7, 18, 10, 30, 0).getTime();
@@ -6,6 +6,7 @@ const NOW = new Date(2026, 7, 18, 10, 30, 0).getTime();
 describe("presetRange", () => {
   it("today starts at local midnight and ends now", () => {
     const r = presetRange("today", NOW);
+    expect(r.preset).toBe("today");
     expect(new Date(r.start).getHours()).toBe(0);
     expect(new Date(r.start).getDate()).toBe(18);
     expect(r.end).toBe(NOW);
@@ -60,19 +61,21 @@ describe("billingCycleRange", () => {
   });
 });
 
-describe("coverageNote", () => {
-  const requested = { start: 1000, end: 2000, label: "x" };
+describe("coverageDrift", () => {
+  const requested = { start: 1000, end: 2000, preset: "custom" } as const;
 
   it("returns null when coverage matches the request", () => {
-    expect(coverageNote(requested, 1000, 2000)).toBeNull();
+    expect(coverageDrift(requested, 1000, 2000)).toBeNull();
   });
 
   it("tolerates sub-minute drift", () => {
-    expect(coverageNote(requested, 1000 - 30_000, 2000)).toBeNull();
+    expect(coverageDrift(requested, 1000 - 30_000, 2000)).toBeNull();
   });
 
-  it("describes the real range when coverage is wider", () => {
-    const note = coverageNote(requested, 0, 7_200_000);
-    expect(note).toContain("system data");
+  it("reports the real window when coverage is wider", () => {
+    expect(coverageDrift(requested, 0, 7_200_000)).toEqual({
+      start: 0,
+      end: 7_200_000,
+    });
   });
 });

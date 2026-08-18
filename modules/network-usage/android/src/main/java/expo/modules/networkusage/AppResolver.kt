@@ -2,11 +2,19 @@ package expo.modules.networkusage
 
 import android.content.Context
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.util.Base64
+import java.io.ByteArrayOutputStream
+
+/** Launcher icons are rendered once at this edge, well above any list row. */
+private const val ICON_PX = 96
 
 class AppResolver(private val context: Context) {
 
     private val pm: PackageManager = context.packageManager
     private val labelCache = HashMap<Int, String?>()
+    private val iconCache = HashMap<String, String?>()
     private val packageCache = HashMap<Int, List<String>>()
 
     fun packages(uid: Int): List<String> = packageCache.getOrPut(uid) {
@@ -23,6 +31,33 @@ class AppResolver(private val context: Context) {
             } catch (e: PackageManager.NameNotFoundException) {
                 null
             }
+        }
+    }
+
+    /**
+     * The app's launcher icon as base64 PNG, or null when the package is gone.
+     * Cached — including the misses — because the same rows are re-queried on
+     * every range and filter change.
+     */
+    fun iconBase64(packageName: String): String? {
+        if (iconCache.containsKey(packageName)) return iconCache[packageName]
+        val icon = renderIcon(packageName)
+        iconCache[packageName] = icon
+        return icon
+    }
+
+    private fun renderIcon(packageName: String): String? {
+        val drawable = try {
+            pm.getApplicationIcon(packageName)
+        } catch (e: PackageManager.NameNotFoundException) {
+            return null
+        }
+        val bitmap = Bitmap.createBitmap(ICON_PX, ICON_PX, Bitmap.Config.ARGB_8888)
+        drawable.setBounds(0, 0, ICON_PX, ICON_PX)
+        drawable.draw(Canvas(bitmap))
+        return ByteArrayOutputStream().use { out ->
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+            Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
         }
     }
 

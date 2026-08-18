@@ -11,11 +11,16 @@ const MAX_RANGE_MS = 366 * 24 * 3_600_000;
  * data bug rather than bad input. An absurdly wide one draws an unreadable
  * chart.
  *
- * @returns an error message to show, or null when the range is usable.
+ * @returns a translation key for the message to show, or null when the range
+ * is usable.
  */
-export function validateCustomRange(start: number, end: number, now: number): string | null {
-  if (start >= end) return 'Start must be before end.';
-  if (end > now) return 'End cannot be in the future.';
-  if (end - start > MAX_RANGE_MS) return 'Range cannot be longer than a year.';
+export function validateCustomRange(
+  start: number,
+  end: number,
+  now: number
+): string | null {
+  if (start >= end) return 'range.errorOrder';
+  if (end > now) return 'range.errorFuture';
+  if (end - start > MAX_RANGE_MS) return 'range.errorTooLong';
   return null;
 }

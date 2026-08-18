@@ -7,7 +7,15 @@ export type PresetId =
   | "thisCycle"
   | "lastCycle";
 
-export type Range = { start: number; end: number; label: string };
+/** `custom` is the only id the presets do not produce. */
+export type RangeId = PresetId | "custom";
+
+/**
+ * A range carries its id rather than a display string: the label is a
+ * translation key resolved at render time, and the id is what the picker
+ * compares to decide which chip is active.
+ */
+export type Range = { start: number; end: number; preset: RangeId };
 
 const DAY = 86_400_000;
 const COVERAGE_TOLERANCE_MS = 60_000;
@@ -45,7 +53,7 @@ export function billingCycleRange(
 
   const start = cycleStart(base - offset);
   const end = offset === 0 ? now : cycleStart(base - offset - 1);
-  return { start, end, label: offset === 0 ? "This cycle" : "Last cycle" };
+  return { start, end, preset: offset === 0 ? "thisCycle" : "lastCycle" };
 }
 
 export function presetRange(
@@ -55,15 +63,15 @@ export function presetRange(
 ): Range {
   switch (preset) {
     case "today":
-      return { start: midnight(now), end: now, label: "Today" };
+      return { start: midnight(now), end: now, preset };
     case "yesterday":
-      return { start: midnight(now, -1), end: midnight(now), label: "Yesterday" };
+      return { start: midnight(now, -1), end: midnight(now), preset };
     case "last24h":
-      return { start: now - DAY, end: now, label: "Last 24 hours" };
+      return { start: now - DAY, end: now, preset };
     case "last7d":
-      return { start: midnight(now, -6), end: now, label: "Last 7 days" };
+      return { start: midnight(now, -6), end: now, preset };
     case "last30d":
-      return { start: midnight(now, -29), end: now, label: "Last 30 days" };
+      return { start: midnight(now, -29), end: now, preset };
     case "thisCycle":
       return billingCycleRange(cycleStartDay, now, 0);
     case "lastCycle":
@@ -73,25 +81,20 @@ export function presetRange(
 
 /**
  * Android reports usage in system buckets, so the data returned for a range
- * may cover a wider window than requested. Returns a sentence to show the
- * user, or null when the difference is negligible.
+ * may cover a wider window than requested. Returns the window actually
+ * covered when it differs enough to be worth telling the user about, or null
+ * when the difference is negligible. Wording and date formatting belong to
+ * the UI layer, which knows the active language.
  */
-export function coverageNote(
+export function coverageDrift(
   requested: Range,
   coveredStart: number,
   coveredEnd: number
-): string | null {
+): { start: number; end: number } | null {
   const startDrift = Math.abs(coveredStart - requested.start);
   const endDrift = Math.abs(coveredEnd - requested.end);
   if (startDrift <= COVERAGE_TOLERANCE_MS && endDrift <= COVERAGE_TOLERANCE_MS) {
     return null;
   }
-  const fmt = (ts: number) =>
-    new Date(ts).toLocaleString(undefined, {
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  return `Showing ${fmt(coveredStart)} – ${fmt(coveredEnd)}, the closest range covered by Android's system data.`;
+  return { start: coveredStart, end: coveredEnd };
 }

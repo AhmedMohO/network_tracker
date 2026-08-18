@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
@@ -7,26 +8,28 @@ import type { NetworkFilter } from '@modules/network-usage';
 
 import { useUsageContext } from './useUsageContext';
 
-const OPTIONS: { id: NetworkFilter; label: string }[] = [
-  { id: 'MOBILE', label: 'Mobile' },
-  { id: 'WIFI', label: 'Wi-Fi' },
-  { id: 'ALL', label: 'All' },
+const OPTIONS: { id: NetworkFilter; key: string }[] = [
+  { id: 'MOBILE', key: 'network.mobile' },
+  { id: 'WIFI', key: 'network.wifi' },
+  { id: 'ALL', key: 'network.all' },
 ];
 
 export function NetworkFilterTabs() {
   const theme = useTheme();
+  const { t } = useTranslation();
   const { network, setNetwork } = useUsageContext();
 
   return (
     <View style={styles.row} accessibilityRole="tablist">
       {OPTIONS.map((o) => {
         const selected = network === o.id;
+        const label = t(o.key);
         return (
           <Pressable
             key={o.id}
             onPress={() => setNetwork(o.id)}
             accessibilityRole="tab"
-            accessibilityLabel={`${o.label} data`}
+            accessibilityLabel={t('network.a11y', { label })}
             accessibilityState={{ selected }}
             style={({ pressed }) => [
               styles.tab,
@@ -39,7 +42,7 @@ export function NetworkFilterTabs() {
             <ThemedText
               type={selected ? 'smallBold' : 'small'}
               themeColor={selected ? 'accentForeground' : 'text'}>
-              {o.label}
+              {label}
             </ThemedText>
           </Pressable>
         );

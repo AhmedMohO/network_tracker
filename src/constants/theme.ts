@@ -5,7 +5,7 @@
 
 import '@/global.css';
 
-import { Platform } from 'react-native';
+import { I18nManager, Platform } from 'react-native';
 
 export const Colors = {
   light: {
@@ -23,6 +23,9 @@ export const Colors = {
     // unselected chip or tab outline reads as a real affordance.
     border: '#828892',
     danger: '#B3261E',
+    // Second series colour: far enough from the blue accent in hue and
+    // lightness to stay distinguishable, including for red-green deficiency.
+    accentAlt: '#7A4CC4',
   },
   dark: {
     text: '#ffffff',
@@ -35,6 +38,7 @@ export const Colors = {
     accentForeground: '#04101C',
     border: '#6A6F78',
     danger: '#FF8A80',
+    accentAlt: '#C4A2F5',
   },
 } as const;
 
@@ -74,6 +78,9 @@ export const Spacing = {
   five: 32,
   six: 64,
 } as const;
+
+/** `textAlign` value that hugs the end of the line in either direction. */
+export const TextEnd = I18nManager.isRTL ? 'left' : 'right';
 
 export const BottomTabInset = Platform.select({ ios: 50, android: 80 }) ?? 0;
 export const MaxContentWidth = 800;

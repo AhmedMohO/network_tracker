@@ -1,27 +1,22 @@
+import { useTranslation } from 'react-i18next';
 import { StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
+import { formatDateTime } from '@/i18n/format';
 
 import { sumUsage, type AppUsage } from './aggregate';
 import { formatBytes } from './format';
 
 type Totals = { download: number; upload: number; total: number };
 
-/** One sentence naming what the total counts but the list below does not. */
-function hiddenLine(hidden: AppUsage[]): string {
-  const bytes = formatBytes(sumUsage(hidden).total);
-  return hidden.length === 1
-    ? `Includes 1 system app that is not listed below (${bytes}).`
-    : `Includes ${hidden.length} system apps that are not listed below (${bytes}).`;
-}
-
-function Metric({ label, bytes }: { label: string; bytes: number }) {
+function Metric({ label, bytes, arrow }: { label: string; bytes: number; arrow: string }) {
   return (
     <View style={styles.metric}>
       <ThemedText type="small" themeColor="textSecondary">
-        {label}
+        {arrow} {label}
       </ThemedText>
       <ThemedText type="default" numberOfLines={1} style={styles.metricValue}>
         {formatBytes(bytes)}
@@ -32,43 +27,49 @@ function Metric({ label, bytes }: { label: string; bytes: number }) {
 
 export function TotalsCard({
   totals,
-  note = null,
-  title = 'Total used',
+  coverage = null,
+  title,
   hidden = [],
 }: {
   totals: Totals;
-  note?: string | null;
+  /** Window Android actually covered, when it is not the one requested. */
+  coverage?: { start: number; end: number } | null;
   /** Defaults to the device-level label; the detail screen names one app. */
   title?: string;
   /** Apps counted in `totals` that the list below does not show. */
   hidden?: AppUsage[];
 }) {
+  const { t } = useTranslation();
+  const theme = useTheme();
+
   return (
     <ThemedView type="backgroundElement" style={styles.card}>
       <ThemedText type="small" themeColor="textSecondary">
-        {title}
+        {title ?? t('totals.title')}
       </ThemedText>
-      <ThemedText
-        type="subtitle"
-        numberOfLines={1}
-        adjustsFontSizeToFit
-        style={styles.total}>
+      <ThemedText type="subtitle" numberOfLines={1} adjustsFontSizeToFit style={styles.total}>
         {formatBytes(totals.total)}
       </ThemedText>
-      <View style={styles.row}>
-        <Metric label="↓ Download" bytes={totals.download} />
-        <Metric label="↑ Upload" bytes={totals.upload} />
+      <View style={[styles.row, { borderTopColor: theme.border }]}>
+        <Metric label={t('totals.download')} bytes={totals.download} arrow="↓" />
+        <Metric label={t('totals.upload')} bytes={totals.upload} arrow="↑" />
       </View>
       {/* Reconciles the headline with the list: it counts apps the list hides. */}
       {hidden.length > 0 ? (
         <ThemedText type="small" themeColor="textSecondary">
-          {hiddenLine(hidden)}
+          {t('totals.hidden', {
+            count: hidden.length,
+            bytes: formatBytes(sumUsage(hidden).total),
+          })}
         </ThemedText>
       ) : null}
       {/* Coverage information, not a failure — plain secondary body text. */}
-      {note ? (
+      {coverage ? (
         <ThemedText type="small" themeColor="textSecondary">
-          {note}
+          {t('chart.coverage', {
+            from: formatDateTime(coverage.start),
+            to: formatDateTime(coverage.end),
+          })}
         </ThemedText>
       ) : null}
     </ThemedView>
@@ -82,7 +83,13 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
   },
   total: { fontVariant: ['tabular-nums'] },
-  row: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.four },
+  row: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.four,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: Spacing.two,
+  },
   metric: { minWidth: 100 },
   metricValue: { fontVariant: ['tabular-nums'] },
 });

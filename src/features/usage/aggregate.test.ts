@@ -1,5 +1,11 @@
 import type { AppUsageRow } from "@modules/network-usage";
-import { compareUsage, displayName, sumUsage, toAppUsage } from "./aggregate";
+import {
+  compareUsage,
+  displayName,
+  partitionApps,
+  sumUsage,
+  toAppUsage,
+} from "./aggregate";
 
 const row = (over: Partial<AppUsageRow>): AppUsageRow => ({
   uid: 10001,
@@ -93,5 +99,25 @@ describe("compareUsage", () => {
     const delta = compareUsage([], previous);
     expect(delta[0].current).toBe(0);
     expect(delta[0].changePercent).toBeCloseTo(-100);
+  });
+});
+
+describe("partitionApps", () => {
+  const apps = toAppUsage([
+    row({ uid: 10234, label: "Browser", rxBytes: 500 }),
+    row({ uid: -5, label: "Tethering", rxBytes: 400 }),
+    row({ uid: 1000, label: "Android System", rxBytes: 300 }),
+  ]);
+
+  it("keeps tethering visible even though its UID is not an app's", () => {
+    const { visible, hidden } = partitionApps(apps, false);
+    expect(visible.map((a) => a.uid)).toEqual([10234, -5]);
+    expect(hidden.map((a) => a.uid)).toEqual([1000]);
+  });
+
+  it("hides nothing when system apps are turned on", () => {
+    const { visible, hidden } = partitionApps(apps, true);
+    expect(visible).toHaveLength(3);
+    expect(hidden).toEqual([]);
   });
 });

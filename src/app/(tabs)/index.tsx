@@ -1,11 +1,13 @@
 import { useRouter } from 'expo-router';
 import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { partitionApps } from '@/features/usage/aggregate';
 import { AppRow } from '@/features/usage/AppRow';
 import { NetworkFilterTabs } from '@/features/usage/NetworkFilterTabs';
 import { RangePicker } from '@/features/usage/RangePicker';
@@ -15,25 +17,19 @@ import { useUsage } from '@/features/usage/useUsage';
 import { useUsageContext } from '@/features/usage/useUsageContext';
 import { useTheme } from '@/hooks/use-theme';
 
-// Android assigns app UIDs from 10000 up; anything below is platform-owned.
-const FIRST_APP_UID = 10000;
-
 export default function Dashboard() {
   const theme = useTheme();
   const router = useRouter();
+  const { t } = useTranslation();
   const { range, network, settings } = useUsageContext();
   const { data, loading, error, reload } = useUsage(range, network);
 
   // The headline stays the device total, so the apps the list leaves out are
   // kept around for TotalsCard to disclose rather than silently dropped.
-  const { apps, hidden } = useMemo(() => {
-    if (!data) return { apps: [], hidden: [] };
-    if (settings?.showSystemApps) return { apps: data.apps, hidden: [] };
-    return {
-      apps: data.apps.filter((a) => a.uid >= FIRST_APP_UID),
-      hidden: data.apps.filter((a) => a.uid < FIRST_APP_UID),
-    };
-  }, [data, settings?.showSystemApps]);
+  const { visible: apps, hidden } = useMemo(
+    () => partitionApps(data?.apps ?? [], settings?.showSystemApps ?? false),
+    [data, settings?.showSystemApps]
+  );
 
   return (
     <ThemedView style={styles.screen}>
@@ -44,25 +40,25 @@ export default function Dashboard() {
         <RangePicker />
 
         {loading && (
-          <ActivityIndicator color={theme.accent} accessibilityLabel="Loading usage" />
+          <ActivityIndicator color={theme.accent} accessibilityLabel={t('dashboard.loading')} />
         )}
 
         {error && (
           <View style={styles.block}>
-            <ThemedText type="default">Could not read usage.</ThemedText>
+            <ThemedText type="default">{t('dashboard.errorTitle')}</ThemedText>
             <ThemedText type="small" themeColor="textSecondary">
               {error}
             </ThemedText>
             <Pressable
               onPress={reload}
               accessibilityRole="button"
-              accessibilityLabel="Retry"
+              accessibilityLabel={t('common.retry')}
               style={({ pressed }) => [
                 styles.retry,
                 { backgroundColor: theme.accent, opacity: pressed ? 0.8 : 1 },
               ]}>
               <ThemedText type="default" themeColor="accentForeground">
-                Retry
+                {t('common.retry')}
               </ThemedText>
             </Pressable>
           </View>
@@ -76,14 +72,22 @@ export default function Dashboard() {
             contentContainerStyle={styles.list}
             ListHeaderComponent={
               <View style={styles.header}>
-                <TotalsCard totals={data.totals} note={data.note} hidden={hidden} />
+                <TotalsCard totals={data.totals} coverage={data.coverage} hidden={hidden} />
                 <UsageChartCard />
+                {apps.length > 0 ? (
+                  <ThemedText type="small" themeColor="textSecondary">
+                    {t('dashboard.appsHeading')}
+                  </ThemedText>
+                ) : null}
               </View>
             }
             ListEmptyComponent={
               <View style={styles.empty}>
                 <ThemedText type="default" themeColor="textSecondary">
-                  No usage recorded in this range.
+                  {t('dashboard.empty')}
+                </ThemedText>
+                <ThemedText type="small" themeColor="textSecondary">
+                  {t('dashboard.emptyHint')}
                 </ThemedText>
               </View>
             }

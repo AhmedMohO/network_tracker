@@ -20,14 +20,30 @@ export type UsageDelta = {
   changePercent: number | null;
 };
 
-export function displayName(row: AppUsageRow): string {
+/** Fallback for a UID Android no longer has a package or label for. */
+export type UnknownName = (uid: number) => string;
+
+const defaultUnknown: UnknownName = (uid) => `Removed app (UID ${uid})`;
+
+export function displayName(
+  row: AppUsageRow,
+  unknown: UnknownName = defaultUnknown
+): string {
   if (row.label) return row.label;
   if (row.packages.length > 0) return row.packages[0];
   // Happens when the app was uninstalled after the traffic was recorded.
-  return `Removed app (UID ${row.uid})`;
+  return unknown(row.uid);
 }
 
-export function toAppUsage(rows: AppUsageRow[]): AppUsage[] {
+/**
+ * `unknown` and `rename` let the caller supply translated text without this
+ * module — which is pure and unit-tested — reaching for the i18n instance.
+ */
+export function toAppUsage(
+  rows: AppUsageRow[],
+  unknown: UnknownName = defaultUnknown,
+  rename: (uid: number) => string | null = () => null
+): AppUsage[] {
   const grandTotal = rows.reduce((sum, r) => sum + r.rxBytes + r.txBytes, 0);
 
   return rows
@@ -36,7 +52,7 @@ export function toAppUsage(rows: AppUsageRow[]): AppUsage[] {
       const foreground = r.rxForegroundBytes + r.txForegroundBytes;
       return {
         uid: r.uid,
-        name: displayName(r),
+        name: rename(r.uid) ?? displayName(r, unknown),
         packageName: r.packages[0] ?? null,
         download: r.rxBytes,
         upload: r.txBytes,
@@ -47,6 +63,29 @@ export function toAppUsage(rows: AppUsageRow[]): AppUsage[] {
       };
     })
     .sort((a, b) => b.total - a.total);
+}
+
+/** Android assigns app UIDs from 10000 up; anything below is platform-owned. */
+export const FIRST_APP_UID = 10000;
+/** `NetworkStats.Bucket.UID_TETHERING` — hotspot and USB tethering traffic. */
+export const TETHERING_UID = -5;
+
+/**
+ * Splits the rows into the ones the list shows and the ones only the totals
+ * card discloses. Tethering is never hidden: hotspot traffic is a line item
+ * users go looking for, and Android's own Data usage screen shows it.
+ */
+export function partitionApps(
+  apps: AppUsage[],
+  showSystemApps: boolean
+): { visible: AppUsage[]; hidden: AppUsage[] } {
+  if (showSystemApps) return { visible: apps, hidden: [] };
+  const shown = (a: AppUsage) =>
+    a.uid >= FIRST_APP_UID || a.uid === TETHERING_UID;
+  return {
+    visible: apps.filter(shown),
+    hidden: apps.filter((a) => !shown(a)),
+  };
 }
 
 export function sumUsage(apps: AppUsage[]) {

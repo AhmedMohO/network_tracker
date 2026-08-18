@@ -17,6 +17,9 @@ class NetworkUsageModule : Module() {
     private val context: Context
         get() = requireNotNull(appContext.reactContext) { "React context is null" }
 
+    // Held across calls so the icon and label caches survive a range change.
+    private val resolver by lazy { AppResolver(context) }
+
     override fun definition() = ModuleDefinition {
         Name("NetworkUsage")
 
@@ -44,6 +47,8 @@ class NetworkUsageModule : Module() {
         AsyncFunction("dumpBuckets") { q: UsageQuery ->
             StatsReader(context).dumpBuckets(q)
         }
+
+        AsyncFunction("getAppIcon") { pkg: String -> resolver.iconBase64(pkg) }
 
         AsyncFunction("getSeries") { q: SeriesQuery -> StatsReader(context).series(q) }
 

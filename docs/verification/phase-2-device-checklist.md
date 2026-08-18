@@ -2,8 +2,9 @@
 
 **Nothing native in Phase 2 has ever executed.** The chart renderer
 (`react-native-svg`), the date picker (`@react-native-community/datetimepicker`)
-and the new `openAppDataUsageSettings` Kotlin function all arrived in this phase
-and all need a rebuild. Every claim about them — from the implementers, the
+and the `openAppDataUsageSettings` and `getAppIcon` Kotlin functions all arrived
+in this phase and all need a rebuild — as does `expo-localization`, added with
+the Arabic/English support. Every claim about them — from the implementers, the
 reviewer, and me — is static analysis until this pass runs.
 
 ```
@@ -30,10 +31,12 @@ Do these first. If one fails, the rest is noise.
 - [ ] **Bar placement.** The tallest bar lands on a period you actually used
       data. A systematic ~2 h shift means `StatsReader.kt:120-123`'s
       whole-bucket attribution needs work, and the caption's placement caveat
-      becomes an Important finding rather than a Minor one.
+      becomes an Important finding rather than a Minor one. Read the moment off
+      the axis and off the tap readout, not by eye.
 - [ ] **Detail total equals dashboard row.** Tap an app; its total must match
       the row's, digit for digit, same range and filter.
-- [ ] **Foreground + background sum to that total.**
+- [ ] **Foreground + background sum to that total**, and the legend under the
+      split bar says which colour is which.
 
 ## 2. Permission gate
 
@@ -56,6 +59,12 @@ Do these first. If one fails, the rest is noise.
 - [ ] Every range chip changes the numbers.
 - [ ] A range with no traffic shows "No usage recorded in this range." — never a
       blank screen, never a crash.
+- [ ] **Tethering is a row.** With the hotspot on and traffic through it,
+      "Hotspot & tethering" appears in the list like any app, with `Show system
+      apps` still off. It is UID -5, which the old `uid >= 10000` filter hid.
+- [ ] **Every row has an icon.** Installed apps show their launcher icon;
+      tethering and other package-less UIDs show the lettered placeholder, not
+      a blank gap or a stuck spinner.
 - [ ] **Hidden system apps reconcile.** On a device with tethering or system
       traffic, the totals card names the hidden apps and their bytes, and
       headline − that figure = the sum of the visible rows.
@@ -66,11 +75,16 @@ Do these first. If one fails, the rest is noise.
 
 ## 4. Range picker
 
-- [ ] `Custom…` opens date → time → date → time.
-- [ ] The **second** date dialog opens on the day you just picked and refuses
-      earlier days.
-- [ ] A range wider than a year is rejected with "Range cannot be longer than a
-      year." under the chips, not an empty chart.
+- [ ] The line under the chips always names the window in words, for presets
+      and custom ranges alike.
+- [ ] `Custom…` opens the sheet, not a blind chain of system dialogs. Both
+      endpoints show their current value before anything is applied.
+- [ ] Editing `To` opens on the day `From` is set to and refuses earlier days.
+- [ ] An invalid draft disables `Apply` and replaces the duration line with the
+      reason — a range wider than a year included. It never applies a broken
+      range.
+- [ ] `Apply` closes the sheet and toasts the window that is now showing.
+- [ ] `Cancel`, the backdrop and the Back gesture all discard the draft.
 
 ## 5. App detail
 
@@ -84,6 +98,10 @@ Do these first. If one fails, the rest is noise.
 
 ## 6. Chart states
 
+- [ ] Tapping a bar names its window and its exact size; tapping it again
+      clears the readout. The other bars dim rather than disappear.
+- [ ] The axis under the bars carries the first and last day of the range, and
+      the header carries the peak value.
 - [ ] Switching Today → Last 30 days: bars vanish into a spinner for the whole
       query. You must never see old bars under a new caption.
 - [ ] An empty range shows "No usage in this range." inside a bordered panel,
@@ -93,7 +111,20 @@ Do these first. If one fails, the rest is noise.
       appears on any range, check the series result carries real
       `coveredStart`/`coveredEnd` rather than the empty-result fallback.
 
-## 7. Presentation and accessibility
+## 7. Language
+
+- [ ] Settings → `العربية` reloads the app into Arabic **and** into a
+      right-to-left layout: chips, rows, icons and the app bar all mirror.
+      Switching back to English mirrors them back.
+- [ ] An Arabic-locale device with no stored choice starts in Arabic RTL after
+      exactly one automatic reload — not a reload loop.
+- [ ] No key names (`range.today`, `totals.hidden`) leak into the UI in either
+      language, including with 3–10 hidden system apps, where Arabic asks for a
+      plural form the resources deliberately do not carry.
+- [ ] The permission screen bolds `network_tracker` inside the sentence in both
+      languages.
+
+## 8. Presentation and accessibility
 
 - [ ] Dark mode on every screen: bars, borders, accent fill and secondary text
       all readable. Nothing dark-on-dark.
@@ -107,7 +138,7 @@ Do these first. If one fails, the rest is noise.
 - [ ] TalkBack on the chart announces bar count, bar width, total and peak —
       not "image", not silence.
 
-## 8. Off-Android degradation
+## 9. Off-Android degradation
 
 - [ ] `npx expo start --web`. Expect the "Android only" screen. A
       `Cannot find native module 'NetworkUsage'` crash means Metro is not

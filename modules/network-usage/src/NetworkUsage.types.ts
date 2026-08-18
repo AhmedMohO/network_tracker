@@ -64,6 +64,8 @@ export type NetworkUsageModule = {
   /** Opens the system App info screen, which hosts that app's data usage. */
   openAppDataUsageSettings(packageName: string): void;
   getAppUsage(q: UsageQuery): Promise<AppUsageRow[]>;
+  /** Launcher icon as base64 PNG, or null when the package is not installed. */
+  getAppIcon(packageName: string): Promise<string | null>;
   dumpBuckets(q: UsageQuery): Promise<RawBucket[]>;
   getSeries(q: SeriesQuery): Promise<SeriesResult>;
   getDeviceCounters(): {

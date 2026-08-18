@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import { AppState, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -24,6 +25,7 @@ function openSettings(): void {
 
 export function PermissionGate({ children }: { children: ReactNode }) {
   const theme = useTheme();
+  const { t } = useTranslation();
   const [granted, setGranted] = useState(false);
 
   // This component sits above <Stack>, so navigation focus events never reach
@@ -44,10 +46,8 @@ export function PermissionGate({ children }: { children: ReactNode }) {
       <ThemedView style={styles.screen}>
         <SafeAreaView style={styles.safeArea}>
           <View style={styles.content}>
-            <ThemedText type="subtitle">Android only</ThemedText>
-            <ThemedText themeColor="textSecondary">
-              Per-app network usage is not available on this platform.
-            </ThemedText>
+            <ThemedText type="subtitle">{t('permission.androidOnly')}</ThemedText>
+            <ThemedText themeColor="textSecondary">{t('permission.androidOnlyBody')}</ThemedText>
           </View>
         </SafeAreaView>
       </ThemedView>
@@ -60,28 +60,30 @@ export function PermissionGate({ children }: { children: ReactNode }) {
     <ThemedView style={styles.screen}>
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.content}>
-          <ThemedText type="subtitle">Usage access needed</ThemedText>
+          <ThemedText type="subtitle">{t('permission.title')}</ThemedText>
           <ThemedText themeColor="textSecondary">
-            Android keeps per-app network statistics behind a special permission. Tap below, find{' '}
-            <ThemedText type="default" style={styles.appName}>
-              network_tracker
-            </ThemedText>{' '}
-            in the list, and turn on &ldquo;Permit usage access&rdquo;.
+            {/* `app` is bolded in place, so the sentence stays one translatable
+                unit instead of three fragments the translator has to reorder. */}
+            <Trans
+              i18nKey="permission.body"
+              values={{ app: 'network_tracker' }}
+              components={{ 1: <ThemedText type="default" style={styles.appName} /> }}
+            />
           </ThemedText>
           <ThemedText type="small" themeColor="textSecondary">
-            Nothing leaves your device. There is no account and no network call.
+            {t('permission.privacy')}
           </ThemedText>
           <Pressable
             onPress={openSettings}
             accessibilityRole="button"
-            accessibilityLabel="Open settings"
-            accessibilityHint="Opens the Android usage access settings screen"
+            accessibilityLabel={t('permission.open')}
+            accessibilityHint={t('permission.openHint')}
             style={({ pressed }) => [
               styles.button,
               { backgroundColor: theme.accent, opacity: pressed ? 0.8 : 1 },
             ]}>
             <ThemedText type="default" themeColor="accentForeground">
-              Open settings
+              {t('permission.open')}
             </ThemedText>
           </Pressable>
         </View>
