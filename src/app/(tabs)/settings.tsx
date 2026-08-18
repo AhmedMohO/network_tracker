@@ -1,4 +1,5 @@
 import { reloadAppAsync } from 'expo';
+import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
@@ -69,6 +70,7 @@ export default function SettingsScreen() {
   const theme = useTheme();
   const { t, i18n } = useTranslation();
   const { settings, reloadSettings } = useUsageContext();
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<LimitNetwork>('MOBILE');
   const isWifi = activeTab === 'WIFI';
   // Only the visible tab's limit is queried; switching tabs refetches.
@@ -262,6 +264,21 @@ export default function SettingsScreen() {
                 thumbColor={settings?.showSystemApps ? theme.accent : theme.border}
               />
             </View>
+          </Section>
+
+          <Section title={t('updateScreen.title')}>
+            <Pressable
+              onPress={() => router.push('/update')}
+              accessibilityRole="button"
+              accessibilityLabel={t('updateScreen.check')}
+              style={({ pressed }) => [
+                styles.saveButton,
+                { backgroundColor: theme.accent, opacity: pressed ? 0.8 : 1 },
+              ]}>
+              <ThemedText type="default" themeColor="accentForeground">
+                {t('updateScreen.check')}
+              </ThemedText>
+            </Pressable>
           </Section>
 
           <Section title={t('settings.privacyTitle')}>

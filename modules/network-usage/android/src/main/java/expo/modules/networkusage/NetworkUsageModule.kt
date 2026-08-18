@@ -53,5 +53,13 @@ class NetworkUsageModule : Module() {
         AsyncFunction("getSeries") { q: SeriesQuery -> StatsReader(context).series(q) }
 
         Function("getDeviceCounters") { LiveProbe.counters() }
+
+        Function("canInstallPackages") { ApkInstaller.canInstall(context) }
+
+        Function("openInstallPermissionSettings") {
+            ApkInstaller.openPermissionSettings(context)
+        }
+
+        Function("installApk") { fileUri: String -> ApkInstaller.install(context, fileUri) }
     }
 }

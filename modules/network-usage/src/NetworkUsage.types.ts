@@ -74,4 +74,9 @@ export type NetworkUsageModule = {
     totalRx: number;
     totalTx: number;
   };
+  /** False when "install unknown apps" is off for this app (Android 8+). */
+  canInstallPackages(): boolean;
+  openInstallPermissionSettings(): void;
+  /** Opens the system installer for a downloaded APK. */
+  installApk(fileUri: string): void;
 };

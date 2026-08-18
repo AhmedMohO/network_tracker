@@ -105,6 +105,20 @@ export const en = {
     restart: 'Restart',
     later: 'Later',
   },
+  updateScreen: {
+    title: 'App updates',
+    check: 'Check for a new version',
+    installed: 'Installed version {{version}}',
+    upToDate: 'You are up to date.',
+    available: 'Version {{version}} is available',
+    install: 'Download and install',
+    downloading: 'Downloading the update',
+    needPermission: 'Allow installing unknown apps, then tap Download again.',
+    unknownSourceWarning:
+      'Android will warn that this app comes from an unknown source. That is expected — it is distributed outside the Play Store.',
+    unreachable: 'Could not reach GitHub.',
+    failed: 'Download failed: {{error}}',
+  },
   app: {
     removed: 'Removed app (UID {{uid}})',
     tethering: 'Hotspot & tethering',

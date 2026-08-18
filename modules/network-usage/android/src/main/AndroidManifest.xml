@@ -13,4 +13,19 @@
     <!-- Needed to resolve UIDs to app names on API 30+. Play Store policy
          restricts this permission; we are not shipping through Play. -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+    <!-- The APK update channel (Task 23). This app ships outside the Play
+         Store, so it installs its own updates through the system installer. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <application>
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.apkprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/apk_paths" />
+        </provider>
+    </application>
 </manifest>

@@ -21,4 +21,7 @@ export const unavailableNetworkUsage: NetworkUsageModule = {
   dumpBuckets: unavailable,
   getSeries: unavailable,
   getDeviceCounters: unavailable,
+  canInstallPackages: unavailable,
+  openInstallPermissionSettings: unavailable,
+  installApk: unavailable,
 };

@@ -108,6 +108,20 @@ export const ar: typeof en = {
     restart: 'إعادة التشغيل',
     later: 'لاحقًا',
   },
+  updateScreen: {
+    title: 'تحديثات التطبيق',
+    check: 'البحث عن إصدار جديد',
+    installed: 'الإصدار المثبّت {{version}}',
+    upToDate: 'أنت على أحدث إصدار.',
+    available: 'الإصدار {{version}} متاح',
+    install: 'تنزيل وتثبيت',
+    downloading: 'جارٍ تنزيل التحديث',
+    needPermission: 'اسمح بتثبيت التطبيقات غير المعروفة، ثم اضغط تنزيل مرة أخرى.',
+    unknownSourceWarning:
+      'سيحذّرك أندرويد من أن هذا التطبيق من مصدر غير معروف، وهذا متوقّع — فهو يُوزَّع خارج متجر Play.',
+    unreachable: 'تعذّر الوصول إلى GitHub.',
+    failed: 'فشل التنزيل: {{error}}',
+  },
   app: {
     removed: 'تطبيق محذوف (المعرّف {{uid}})',
     tethering: 'نقطة الاتصال والتوصيل',
