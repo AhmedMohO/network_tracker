@@ -2,6 +2,7 @@ import * as BackgroundTask from "expo-background-task";
 import * as TaskManager from "expo-task-manager";
 import { Platform } from "react-native";
 
+import { snapshotDay } from "@/features/archive/db";
 import i18n from "@/i18n";
 import { fetchUsage } from "@/features/usage/api";
 import { formatBytes } from "@/features/usage/format";
@@ -179,6 +180,15 @@ export async function runUsageCheck(now: number) {
     now,
     settings.alertedKeys
   );
+  // Yesterday, not today: a complete day is the only one worth storing, and
+  // `INSERT OR REPLACE` makes a repeated run harmless. A failure here must not
+  // cost the alerts their result — the day is re-snapshotted on the next run.
+  try {
+    await snapshotDay(presetRange("yesterday", now).start);
+  } catch {
+    // Nothing to tell the user: the archive only matters months from now.
+  }
+
   return mobile === "posted" || wifi === "posted"
     ? ("posted" as const)
     : ("quiet" as const);

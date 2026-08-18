@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { fetchUsage, type NetworkFilter, type UsageResult } from "./api";
+import { fetchUsageWithArchive } from "@/features/archive/readThrough";
+
+import type { NetworkFilter, UsageResult } from "./api";
 import type { Range } from "./range";
 
 export function useUsage(range: Range, network: NetworkFilter) {
@@ -13,7 +15,7 @@ export function useUsage(range: Range, network: NetworkFilter) {
     const requestId = ++requestIdRef.current;
     setLoading(true);
     setError(null);
-    fetchUsage(range, network)
+    fetchUsageWithArchive(range, network)
       .then((result) => {
         if (isCurrent(requestId)) setData(result);
       })
