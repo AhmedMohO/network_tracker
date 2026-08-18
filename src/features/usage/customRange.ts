@@ -1,5 +1,4 @@
 /**
-/**
  * Widest range the chart can still draw legibly: `chooseBucketMs` tops out at
  * one-week bins, so a year is ~53 bars. Past that the bars shrink towards a
  * sub-pixel comb (2000 of them at the native bin cap) for no added meaning.
