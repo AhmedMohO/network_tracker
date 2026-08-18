@@ -137,9 +137,12 @@ export default function AppUsageDetail() {
 
         {app ? (
           <>
+            {/* No note: `data.note` is the coverage window unioned across every
+                app, so it would not be a statement about this one. The chart
+                below carries this app's own coverage. */}
             <TotalsCard
+              title="Used by this app"
               totals={{ download: app.download, upload: app.upload, total: app.total }}
-              note={data?.note ?? null}
             />
             <StateSplit foreground={app.foreground} background={app.background} />
             <UsageChartCard uid={app.uid} />

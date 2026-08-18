@@ -2,6 +2,7 @@ import { validateCustomRange } from './customRange';
 
 const NOW = 1_700_000_000_000;
 const HOUR = 3_600_000;
+const DAY = 24 * HOUR;
 
 describe('validateCustomRange', () => {
   it('accepts a past range in order', () => {
@@ -22,6 +23,22 @@ describe('validateCustomRange', () => {
 
   it('rejects an end in the future', () => {
     expect(validateCustomRange(NOW - HOUR, NOW + HOUR, NOW)).toBe('End cannot be in the future.');
+  });
+
+  it('accepts a range exactly at the one-year cap', () => {
+    expect(validateCustomRange(NOW - 366 * DAY, NOW, NOW)).toBeNull();
+  });
+
+  it('rejects a range wider than a year', () => {
+    expect(validateCustomRange(NOW - 367 * DAY, NOW, NOW)).toBe(
+      'Range cannot be longer than a year.'
+    );
+  });
+
+  it('rejects a decade-wide range that would draw a sub-pixel comb', () => {
+    expect(validateCustomRange(NOW - 3650 * DAY, NOW, NOW)).toBe(
+      'Range cannot be longer than a year.'
+    );
   });
 
   it('reports the ordering problem first when both are wrong', () => {

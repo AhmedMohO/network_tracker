@@ -1,5 +1,4 @@
-import { useFocusEffect } from 'expo-router';
-import { useCallback, useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { AppState, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -27,19 +26,18 @@ export function PermissionGate({ children }: { children: ReactNode }) {
   const theme = useTheme();
   const [granted, setGranted] = useState(false);
 
-  useFocusEffect(
-    useCallback(() => {
-      if (Platform.OS !== 'android') return;
-      const check = () => setGranted(readUsageAccess());
-      check();
-      // Returning from the system settings screen re-activates the app; that
-      // is the only moment the answer can change.
-      const sub = AppState.addEventListener('change', (s) => {
-        if (s === 'active') check();
-      });
-      return () => sub.remove();
-    }, [])
-  );
+  // This component sits above <Stack>, so navigation focus events never reach
+  // it. Returning from the system settings screen re-activates the app, and
+  // that is the only moment the answer can change.
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    const check = () => setGranted(readUsageAccess());
+    check();
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s === 'active') check();
+    });
+    return () => sub.remove();
+  }, []);
 
   if (Platform.OS !== 'android') {
     return (

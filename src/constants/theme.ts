@@ -14,10 +14,14 @@ export const Colors = {
     backgroundElement: '#F0F0F3',
     backgroundSelected: '#E0E1E6',
     textSecondary: '#60646C',
-    accent: '#208AEF',
-    accentMuted: '#208AEF1F',
+    // Darkened from the #208AEF brand blue so white-on-accent and
+    // accent-on-surface both clear WCAG AA (4.5:1) for 14-16px text.
+    accent: '#1268B5',
+    accentMuted: '#1268B51F',
     accentForeground: '#ffffff',
-    border: '#D7DAE0',
+    // >= 3:1 against both `background` and `backgroundElement`, so an
+    // unselected chip or tab outline reads as a real affordance.
+    border: '#828892',
     danger: '#B3261E',
   },
   dark: {
@@ -29,7 +33,7 @@ export const Colors = {
     accent: '#5CA9F5',
     accentMuted: '#5CA9F52E',
     accentForeground: '#04101C',
-    border: '#3A3D42',
+    border: '#6A6F78',
     danger: '#FF8A80',
   },
 } as const;

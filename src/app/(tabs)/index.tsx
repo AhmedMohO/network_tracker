@@ -24,12 +24,16 @@ export default function Dashboard() {
   const { range, network, settings } = useUsageContext();
   const { data, loading, error, reload } = useUsage(range, network);
 
-  const apps = useMemo(() => {
-    if (!data) return [];
-    return settings?.showSystemApps ? data.apps : data.apps.filter((a) => a.uid >= FIRST_APP_UID);
+  // The headline stays the device total, so the apps the list leaves out are
+  // kept around for TotalsCard to disclose rather than silently dropped.
+  const { apps, hidden } = useMemo(() => {
+    if (!data) return { apps: [], hidden: [] };
+    if (settings?.showSystemApps) return { apps: data.apps, hidden: [] };
+    return {
+      apps: data.apps.filter((a) => a.uid >= FIRST_APP_UID),
+      hidden: data.apps.filter((a) => a.uid < FIRST_APP_UID),
+    };
   }, [data, settings?.showSystemApps]);
-
-  const hiddenCount = data ? data.apps.length - apps.length : 0;
 
   return (
     <ThemedView style={styles.screen}>
@@ -72,7 +76,7 @@ export default function Dashboard() {
             contentContainerStyle={styles.list}
             ListHeaderComponent={
               <View style={styles.header}>
-                <TotalsCard totals={data.totals} note={data.note} />
+                <TotalsCard totals={data.totals} note={data.note} hidden={hidden} />
                 <UsageChartCard />
               </View>
             }
@@ -81,14 +85,6 @@ export default function Dashboard() {
                 <ThemedText type="default" themeColor="textSecondary">
                   No usage recorded in this range.
                 </ThemedText>
-                {hiddenCount > 0 ? (
-                  <ThemedText type="small" themeColor="textSecondary">
-                    {hiddenCount} system {hiddenCount === 1 ? 'app is' : 'apps are'} hidden. Turn on
-                    &ldquo;Show system apps&rdquo; in settings to include {
-                      hiddenCount === 1 ? 'it' : 'them'
-                    }.
-                  </ThemedText>
-                ) : null}
               </View>
             }
             renderItem={({ item }) => (

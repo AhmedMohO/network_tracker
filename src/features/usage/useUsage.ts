@@ -7,6 +7,7 @@ export function useUsage(range: Range, network: NetworkFilter) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const requestIdRef = useRef(0);
+  const mountedRef = useRef(true);
 
   const reload = useCallback(() => {
     const requestId = ++requestIdRef.current;
@@ -14,18 +15,26 @@ export function useUsage(range: Range, network: NetworkFilter) {
     setError(null);
     fetchUsage(range, network)
       .then((result) => {
-        if (requestIdRef.current === requestId) setData(result);
+        if (isCurrent(requestId)) setData(result);
       })
       .catch((e) => {
-        if (requestIdRef.current === requestId) setError(String(e?.message ?? e));
+        if (isCurrent(requestId)) setError(String(e?.message ?? e));
       })
       .finally(() => {
-        if (requestIdRef.current === requestId) setLoading(false);
+        if (isCurrent(requestId)) setLoading(false);
       });
+
+    function isCurrent(id: number) {
+      return mountedRef.current && requestIdRef.current === id;
+    }
   }, [range.start, range.end, network]);
 
   useEffect(() => {
+    mountedRef.current = true;
     reload();
+    return () => {
+      mountedRef.current = false;
+    };
   }, [reload]);
 
   return { data, loading, error, reload };

@@ -145,7 +145,8 @@ export function UsageChartCard({ uid }: { uid?: number }) {
           <UsageChart bins={data.bins} />
           {hasBars ? (
             <ThemedText type="small" themeColor="textSecondary">
-              Each bar covers {describeSpan(bucketMs)}.
+              Each bar covers {describeSpan(bucketMs)}, positioned by Android&rsquo;s own bucket
+              boundaries.
             </ThemedText>
           ) : null}
           {/* Coverage information, not a failure — plain secondary body text. */}

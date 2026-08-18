@@ -4,9 +4,18 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 
+import { sumUsage, type AppUsage } from './aggregate';
 import { formatBytes } from './format';
 
 type Totals = { download: number; upload: number; total: number };
+
+/** One sentence naming what the total counts but the list below does not. */
+function hiddenLine(hidden: AppUsage[]): string {
+  const bytes = formatBytes(sumUsage(hidden).total);
+  return hidden.length === 1
+    ? `Includes 1 system app that is not listed below (${bytes}).`
+    : `Includes ${hidden.length} system apps that are not listed below (${bytes}).`;
+}
 
 function Metric({ label, bytes }: { label: string; bytes: number }) {
   return (
@@ -21,11 +30,23 @@ function Metric({ label, bytes }: { label: string; bytes: number }) {
   );
 }
 
-export function TotalsCard({ totals, note }: { totals: Totals; note: string | null }) {
+export function TotalsCard({
+  totals,
+  note = null,
+  title = 'Total used',
+  hidden = [],
+}: {
+  totals: Totals;
+  note?: string | null;
+  /** Defaults to the device-level label; the detail screen names one app. */
+  title?: string;
+  /** Apps counted in `totals` that the list below does not show. */
+  hidden?: AppUsage[];
+}) {
   return (
     <ThemedView type="backgroundElement" style={styles.card}>
       <ThemedText type="small" themeColor="textSecondary">
-        Total used
+        {title}
       </ThemedText>
       <ThemedText
         type="subtitle"
@@ -38,6 +59,12 @@ export function TotalsCard({ totals, note }: { totals: Totals; note: string | nu
         <Metric label="↓ Download" bytes={totals.download} />
         <Metric label="↑ Upload" bytes={totals.upload} />
       </View>
+      {/* Reconciles the headline with the list: it counts apps the list hides. */}
+      {hidden.length > 0 ? (
+        <ThemedText type="small" themeColor="textSecondary">
+          {hiddenLine(hidden)}
+        </ThemedText>
+      ) : null}
       {/* Coverage information, not a failure — plain secondary body text. */}
       {note ? (
         <ThemedText type="small" themeColor="textSecondary">

@@ -24,12 +24,20 @@ const PRESETS: { id: PresetId; label: string }[] = [
   { id: 'lastCycle', label: 'Last cycle' },
 ];
 
+/** Android's date dialog compares `minimumDate` loosely, so bound it by day. */
+function startOfDay(ts: number): Date {
+  const d = new Date(ts);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
 /** Chains Android's date dialog into its time dialog and returns one timestamp. */
-function pickDateTime(initial: number, onDone: (ts: number) => void) {
+function pickDateTime(initial: number, onDone: (ts: number) => void, minimum?: number) {
   DateTimePickerAndroid.open({
     value: new Date(initial),
     mode: 'date',
     maximumDate: new Date(),
+    minimumDate: minimum === undefined ? undefined : startOfDay(minimum),
     onChange: (_, date) => {
       if (!date) return;
       DateTimePickerAndroid.open({
@@ -59,8 +67,12 @@ export function RangePicker() {
     setRange({ start, end, label: CUSTOM_LABEL });
   };
 
+  // The end dialog opens on the start the user just picked and cannot go
+  // below it, so the pair can never come back reversed.
   const startCustom = () =>
-    pickDateTime(range.start, (start) => pickDateTime(range.end, (end) => applyCustom(start, end)));
+    pickDateTime(range.start, (start) =>
+      pickDateTime(start, (end) => applyCustom(start, end), start)
+    );
 
   const chip = (label: string, onPress: () => void, active: boolean) => (
     <Pressable

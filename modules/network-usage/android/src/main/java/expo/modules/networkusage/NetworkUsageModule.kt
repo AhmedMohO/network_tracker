@@ -30,7 +30,7 @@ class NetworkUsageModule : Module() {
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             try {
                 context.startActivity(intent)
-            } catch (e: ActivityNotFoundException) {
+            } catch (_: ActivityNotFoundException) {
                 // Some builds ship without the app-details activity; that is a
                 // message for the user, not a crash.
                 throw NoAppSettingsScreenException(pkg)
