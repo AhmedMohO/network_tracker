@@ -3,6 +3,7 @@ import {
   coverageDrift,
   nextCycleStart,
   presetRange,
+  previousRange,
 } from "./range";
 
 // 2026-08-18T10:30:00 local time
@@ -111,5 +112,40 @@ describe("nextCycleStart", () => {
     const cycle = billingCycleRange(11, NOW);
     expect(nextCycleStart(11, NOW)).toBeGreaterThan(cycle.end);
     expect(cycle.end).toBe(NOW);
+  });
+});
+
+describe("previousRange", () => {
+  it("shifts a fixed range back by its own length", () => {
+    const r = presetRange("last7d", NOW);
+    const prev = previousRange(r, 1, NOW);
+    expect(prev.end).toBe(r.start);
+    expect(prev.end - prev.start).toBe(r.end - r.start);
+  });
+
+  it("returns the previous calendar cycle for a cycle range", () => {
+    const cycle = presetRange("thisCycle", NOW, 11);
+    const prev = previousRange(cycle, 11, NOW);
+    expect(new Date(prev.start).getMonth()).toBe(6); // July 11
+    expect(new Date(prev.start).getDate()).toBe(11);
+  });
+
+  it("compares like with like for a partial cycle", () => {
+    // Seven days into the cycle: the previous period must also be seven days,
+    // not a whole month, or the comparison is meaningless.
+    const cycle = presetRange("thisCycle", NOW, 11);
+    const prev = previousRange(cycle, 11, NOW);
+    expect(prev.end - prev.start).toBe(cycle.end - cycle.start);
+  });
+
+  it("steps a whole cycle back for the last-cycle preset", () => {
+    const cycle = presetRange("lastCycle", NOW, 11);
+    const prev = previousRange(cycle, 11, NOW);
+    expect(new Date(prev.start).getMonth()).toBe(5); // June 11
+    expect(prev.end).toBe(cycle.start);
+  });
+
+  it("is a derived window, not a preset the picker could select", () => {
+    expect(previousRange(presetRange("today", NOW), 1, NOW).preset).toBe("custom");
   });
 });

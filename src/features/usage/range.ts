@@ -119,3 +119,37 @@ export function coverageDrift(
   }
   return { start: coveredStart, end: coveredEnd };
 }
+
+/**
+ * The window immediately before `range`, for like-for-like comparison.
+ *
+ * A partial cycle compares against the same number of days into the previous
+ * cycle — comparing nine days against a whole month would just report a fake
+ * decrease. The result carries the `custom` preset: it is a derived window, so
+ * nothing should show it as a selected chip.
+ */
+export function previousRange(
+  range: Range,
+  cycleStartDay: number,
+  now: number
+): Range {
+  if (range.preset === "thisCycle" || range.preset === "lastCycle") {
+    // Step a whole cycle back rather than subtracting the elapsed span: months
+    // are not the same length, and the comparison must line up with the
+    // billing day.
+    const previous = billingCycleRange(
+      cycleStartDay,
+      now,
+      range.preset === "thisCycle" ? -1 : -2
+    );
+    const elapsed = range.end - range.start;
+    return {
+      start: previous.start,
+      end: Math.min(previous.start + elapsed, previous.end),
+      preset: "custom",
+    };
+  }
+
+  const span = range.end - range.start;
+  return { start: range.start - span, end: range.start, preset: "custom" };
+}
