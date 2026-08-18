@@ -66,7 +66,7 @@ export function PermissionGate({ children }: { children: ReactNode }) {
                 unit instead of three fragments the translator has to reorder. */}
             <Trans
               i18nKey="permission.body"
-              values={{ app: 'network_tracker' }}
+              values={{ app: t('common.appName') }}
               components={{ 1: <ThemedText type="default" style={styles.appName} /> }}
             />
           </ThemedText>

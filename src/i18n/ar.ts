@@ -9,6 +9,7 @@ import type { en } from './en';
  */
 export const ar: typeof en = {
   common: {
+    appName: 'متتبع الإستهلاك',
     retry: 'إعادة المحاولة',
     cancel: 'إلغاء',
     apply: 'تطبيق',

@@ -4,6 +4,7 @@
  */
 export const en = {
   common: {
+    appName: 'NetTrack',
     retry: 'Retry',
     cancel: 'Cancel',
     apply: 'Apply',
