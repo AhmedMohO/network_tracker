@@ -52,3 +52,24 @@ export type SeriesResult = {
   coveredStart: number;
   coveredEnd: number;
 };
+
+/**
+ * The shape the native module exposes. Declared here rather than inside
+ * `index.ts` so the Android implementation and the off-Android stubs are
+ * checked against one definition and cannot drift apart.
+ */
+export type NetworkUsageModule = {
+  hasUsageAccess(): boolean;
+  openUsageAccessSettings(): void;
+  /** Opens the system App info screen, which hosts that app's data usage. */
+  openAppDataUsageSettings(packageName: string): void;
+  getAppUsage(q: UsageQuery): Promise<AppUsageRow[]>;
+  dumpBuckets(q: UsageQuery): Promise<RawBucket[]>;
+  getSeries(q: SeriesQuery): Promise<SeriesResult>;
+  getDeviceCounters(): {
+    mobileRx: number;
+    mobileTx: number;
+    totalRx: number;
+    totalTx: number;
+  };
+};
