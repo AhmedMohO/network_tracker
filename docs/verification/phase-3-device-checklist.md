@@ -174,10 +174,13 @@ tests now cover but only hardware can confirm in the running app.
       a quarter wide, and "At this rate you will use …" must differ from the
       used figure. Previously both were pinned at 100% / equal.
 - [ ] **The elapsed figure updates without a reload (C1).** The hook ticks
-      once a minute. Leave the screen open across a minute boundary and
-      confirm the elapsed percentage is not frozen at the value it had on
-      first render (the React Compiler is on, so this is the specific failure
-      mode being checked).
+      once every 15 minutes (`TICK_MS` in `useLimitStatus.ts`). Leave the
+      screen open for at least 15 minutes without touching it, then check
+      back: the elapsed percentage and projection must have moved from their
+      first-render values, not be frozen at them (the React Compiler is on,
+      so this is the specific failure mode being checked). A figure that is
+      still static after 15+ minutes is a real C1 failure; a figure that is
+      unchanged after only a minute or two is expected and not a failure.
 - [ ] **Alerts land on the `usage-alerts` channel (C2).** Force an alert, then
       open Android Settings → Apps → network_tracker → Notifications. It must
       appear under **Usage alerts** / **تنبيهات الاستهلاك**, not under

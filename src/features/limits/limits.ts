@@ -1,4 +1,8 @@
-import type { Range } from "@/features/usage/range";
+import {
+  billingCycleRange,
+  nextCycleStart,
+  type Range,
+} from "@/features/usage/range";
 
 export type LimitState = "ok" | "warn" | "over";
 
@@ -13,6 +17,26 @@ export type LimitStatus = {
 };
 
 const MIN_HISTORY_DAYS = 5;
+
+/**
+ * The two windows a limit check needs from one billing cycle: `query`, which
+ * Android can be asked about (it ends at `now` — the future is unqueryable),
+ * and `measurement`, which is what `limitStatus` must gauge elapsed time and
+ * the projection against (it ends at the next cycle start). Both callers
+ * built this same pair by hand, which is how the cycle projection shipped
+ * dead in the first place — extracted here so there is no per-caller wiring
+ * left to get wrong.
+ */
+export function cycleRanges(
+  cycleStartDay: number,
+  now: number
+): { query: Range; measurement: Range } {
+  const query = billingCycleRange(cycleStartDay, now);
+  return {
+    query,
+    measurement: { ...query, end: nextCycleStart(cycleStartDay, now) },
+  };
+}
 
 export function limitStatus(
   usedBytes: number,

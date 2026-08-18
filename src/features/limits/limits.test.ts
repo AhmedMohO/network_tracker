@@ -3,7 +3,7 @@ import {
   nextCycleStart,
   type Range,
 } from "@/features/usage/range";
-import { detectSpike, limitStatus, median } from "./limits";
+import { cycleRanges, detectSpike, limitStatus, median } from "./limits";
 
 const GB = 1024 ** 3;
 // A 10-day cycle, so "halfway" is easy to reason about.
@@ -51,21 +51,17 @@ describe("limitStatus", () => {
     expect(s.projectedBytes).toBeCloseTo(9 * GB);
   });
 
-  // Regression: every caller builds its range from billingCycleRange, whose
-  // `end` for the current cycle is `now` — a query window, not the cycle. Fed
-  // that directly, elapsed time is the whole span and the "projection" is just
-  // the current reading wearing a forecast's clothes.
+  // Regression: every caller queries with billingCycleRange, whose `end` for
+  // the current cycle is `now` — a query window, not the cycle. Fed that
+  // directly as the measurement range, elapsed time is the whole span and the
+  // "projection" is just the current reading wearing a forecast's clothes.
   it("measures elapsed time against the cycle, not the query window", () => {
     const cycleStartDay = 1;
     // Noon on day 5 of a 31-day cycle: 4.5 of 31 days gone.
     const now = new Date(2026, 7, 5, 12, 0, 0).getTime();
-    const query = billingCycleRange(cycleStartDay, now);
-    const cycle: Range = {
-      ...query,
-      end: nextCycleStart(cycleStartDay, now),
-    };
+    const { query, measurement } = cycleRanges(cycleStartDay, now);
 
-    const s = limitStatus(2 * GB, 10 * GB, cycle, now, 80);
+    const s = limitStatus(2 * GB, 10 * GB, measurement, now, 80);
     expect(s.elapsedPercent).toBeGreaterThan(0);
     expect(s.elapsedPercent).toBeLessThan(100);
     // 4.5 / 31 ≈ 14.5%. Precision 0 so a DST hour cannot flip the assertion.
@@ -74,6 +70,37 @@ describe("limitStatus", () => {
     // 4.5 of 31 days extrapolates to roughly 6.9x that.
     expect(s.projectedBytes).toBeGreaterThan(6 * s.usedBytes);
     expect(s.projectedBytes).toBeLessThan(8 * s.usedBytes);
+
+    // The exact caller-level regression this guards against: feeding the
+    // *query* window (what useUsage/fetchUsage actually asks Android for)
+    // into limitStatus instead of the measurement window collapses the
+    // projection back into a restatement of what has already been used.
+    const reverted = limitStatus(2 * GB, 10 * GB, query, now, 80);
+    expect(reverted.elapsedPercent).toBeCloseTo(100);
+    expect(reverted.projectedBytes).toBeCloseTo(reverted.usedBytes);
+  });
+});
+
+// R1: the C1 fix's real risk was never limitStatus's math (covered above) —
+// it was a caller quietly handing it the query range instead of the
+// measurement range. `cycleRanges` is the one place both `useLimitStatus` and
+// `backgroundCheck.runUsageCheck` get this pair from, so testing it here is
+// testing what every caller actually receives.
+describe("cycleRanges", () => {
+  const cycleStartDay = 1;
+  const now = new Date(2026, 7, 5, 12, 0, 0).getTime();
+
+  it("ends the query at now and the measurement at the next cycle start", () => {
+    const { query, measurement } = cycleRanges(cycleStartDay, now);
+    expect(query.end).toBe(now);
+    expect(measurement.end).toBe(nextCycleStart(cycleStartDay, now));
+    expect(measurement.end).toBeGreaterThan(query.end);
+  });
+
+  it("starts both ranges at the same cycle start", () => {
+    const { query, measurement } = cycleRanges(cycleStartDay, now);
+    expect(measurement.start).toBe(query.start);
+    expect(query.start).toBe(billingCycleRange(cycleStartDay, now).start);
   });
 });
 

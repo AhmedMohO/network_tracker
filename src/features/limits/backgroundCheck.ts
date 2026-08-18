@@ -5,15 +5,11 @@ import { Platform } from "react-native";
 import i18n from "@/i18n";
 import { fetchUsage } from "@/features/usage/api";
 import { formatBytes } from "@/features/usage/format";
-import {
-  billingCycleRange,
-  nextCycleStart,
-  presetRange,
-} from "@/features/usage/range";
+import { presetRange } from "@/features/usage/range";
 import { loadSettings, saveSettings } from "@/features/usage/settings";
 
 import { decideAlert, limitAlertKey, spikeAlertKey } from "./alerts";
-import { detectSpike, limitStatus } from "./limits";
+import { cycleRanges, detectSpike, limitStatus } from "./limits";
 import { notify } from "./notify";
 
 export const USAGE_CHECK_TASK = "usage-threshold-check";
@@ -40,7 +36,16 @@ async function alertOnce(
     cycleStart,
     todaySpikeKey
   );
-  if (!decision.fire) return "quiet" as const;
+  if (!decision.fire) {
+    // decideAlert prunes stale keys from a finished cycle on every call, even
+    // when nothing fires. Persist that pruning so those keys don't sit in
+    // storage indefinitely — but only when pruning actually removed
+    // something, not on every no-op check.
+    if (decision.alertedKeys.length !== settings.alertedKeys.length) {
+      await saveSettings({ alertedKeys: decision.alertedKeys });
+    }
+    return "quiet" as const;
+  }
   await notify(title, body);
   await saveSettings({ alertedKeys: decision.alertedKeys });
   return "posted" as const;
@@ -48,7 +53,10 @@ async function alertOnce(
 
 export async function runUsageCheck(now: number) {
   const settings = await loadSettings();
-  const cycle = billingCycleRange(settings.cycleStartDay, now);
+  const { query: cycle, measurement } = cycleRanges(
+    settings.cycleStartDay,
+    now
+  );
   const today = presetRange("today", now);
   const spikeKey = spikeAlertKey(today.start);
 
@@ -56,12 +64,12 @@ export async function runUsageCheck(now: number) {
   const limitBytes = settings.mobileLimitBytes;
   if (limitBytes) {
     const { totals } = await fetchUsage(cycle, "MOBILE");
+    // The query above has to stop at `now`, but elapsed time and the
+    // projection are measured against the whole cycle.
     const status = limitStatus(
       totals.total,
       limitBytes,
-      // The query above has to stop at `now`, but elapsed time and the
-      // projection are measured against the whole cycle.
-      { ...cycle, end: nextCycleStart(settings.cycleStartDay, now) },
+      measurement,
       now,
       settings.warnAtPercent
     );

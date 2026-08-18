@@ -342,16 +342,20 @@ export default function Probe() {
 					title="Send Direct Test Notification"
 					onPress={async () => {
 						setNotificationStatus("Requesting permissions and sending test notification...");
-						const ok = await ensureNotificationSetup();
-						if (!ok) {
-							setNotificationStatus("Permission DENIED by user.");
-							return;
+						try {
+							const ok = await ensureNotificationSetup();
+							if (!ok) {
+								setNotificationStatus("Permission DENIED by user.");
+								return;
+							}
+							await notify(
+								"Test Alert Title",
+								"This is a direct test notification from Network Tracker."
+							);
+							setNotificationStatus("Direct notification scheduled/delivered!");
+						} catch (e) {
+							setNotificationStatus(`Error: ${String(e)}`);
 						}
-						await notify(
-							"Test Alert Title",
-							"This is a direct test notification from Network Tracker."
-						);
-						setNotificationStatus("Direct notification scheduled/delivered!");
 					}}
 				/>
 				<Button

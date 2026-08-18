@@ -1,10 +1,9 @@
 import { useEffect, useState } from "react";
 
-import { billingCycleRange, nextCycleStart } from "@/features/usage/range";
 import { useUsage } from "@/features/usage/useUsage";
 import { useUsageContext } from "@/features/usage/useUsageContext";
 
-import { limitStatus, type LimitStatus } from "./limits";
+import { cycleRanges, limitStatus, type LimitStatus } from "./limits";
 
 /**
  * How often `now` advances. It drives both the elapsed marker and the native
@@ -38,10 +37,11 @@ export function useLimitStatus(): LimitView | null {
     return () => clearInterval(id);
   }, []);
 
-  const cycleStart = billingCycleRange(cycleStartDay, now).start;
-  // Android cannot be queried about the future, so the query window ends now.
-  // `useUsage` keys on start/end, so this refetches once a tick and no more.
-  const query = { start: cycleStart, end: now, preset: "thisCycle" as const };
+  // `query` is what Android can be asked about (ends at `now`); `measurement`
+  // is what `limitStatus` gauges elapsed time and the projection against
+  // (ends at the next cycle start). `useUsage` keys on start/end, so this
+  // refetches once a tick and no more.
+  const { query, measurement } = cycleRanges(cycleStartDay, now);
   const { data } = useUsage(query, "MOBILE");
 
   if (!data || !settings?.mobileLimitBytes) return null;
@@ -49,13 +49,7 @@ export function useLimitStatus(): LimitView | null {
     status: limitStatus(
       data.totals.total,
       settings.mobileLimitBytes,
-      // The cycle to measure against runs to the *next* cycle start, which is
-      // not where the query stopped.
-      {
-        start: cycleStart,
-        end: nextCycleStart(cycleStartDay, now),
-        preset: "thisCycle",
-      },
+      measurement,
       now,
       settings.warnAtPercent
     ),
