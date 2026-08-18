@@ -92,6 +92,13 @@ export const en = {
     appsEmpty: 'No app traffic in the last 10 seconds.',
     note: 'Live speed is measured for the whole device, while this screen is open. Android reports no live speed per app, and no reliable live split between mobile and Wi-Fi.',
   },
+  export: {
+    action: 'Export',
+    hint: 'Shares the listed usage as a file',
+    title: 'Export usage',
+    body: 'One row per app, in raw bytes, for the selected range and filter.',
+    failed: 'Could not export that.',
+  },
   app: {
     removed: 'Removed app (UID {{uid}})',
     tethering: 'Hotspot & tethering',

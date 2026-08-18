@@ -1,12 +1,15 @@
 import { useRouter } from 'expo-router';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { toast } from '@/components/toast';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { toCsv, toJson } from '@/features/export/csv';
+import { shareExport } from '@/features/export/share';
 import { LimitCard } from '@/features/limits/LimitCard';
 import { useLimitStatus } from '@/features/limits/useLimitStatus';
 import { partitionApps } from '@/features/usage/aggregate';
@@ -37,6 +40,28 @@ export default function Dashboard() {
     () => partitionApps(data?.apps ?? [], settings?.showSystemApps ?? false),
     [data, settings?.showSystemApps]
   );
+
+  // Every row, not just the visible ones: a CSV is a data dump, and it carries
+  // a uid column the spreadsheet can filter on. Hiding system apps is a
+  // display preference, not a reason to withhold the numbers.
+  const exportUsage = () => {
+    if (!data) return;
+    const stamp = new Date(range.start).toISOString().slice(0, 10);
+    const name = `usage-${network.toLowerCase()}-${stamp}`;
+    const send = (content: string, extension: string, mimeType: string) =>
+      shareExport(content, `${name}.${extension}`, mimeType).catch(() =>
+        toast(t('export.failed'))
+      );
+
+    Alert.alert(t('export.title'), t('export.body'), [
+      { text: 'CSV', onPress: () => send(toCsv(data.apps, range, network), 'csv', 'text/csv') },
+      {
+        text: 'JSON',
+        onPress: () => send(toJson(data.apps, range, network), 'json', 'application/json'),
+      },
+      { text: t('common.cancel'), style: 'cancel' },
+    ]);
+  };
 
   return (
     <ThemedView style={styles.screen}>
@@ -84,11 +109,24 @@ export default function Dashboard() {
                 ) : null}
                 <TotalsCard totals={data.totals} coverage={data.coverage} hidden={hidden} />
                 <UsageChartCard />
-                {apps.length > 0 ? (
-                  <ThemedText type="small" themeColor="textSecondary">
-                    {t('dashboard.appsHeading')}
-                  </ThemedText>
-                ) : null}
+                <View style={styles.headingRow}>
+                  {apps.length > 0 ? (
+                    <ThemedText type="small" themeColor="textSecondary" style={styles.heading}>
+                      {t('dashboard.appsHeading')}
+                    </ThemedText>
+                  ) : null}
+                  <Pressable
+                    onPress={exportUsage}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('export.action')}
+                    accessibilityHint={t('export.hint')}
+                    style={({ pressed }) => [
+                      styles.export,
+                      { borderColor: theme.border, opacity: pressed ? 0.7 : 1 },
+                    ]}>
+                    <ThemedText type="small">{t('export.action')}</ThemedText>
+                  </Pressable>
+                </View>
               </View>
             }
             ListEmptyComponent={
@@ -126,6 +164,16 @@ const styles = StyleSheet.create({
   controls: { paddingHorizontal: Spacing.three },
   grow: { flex: 1 },
   header: { gap: Spacing.two },
+  headingRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  heading: { flex: 1 },
+  export: {
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.three,
+    borderRadius: 999,
+    borderWidth: 1,
+    marginStart: 'auto',
+  },
   block: { paddingHorizontal: Spacing.three, paddingVertical: Spacing.four, gap: Spacing.two },
   // Inside the list, the content container already supplies the horizontal inset.
   empty: { paddingVertical: Spacing.four, gap: Spacing.two },
