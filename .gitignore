@@ -37,7 +37,8 @@ yarn-error.*
 *.tsbuildinfo
 
 example
-
+graphify-out/
 # generated native folders
 /ios
 /android
+modules/*/android/build/

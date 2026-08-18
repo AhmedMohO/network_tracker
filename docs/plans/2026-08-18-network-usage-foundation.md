@@ -2235,7 +2235,9 @@ git commit -m "feat: usage chart and per-app detail screen"
 
 # Phases 3–7 — Roadmap
 
-These are **not yet task-decomposed on purpose.** Their design depends on the answers recorded in `docs/findings/phase-0.md`; writing detailed steps now would be guessing. Each gets its own plan document once Phase 2 ships and the findings are in.
+**Now fully task-decomposed in [`2026-08-18-network-usage-phases-3-7.md`](./2026-08-18-network-usage-phases-3-7.md)** (Tasks 12–24). That document opens with the Phase 0 assumptions it was written against — check them against `docs/findings/phase-0.md` before starting, and follow the branch column where they disagree.
+
+Summaries below.
 
 ### Phase 3 — Limits, cycle and projection
 Monthly/daily limit per network type, warning percentage, "remaining" and a straight-line projection of the cycle-end total. A `WorkManager` periodic check (15-minute minimum interval) posts a notification when a threshold is crossed. Depends on: Task 8 settings, Task 6 billing cycle. Deliberately **not** a foreground service.
