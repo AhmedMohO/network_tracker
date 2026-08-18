@@ -1,98 +1,133 @@
-import * as Device from 'expo-device';
-import { Platform, StyleSheet } from 'react-native';
+import { useRouter, type Href } from 'expo-router';
+import { useMemo } from 'react';
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { AnimatedIcon } from '@/components/animated-icon';
-import { HintRow } from '@/components/hint-row';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { WebBadge } from '@/components/web-badge';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { AppRow } from '@/features/usage/AppRow';
+import { NetworkFilterTabs } from '@/features/usage/NetworkFilterTabs';
+import { RangePicker } from '@/features/usage/RangePicker';
+import { TotalsCard } from '@/features/usage/TotalsCard';
+import { useUsage } from '@/features/usage/useUsage';
+import { useUsageContext } from '@/features/usage/useUsageContext';
+import { useTheme } from '@/hooks/use-theme';
 
-function getDevMenuHint() {
-  if (Platform.OS === 'web') {
-    return <ThemedText type="small">use browser devtools</ThemedText>;
-  }
-  if (Device.isDevice) {
-    return (
-      <ThemedText type="small">
-        shake device or press <ThemedText type="code">m</ThemedText> in terminal
-      </ThemedText>
-    );
-  }
-  const shortcut = Platform.OS === 'android' ? 'cmd+m (or ctrl+m)' : 'cmd+d';
+// Android assigns app UIDs from 10000 up; anything below is platform-owned.
+const FIRST_APP_UID = 10000;
+
+export default function Dashboard() {
+  const theme = useTheme();
+  const router = useRouter();
+  const { range, network, settings } = useUsageContext();
+  const { data, loading, error, reload } = useUsage(range, network);
+
+  const apps = useMemo(() => {
+    if (!data) return [];
+    return settings?.showSystemApps ? data.apps : data.apps.filter((a) => a.uid >= FIRST_APP_UID);
+  }, [data, settings?.showSystemApps]);
+
+  const hiddenCount = data ? data.apps.length - apps.length : 0;
+
   return (
-    <ThemedText type="small">
-      press <ThemedText type="code">{shortcut}</ThemedText>
-    </ThemedText>
-  );
-}
+    <ThemedView style={styles.screen}>
+      <SafeAreaView edges={['top']} style={styles.safeArea}>
+        <View style={styles.controls}>
+          <NetworkFilterTabs />
+        </View>
+        <RangePicker />
 
-export default function HomeScreen() {
-  return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <ThemedView style={styles.heroSection}>
-          <AnimatedIcon />
-          <ThemedText type="title" style={styles.title}>
-            Welcome to&nbsp;Expo
-          </ThemedText>
-        </ThemedView>
+        {loading && (
+          <ActivityIndicator color={theme.accent} accessibilityLabel="Loading usage" />
+        )}
 
-        <ThemedText type="code" style={styles.code}>
-          get started
-        </ThemedText>
+        {error && (
+          <View style={styles.block}>
+            <ThemedText type="default">Could not read usage.</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">
+              {error}
+            </ThemedText>
+            <Pressable
+              onPress={reload}
+              accessibilityRole="button"
+              accessibilityLabel="Retry"
+              style={({ pressed }) => [
+                styles.retry,
+                { backgroundColor: theme.accent, opacity: pressed ? 0.8 : 1 },
+              ]}>
+              <ThemedText type="default" themeColor="accentForeground">
+                Retry
+              </ThemedText>
+            </Pressable>
+          </View>
+        )}
 
-        <ThemedView type="backgroundElement" style={styles.stepContainer}>
-          <HintRow
-            title="Try editing"
-            hint={<ThemedText type="code">src/app/index.tsx</ThemedText>}
+        {data && !error && (
+          <FlatList
+            data={apps}
+            keyExtractor={(a) => String(a.uid)}
+            style={styles.grow}
+            contentContainerStyle={styles.list}
+            ListHeaderComponent={<TotalsCard totals={data.totals} note={data.note} />}
+            ListEmptyComponent={
+              <View style={styles.empty}>
+                <ThemedText type="default" themeColor="textSecondary">
+                  No usage recorded in this range.
+                </ThemedText>
+                {hiddenCount > 0 ? (
+                  <ThemedText type="small" themeColor="textSecondary">
+                    {hiddenCount} system {hiddenCount === 1 ? 'app is' : 'apps are'} hidden. Turn on
+                    &ldquo;Show system apps&rdquo; in settings to include {
+                      hiddenCount === 1 ? 'it' : 'them'
+                    }.
+                  </ThemedText>
+                ) : null}
+              </View>
+            }
+            renderItem={({ item }) => (
+              <AppRow
+                app={item}
+                // Task 11 adds app/usage/[uid].tsx; typed routes cannot know this href yet.
+                onPress={() => router.push(`/usage/${item.uid}` as Href)}
+              />
+            )}
           />
-          <HintRow title="Dev tools" hint={getDevMenuHint()} />
-          <HintRow
-            title="Fresh start"
-            hint={<ThemedText type="code">npm run reset-project</ThemedText>}
-          />
-        </ThemedView>
-
-        {Platform.OS === 'web' && <WebBadge />}
+        )}
       </SafeAreaView>
     </ThemedView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    flexDirection: 'row',
-  },
+  screen: { flex: 1 },
   safeArea: {
     flex: 1,
-    paddingHorizontal: Spacing.four,
-    alignItems: 'center',
     gap: Spacing.three,
-    paddingBottom: BottomTabInset + Spacing.three,
+    paddingTop: Spacing.three,
+    width: '100%',
     maxWidth: MaxContentWidth,
+    alignSelf: 'center',
   },
-  heroSection: {
+  // The range picker scrolls edge to edge and carries its own inset, so the
+  // horizontal padding lives on the sections rather than on the screen.
+  controls: { paddingHorizontal: Spacing.three },
+  grow: { flex: 1 },
+  block: { paddingHorizontal: Spacing.three, paddingVertical: Spacing.four, gap: Spacing.two },
+  // Inside the list, the content container already supplies the horizontal inset.
+  empty: { paddingVertical: Spacing.four, gap: Spacing.two },
+  retry: {
+    minHeight: 48,
+    borderRadius: Spacing.three,
     alignItems: 'center',
     justifyContent: 'center',
-    flex: 1,
     paddingHorizontal: Spacing.four,
-    gap: Spacing.four,
+    alignSelf: 'flex-start',
+    marginTop: Spacing.two,
   },
-  title: {
-    textAlign: 'center',
-  },
-  code: {
-    textTransform: 'uppercase',
-  },
-  stepContainer: {
-    gap: Spacing.three,
-    alignSelf: 'stretch',
+  list: {
     paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.four,
-    borderRadius: Spacing.four,
+    paddingBottom: BottomTabInset + Spacing.three,
+    gap: Spacing.two,
   },
 });
