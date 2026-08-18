@@ -1,4 +1,4 @@
-import { useRouter, type Href } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useMemo } from 'react';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -10,6 +10,7 @@ import { AppRow } from '@/features/usage/AppRow';
 import { NetworkFilterTabs } from '@/features/usage/NetworkFilterTabs';
 import { RangePicker } from '@/features/usage/RangePicker';
 import { TotalsCard } from '@/features/usage/TotalsCard';
+import { UsageChartCard } from '@/features/usage/UsageChart';
 import { useUsage } from '@/features/usage/useUsage';
 import { useUsageContext } from '@/features/usage/useUsageContext';
 import { useTheme } from '@/hooks/use-theme';
@@ -69,7 +70,12 @@ export default function Dashboard() {
             keyExtractor={(a) => String(a.uid)}
             style={styles.grow}
             contentContainerStyle={styles.list}
-            ListHeaderComponent={<TotalsCard totals={data.totals} note={data.note} />}
+            ListHeaderComponent={
+              <View style={styles.header}>
+                <TotalsCard totals={data.totals} note={data.note} />
+                <UsageChartCard />
+              </View>
+            }
             ListEmptyComponent={
               <View style={styles.empty}>
                 <ThemedText type="default" themeColor="textSecondary">
@@ -86,11 +92,7 @@ export default function Dashboard() {
               </View>
             }
             renderItem={({ item }) => (
-              <AppRow
-                app={item}
-                // Task 11 adds app/usage/[uid].tsx; typed routes cannot know this href yet.
-                onPress={() => router.push(`/usage/${item.uid}` as Href)}
-              />
+              <AppRow app={item} onPress={() => router.push(`/usage/${item.uid}`)} />
             )}
           />
         )}
@@ -113,6 +115,7 @@ const styles = StyleSheet.create({
   // horizontal padding lives on the sections rather than on the screen.
   controls: { paddingHorizontal: Spacing.three },
   grow: { flex: 1 },
+  header: { gap: Spacing.two },
   block: { paddingHorizontal: Spacing.three, paddingVertical: Spacing.four, gap: Spacing.two },
   // Inside the list, the content container already supplies the horizontal inset.
   empty: { paddingVertical: Spacing.four, gap: Spacing.two },

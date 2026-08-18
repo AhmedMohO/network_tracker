@@ -10,6 +10,8 @@ import type {
 declare class NetworkUsageModule {
   hasUsageAccess(): boolean;
   openUsageAccessSettings(): void;
+  /** Opens the system App info screen, which hosts that app's data usage. */
+  openAppDataUsageSettings(packageName: string): void;
   getAppUsage(q: UsageQuery): Promise<AppUsageRow[]>;
   dumpBuckets(q: UsageQuery): Promise<RawBucket[]>;
   getSeries(q: SeriesQuery): Promise<SeriesResult>;

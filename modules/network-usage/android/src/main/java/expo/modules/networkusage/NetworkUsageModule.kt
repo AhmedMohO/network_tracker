@@ -1,8 +1,16 @@
 package expo.modules.networkusage
 
+import android.content.ActivityNotFoundException
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
+import expo.modules.kotlin.exception.CodedException
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+
+class NoAppSettingsScreenException(pkg: String) :
+    CodedException("No system settings screen is available for $pkg")
 
 class NetworkUsageModule : Module() {
 
@@ -15,6 +23,19 @@ class NetworkUsageModule : Module() {
         Function("hasUsageAccess") { UsageAccess.has(context) }
 
         Function("openUsageAccessSettings") { UsageAccess.open(context) }
+
+        Function("openAppDataUsageSettings") { pkg: String ->
+            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                .setData(Uri.fromParts("package", pkg, null))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            try {
+                context.startActivity(intent)
+            } catch (e: ActivityNotFoundException) {
+                // Some builds ship without the app-details activity; that is a
+                // message for the user, not a crash.
+                throw NoAppSettingsScreenException(pkg)
+            }
+        }
 
         AsyncFunction("getAppUsage") { q: UsageQuery ->
             StatsReader(context).appUsage(q)

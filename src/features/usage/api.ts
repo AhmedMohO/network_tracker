@@ -21,6 +21,14 @@ export function openUsageAccessSettings(): void {
   NetworkUsage.openUsageAccessSettings();
 }
 
+/**
+ * Opens the system App info screen for a package. Throws when the device has
+ * no such activity, so callers handle that rather than letting it crash.
+ */
+export function openAppDataUsageSettings(packageName: string): void {
+  NetworkUsage.openAppDataUsageSettings(packageName);
+}
+
 export async function fetchUsage(
   range: Range,
   network: NetworkFilter
