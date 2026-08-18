@@ -99,6 +99,12 @@ export const en = {
     body: 'One row per app, in raw bytes, for the selected range and filter.',
     failed: 'Could not export that.',
   },
+  update: {
+    readyTitle: 'Update ready',
+    readyBody: 'A new version has been downloaded. Restart to use it.',
+    restart: 'Restart',
+    later: 'Later',
+  },
   app: {
     removed: 'Removed app (UID {{uid}})',
     tethering: 'Hotspot & tethering',
