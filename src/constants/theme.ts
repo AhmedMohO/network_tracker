@@ -26,6 +26,9 @@ export const Colors = {
     // Second series colour: far enough from the blue accent in hue and
     // lightness to stay distinguishable, including for red-green deficiency.
     accentAlt: '#7A4CC4',
+    // Amber alert tone, distinct from both `accent` (blue) and `danger`
+    // (red) by hue alone. >= 4.5:1 against `background` and `backgroundElement`.
+    warning: '#946200',
   },
   dark: {
     text: '#ffffff',
@@ -39,6 +42,7 @@ export const Colors = {
     border: '#6A6F78',
     danger: '#FF8A80',
     accentAlt: '#C4A2F5',
+    warning: '#E8A200',
   },
 } as const;
 

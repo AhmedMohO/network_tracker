@@ -7,6 +7,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { LimitCard } from '@/features/limits/LimitCard';
+import { useLimitStatus } from '@/features/limits/useLimitStatus';
 import { partitionApps } from '@/features/usage/aggregate';
 import { AppRow } from '@/features/usage/AppRow';
 import { NetworkFilterTabs } from '@/features/usage/NetworkFilterTabs';
@@ -23,6 +25,9 @@ export default function Dashboard() {
   const { t } = useTranslation();
   const { range, network, settings } = useUsageContext();
   const { data, loading, error, reload } = useUsage(range, network);
+  // The limit is always about the billing cycle, not the dashboard's own
+  // selected range, so it runs its own query — see useLimitStatus.
+  const limitStatus = useLimitStatus();
 
   // The headline stays the device total, so the apps the list leaves out are
   // kept around for TotalsCard to disclose rather than silently dropped.
@@ -72,6 +77,9 @@ export default function Dashboard() {
             contentContainerStyle={styles.list}
             ListHeaderComponent={
               <View style={styles.header}>
+                {network === 'MOBILE' && limitStatus ? (
+                  <LimitCard status={limitStatus} />
+                ) : null}
                 <TotalsCard totals={data.totals} coverage={data.coverage} hidden={hidden} />
                 <UsageChartCard />
                 {apps.length > 0 ? (
