@@ -5,6 +5,7 @@ export type Settings = {
   mobileLimitBytes: number | null;
   warnAtPercent: number;
   showSystemApps: boolean;
+  lastAlert: { key: string; at: number } | null;
 };
 
 const KEY = "settings.v1";
@@ -14,6 +15,7 @@ const DEFAULTS: Settings = {
   mobileLimitBytes: null,
   warnAtPercent: 80,
   showSystemApps: false,
+  lastAlert: null,
 };
 
 export async function loadSettings(): Promise<Settings> {

@@ -151,4 +151,13 @@ export const en = {
     projectedOver: 'At this rate you will use {{bytes}} — over your limit.',
     a11y: '{{used}} of {{limit}} used, {{percent}} percent, {{elapsed}} percent through the cycle.',
   },
+  alerts: {
+    overTitle: 'Mobile data limit reached',
+    overBody: 'You have used {{used}} of {{limit}}.',
+    warnTitle: '{{percent}}% of your data used',
+    warnBody: '{{remaining}} left, with {{cycleRemaining}}% of the cycle to go.',
+    spikeTitle: 'Unusual mobile data usage',
+    spikeBody: '{{bytes}} today, well above your recent average.',
+    channelName: 'Usage alerts',
+  },
 };

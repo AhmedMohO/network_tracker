@@ -88,3 +88,75 @@ npx expo run:android
 `over` states and `detectSpike()`, neither of which this task added UI for
 beyond the passive card. Notification-triggering behaviour is out of scope
 here and unverified by this checklist.
+
+---
+
+## 6. Task 14 — background threshold checks and notifications
+
+**Nothing in Task 14 has ever executed.** `ensureNotificationSetup`, `notify`,
+`registerBackgroundCheck` and `runUsageCheck` are only verified by
+`tsc --noEmit` and `jest` (60 passing, unchanged — the new code has no unit
+tests of its own; it is a thin composition of already-tested `limits.ts` and
+`range.ts` functions plus I/O this environment cannot exercise). This
+environment has no Android device and no emulator, so none of the following
+has run.
+
+**First, rebuild the dev client** — `expo-notifications`, `expo-background-task`
+and `expo-task-manager` are new native modules; a JS reload will not pick them
+up.
+
+```
+npx expo prebuild --clean
+npx expo run:android
+```
+
+- [ ] **Logic, forced `over`.** In Settings, set the mobile limit just below
+      current cycle usage. From the Probe tab (add a temporary button calling
+      `runUsageCheck(Date.now())` from `@/features/limits/backgroundCheck` —
+      remove it afterwards, it is not shipped code), confirm it returns
+      `"posted"` and the "Mobile data limit reached" notification arrives
+      with the correct used/limit figures.
+- [ ] **Logic, forced `warn`.** Set the limit so current usage sits at or
+      above `warnAtPercent` but below the limit. Confirm `"posted"` and the
+      "N% of your data used" notification, with correct remaining bytes and
+      cycle-remaining percent.
+- [ ] **Logic, `ok`.** Set a high limit. Confirm `runUsageCheck` returns
+      `"quiet"` with no notification.
+- [ ] **Once-per-cycle rule.** Immediately after any `"posted"` result above,
+      call `runUsageCheck(Date.now())` again. Confirm it returns `"quiet"`
+      and no second notification appears. Confirm `Settings.lastAlert` in
+      storage carries the fired key.
+- [ ] **New cycle re-arms.** With `lastAlert` set from a prior cycle, advance
+      past the next `cycleStartDay` (or change `cycleStartDay` to force a new
+      cycle) and confirm a still-qualifying state posts again — the alert key
+      includes the cycle start, so a new cycle is a new key.
+- [ ] **Scheduling.** With the app backgrounded, trigger the task manually:
+      ```
+      adb shell cmd jobscheduler run -f com.anonymous.network_tracker 0
+      ```
+      Expected: the notification arrives with the app in the background,
+      using whatever state (`over`/`warn`/spike/quiet) is currently true.
+- [ ] **Permission denial.** Deny the notification permission when prompted.
+      Confirm `ensureNotificationSetup()` returns `false` and
+      `registerBackgroundCheck()` is never called (check
+      `TaskManager.isTaskRegisteredAsync` stays `false`).
+- [ ] **Web build is inert.** `npx expo start --web` (or the static web
+      build) loads without throwing — the `Platform.OS !== 'android'` guards
+      in `_layout.tsx` and `registerBackgroundCheck()` mean
+      `ensureNotificationSetup`/`registerBackgroundCheck`/`defineTask` never
+      run there.
+- [ ] **`HISTORY_DAYS` timeout question.** `runUsageCheck`'s spike check
+      issues 15 sequential `fetchUsage` calls (today + 14 history days),
+      each hitting `NetworkStatsManager`. `HISTORY_DAYS` is left at 14 per
+      the plan's own guidance — confirm on-device that the background task
+      does not time out. If it does, drop `HISTORY_DAYS` in
+      `src/features/limits/backgroundCheck.ts` to 7 and record that change
+      here.
+- [ ] **Arabic.** Switch language to Arabic, force a `warn` or `over` state,
+      and confirm the notification title/body render in Arabic prose with
+      Latin byte units and digits, not a raw `alerts.*` key.
+- [ ] **Channel name.** Confirm the "Usage alerts" (or Arabic
+      "تنبيهات الاستهلاك") channel appears correctly in Android's
+      per-app notification settings. Note: the channel name is fixed at
+      whichever language was active when the channel was first created — this
+      is an accepted limitation, not a bug to fix.

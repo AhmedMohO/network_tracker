@@ -36,7 +36,9 @@
       ],
       "expo-sqlite",
       "@react-native-community/datetimepicker",
-      "expo-localization"
+      "expo-localization",
+      "expo-background-task",
+      "expo-notifications"
     ],
     "experiments": {
       "typedRoutes": true,

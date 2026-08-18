@@ -154,4 +154,13 @@ export const ar: typeof en = {
     projectedOver: 'بهذا المعدل ستستهلك {{bytes}} — وهذا يتجاوز حدك.',
     a11y: 'استُهلك {{used}} من {{limit}}، {{percent}} بالمئة، ومضى {{elapsed}} بالمئة من الدورة.',
   },
+  alerts: {
+    overTitle: 'تم بلوغ حد بيانات الجوال',
+    overBody: 'لقد استهلكت {{used}} من {{limit}}.',
+    warnTitle: 'استهلكت {{percent}} بالمئة من بياناتك',
+    warnBody: 'متبقٍ {{remaining}}، وتبقّى {{cycleRemaining}} بالمئة من الدورة.',
+    spikeTitle: 'استهلاك غير معتاد لبيانات الجوال',
+    spikeBody: '{{bytes}} اليوم، أعلى بكثير من متوسطك الأخير.',
+    channelName: 'تنبيهات الاستهلاك',
+  },
 };
