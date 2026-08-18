@@ -2,19 +2,27 @@ import NetworkUsage from '@modules/network-usage';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { rateBetween, type Counters, type Sample } from '@/features/live/rate';
-import { formatRate } from '@/features/usage/format';
+import { useLiveApps } from '@/features/live/useLiveApps';
+import { AppIcon } from '@/features/usage/AppIcon';
+import { formatBytes, formatRate } from '@/features/usage/format';
 import { useTheme } from '@/hooks/use-theme';
 
 const INTERVAL_MS = 1000;
 /** One minute of history on screen, at one sample a second. */
 const WINDOW = 60;
+/**
+ * The window and cadence Phase 0 Q4 validated: shorter windows return nothing
+ * useful, and a faster poll only re-reads the same system buckets.
+ */
+const APPS_WINDOW_MS = 10_000;
+const APPS_INTERVAL_MS = 2000;
 
 /**
  * Sixty one-second bars. Plain views rather than the usage chart: these bars
@@ -52,6 +60,7 @@ export default function Live() {
   const [sample, setSample] = useState<Sample | null>(null);
   const [history, setHistory] = useState<Sample[]>([]);
   const previous = useRef<{ counters: Counters; at: number } | null>(null);
+  const apps = useLiveApps(APPS_WINDOW_MS, APPS_INTERVAL_MS);
 
   useFocusEffect(
     useCallback(() => {
@@ -108,6 +117,33 @@ export default function Live() {
         <ThemedText type="small" themeColor="textSecondary">
           {t('live.note')}
         </ThemedText>
+
+        <ThemedText type="smallBold">{t('live.appsHeading')}</ThemedText>
+        <ThemedText type="small" themeColor="textSecondary">
+          {t('live.appsNote')}
+        </ThemedText>
+
+        <ScrollView contentContainerStyle={styles.apps}>
+          {apps.length === 0 ? (
+            <ThemedText type="small" themeColor="textSecondary">
+              {t('live.appsEmpty')}
+            </ThemedText>
+          ) : (
+            apps.map((app) => (
+              <View key={app.uid} style={styles.appRow}>
+                <AppIcon packageName={app.packageName} name={app.name} size={28} />
+                <ThemedText type="default" numberOfLines={1} style={styles.appName}>
+                  {app.name}
+                </ThemedText>
+                {/* formatBytes, never formatRate: this is a total over the
+                    window, and calling it MB/s would be a lie. */}
+                <ThemedText type="smallBold" style={styles.appBytes}>
+                  {formatBytes(app.total)}
+                </ThemedText>
+              </View>
+            ))
+          )}
+        </ScrollView>
       </SafeAreaView>
     </ThemedView>
   );
@@ -136,4 +172,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
   },
   bar: { flex: 1, minHeight: 1, borderTopLeftRadius: 2, borderTopRightRadius: 2 },
+  apps: { gap: Spacing.two, paddingBottom: Spacing.three },
+  appRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two, minHeight: 40 },
+  appName: { flex: 1 },
+  appBytes: { fontVariant: ['tabular-nums'] },
 });

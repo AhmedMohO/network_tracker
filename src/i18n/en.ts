@@ -87,6 +87,9 @@ export const en = {
     badge: 'Live · whole device',
     a11y: 'Downloading {{down}}, uploading {{up}}.',
     sparkA11y: 'Download speed over the last minute, peaking at {{peak}}.',
+    appsHeading: 'Apps · last 10 seconds',
+    appsNote: 'Bytes each app was credited with in the last 10 seconds — a total for that window, not a speed.',
+    appsEmpty: 'No app traffic in the last 10 seconds.',
     note: 'Live speed is measured for the whole device, while this screen is open. Android reports no live speed per app, and no reliable live split between mobile and Wi-Fi.',
   },
   app: {
