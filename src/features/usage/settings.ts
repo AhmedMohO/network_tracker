@@ -15,6 +15,12 @@ export type Settings = {
   pairToken: string | null;
   deviceId: string | null;
   deviceLabel: string | null;
+  /** Set by `features/family/sync`'s `rpc` on every successful call. */
+  lastSyncOkAt: number | null;
+  /** Set on the first failure of a run of failures; cleared on the next success. */
+  lastSyncErrorAt: number | null;
+  /** The `lastSyncErrorAt` value already notified about; see `backgroundCheck`. */
+  syncErrorNotifiedAt: number | null;
 };
 
 const KEY = "settings.v1";
@@ -31,6 +37,9 @@ const DEFAULTS: Settings = {
   pairToken: null,
   deviceId: null,
   deviceLabel: null,
+  lastSyncOkAt: null,
+  lastSyncErrorAt: null,
+  syncErrorNotifiedAt: null,
 };
 
 export async function loadSettings(): Promise<Settings> {

@@ -227,4 +227,9 @@ export const en = {
     },
     channelName: 'Usage alerts',
   },
+  family: {
+    syncBrokenTitle: 'Family sharing has stopped',
+    syncBrokenBody:
+      "Usage sharing hasn't reached the family server since {{date}}. Open the app on a paired device, or check the project isn't paused.",
+  },
 };

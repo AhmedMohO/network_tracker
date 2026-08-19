@@ -3,9 +3,11 @@ import * as TaskManager from "expo-task-manager";
 import { Platform } from "react-native";
 
 import { snapshotDay } from "@/features/archive/db";
+import { syncFromChild } from "@/features/family/sync";
 import i18n from "@/i18n";
 import { fetchUsage } from "@/features/usage/api";
 import { formatBytes } from "@/features/usage/format";
+import { formatDay } from "@/i18n/format";
 import { presetRange } from "@/features/usage/range";
 import { loadSettings, saveSettings } from "@/features/usage/settings";
 
@@ -187,6 +189,37 @@ export async function runUsageCheck(now: number) {
     await snapshotDay(presetRange("yesterday", now).start);
   } catch {
     // Nothing to tell the user: the archive only matters months from now.
+  }
+
+  // Best-effort, same posture as snapshotDay above: sync must never cost this
+  // run its alerts or its archive write. Offline, or the project is paused —
+  // either way the next run re-pushes, since the RPC upserts. `syncFromChild`
+  // (via `rpc`) has already stamped `lastSyncErrorAt`; the check below is what
+  // stops that stamp from being a secret.
+  try {
+    await syncFromChild(now);
+  } catch {
+    // See above.
+  }
+
+  // `decideAlert`'s pruning is keyed to a limit/spike alert's own network and
+  // cycle, so a "sync is broken" key does not fit `alertOnce` — every call
+  // would fail the network-prefix check and re-fire on the next 15-minute
+  // run. `syncErrorNotifiedAt` is a dedicated one-shot instead: it records
+  // *which* failure run was already reported, so a recovery (which clears
+  // `lastSyncErrorAt`) and a later re-failure naturally get a new value and
+  // notify again.
+  const { lastSyncErrorAt, syncErrorNotifiedAt } = await loadSettings();
+  if (
+    lastSyncErrorAt &&
+    now - lastSyncErrorAt > 2 * DAY &&
+    syncErrorNotifiedAt !== lastSyncErrorAt
+  ) {
+    await notify(
+      i18n.t("family.syncBrokenTitle"),
+      i18n.t("family.syncBrokenBody", { date: formatDay(lastSyncErrorAt) })
+    );
+    await saveSettings({ syncErrorNotifiedAt: lastSyncErrorAt });
   }
 
   return mobile === "posted" || wifi === "posted"
