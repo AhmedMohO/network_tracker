@@ -81,6 +81,22 @@ export default function ChildUsageScreen() {
     }
   };
 
+  // Reuses `summarizeChildren` (already tested in `useFamily.test.ts`) rather
+  // than re-deriving "label from the newest row" here.
+  const summary = useMemo(
+    () => summarizeChildren(snapshots).find((c) => c.deviceId === deviceId) ?? null,
+    [snapshots, deviceId]
+  );
+
+  // Declared here, ahead of every closure below that reads it (review Finding
+  // M-10 — this used to sit ~80 lines further down, which happened to be
+  // safe only because closures aren't invoked until after render completes).
+  const label = summary?.label ?? deviceId ?? '';
+  const lastSeenLine =
+    summary && summary.lastSeen > 0
+      ? t('family.lastSeen', { when: formatDateTime(summary.lastSeen) })
+      : t('family.neverCheckedIn');
+
   // The child's newest outstanding "ask for more data" request — `null` once
   // a `grant` row's `requestAt` matches it, since the request row itself is
   // never deleted (it stays until the child's next tap replaces it via the
@@ -107,11 +123,19 @@ export default function ChildUsageScreen() {
     if (!pendingRequest) return;
     setAnswering(true);
     try {
-      await pushSnapshot('grant', 0, {
-        grantedBytes,
-        at: Date.now(),
-        requestAt: pendingRequest.at,
-      });
+      // review Finding C-1: written under the *child's* device id/label
+      // (`target`), not this (parent) device's own — `family_snapshots`' PK
+      // is `(pair_token, device_id, kind, day)`, and `syncFromChild` (and
+      // this screen's own `pendingRequest` above) both look a `grant` row up
+      // by the child's id. Writing it under the parent's own id meant that
+      // predicate could never match, and collapsed every child's grant into
+      // one row per parent. See `pushSnapshot`'s own doc comment.
+      await pushSnapshot(
+        'grant',
+        0,
+        { grantedBytes, at: Date.now(), requestAt: pendingRequest.at },
+        { deviceId, deviceLabel: label }
+      );
       toast(
         t(
           grantedBytes > 0 ? 'family.requestAnsweredGranted' : 'family.requestAnsweredDeclined',
@@ -125,13 +149,6 @@ export default function ChildUsageScreen() {
       setAnswering(false);
     }
   };
-
-  // Reuses `summarizeChildren` (already tested in `useFamily.test.ts`) rather
-  // than re-deriving "label from the newest row" here.
-  const summary = useMemo(
-    () => summarizeChildren(snapshots).find((c) => c.deviceId === deviceId) ?? null,
-    [snapshots, deviceId]
-  );
 
   const series = useMemo(
     () => buildDailySeries(snapshots, range.start, range.end, t('family.otherApps'), Date.now(), network),
@@ -183,12 +200,6 @@ export default function ChildUsageScreen() {
     );
     return { stale: false as const, status, when };
   }, [settings, deviceId, snapshots, summary, recent]);
-
-  const label = summary?.label ?? deviceId ?? '';
-  const lastSeenLine =
-    summary && summary.lastSeen > 0
-      ? t('family.lastSeen', { when: formatDateTime(summary.lastSeen) })
-      : t('family.neverCheckedIn');
 
   if (role !== 'parent') {
     return (

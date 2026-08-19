@@ -24,6 +24,24 @@ export function suggestAskedBytes(status: LimitStatus): number {
   return Math.round(Math.max(overage, minBump));
 }
 
+/**
+ * How long an unanswered request waits before the child gives up on it
+ * (review Finding I-3). Generous, not tight — the ordinary case is a parent
+ * who simply hasn't opened the app, not a broken sync — but finite, so a
+ * request the parent never answers (or a grant missed because of a
+ * mis-set clock, past `GRANT_LOOKBACK_MS`'s own reach) does not leave
+ * `syncFromChild` pulling the family table every 15 minutes forever, and
+ * does not leave the child's card stuck on "Waiting…" with no way out.
+ * `RequestCard` also gives the child an explicit Cancel button — this TTL is
+ * the backstop for the case nobody taps it.
+ */
+export const REQUEST_TTL_MS = 3 * 24 * 60 * 60 * 1000;
+
+/** Whether an outstanding request is old enough to give up on. */
+export function isRequestExpired(at: number, now: number): boolean {
+  return now - at > REQUEST_TTL_MS;
+}
+
 export type GrantOutcome = {
   /** Whether the outstanding request this grant answers should be cleared. */
   clearPending: boolean;

@@ -325,6 +325,7 @@ export const ar: typeof en = {
     requestHint: 'يرفع المستوى الذي يُنبِّهك به هذا الجهاز — لا يغيّر ما يمكن لِـ {{label}} رؤيته.',
     requestButton: 'اطلب من {{label}} {{bytes}} إضافية',
     requestPending: 'بانتظار رد {{label}} على طلبك بـ {{bytes}} إضافية، أُرسل {{when}}.',
+    requestCancelButton: 'إلغاء الطلب',
     requestSentToast: 'تم إرسال الطلب.',
     requestFailedToast: 'تعذّر إرسال الطلب. تحقق من اتصالك وحاول مرة أخرى.',
     requestAnswerHeading: 'طلب تنبيه بيانات',

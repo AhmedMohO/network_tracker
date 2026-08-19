@@ -16,8 +16,8 @@ import { loadSettings, saveSettings, type Settings } from "@/features/usage/sett
 
 import {
   decideAlert,
-  decideChildRequest,
   decideQuietChild,
+  decideRequestNotice,
   isStale,
   limitAlertKey,
   spikeAlertKey,
@@ -274,30 +274,39 @@ async function checkChild(
   }
 
   // A child's outstanding "ask for more data" request, notified once per
-  // `request.at` — same one-shot pattern as the quiet-child notice below,
-  // and for the same reason (`decideChildRequest`'s own doc comment in
-  // `alerts.ts` has the full story on why `decideAlert`'s array does not
-  // fit this either). The newest `request` row wins, matching the "one
-  // outstanding request per device" upsert the whole feature relies on.
+  // `request.at` and never for one a `grant` has already answered — the full
+  // decision (including the M-7 fix) lives in `decideRequestNotice`
+  // (`alerts.ts`), not here, so it stays testable without importing this
+  // module (see that function's own doc comment for why). The newest row of
+  // each kind wins, matching the "one outstanding request per device" upsert
+  // the whole feature relies on.
   const requestRow = snapshots
     .filter((s) => s.kind === "request")
     .sort((a, b) => b.updatedAt - a.updatedAt)[0];
+  const grantRow = snapshots
+    .filter((s) => s.kind === "grant")
+    .sort((a, b) => b.updatedAt - a.updatedAt)[0];
   const askedBytes = requestRow?.payload?.askedBytes;
   const requestAt = requestRow?.payload?.at;
-  if (
-    typeof askedBytes === "number" &&
-    typeof requestAt === "number" &&
-    decideChildRequest(requestAt, settings.childRequestNotifiedAt[child.deviceId])
-  ) {
+  const requestNotice = decideRequestNotice(
+    typeof askedBytes === "number" && typeof requestAt === "number"
+      ? { askedBytes, at: requestAt }
+      : null,
+    typeof grantRow?.payload?.requestAt === "number"
+      ? { requestAt: grantRow.payload.requestAt }
+      : null,
+    settings.childRequestNotifiedAt[child.deviceId]
+  );
+  if (requestNotice.fire) {
     await notify(
       i18n.t("family.childRequestTitle", { label: child.label }),
       i18n.t("family.childRequestBody", {
         label: child.label,
-        bytes: formatBytes(askedBytes),
+        bytes: formatBytes(requestNotice.askedBytes),
       })
     );
     posted = true;
-    requestNotifiedAt = requestAt;
+    requestNotifiedAt = requestNotice.notifiedAt;
   }
 
   // Independent of any limit: an honest observation ("no check-in since

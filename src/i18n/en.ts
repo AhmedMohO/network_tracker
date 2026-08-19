@@ -344,6 +344,7 @@ export const en = {
     requestHint: 'Raises the level at which this device warns you — it does not change what {{label}} can see.',
     requestButton: 'Ask {{label}} for {{bytes}} more',
     requestPending: 'Waiting for {{label}} to answer your request for {{bytes}} more, sent {{when}}.',
+    requestCancelButton: 'Cancel request',
     requestSentToast: 'Request sent.',
     requestFailedToast: 'Could not send the request. Check your connection and try again.',
     requestAnswerHeading: 'Data alert request',

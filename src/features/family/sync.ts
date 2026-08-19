@@ -9,7 +9,7 @@ import { presetRange } from "@/features/usage/range";
 import { loadSettings, saveSettings } from "@/features/usage/settings";
 
 import { mergeCache, readCache } from "./cache";
-import { applyGrant, type GrantPayload } from "./request";
+import { applyGrant, isRequestExpired, type GrantPayload } from "./request";
 
 export type SnapshotKind = "daily" | "recent" | "request" | "grant";
 
@@ -158,14 +158,33 @@ export function recentPayload(
   return { ...dailyPayload(apps, perNetwork), totals, context, at, coverage };
 }
 
-/** No-ops when unpaired. Every caller relies on that; do not add a throw. */
-export async function pushSnapshot(kind: SnapshotKind, day: number, payload: unknown) {
+/**
+ * No-ops when unpaired. Every caller relies on that; do not add a throw.
+ *
+ * `target`, when given, writes the row under a *different* device's id/label
+ * than this device's own — the one case that needs it is the parent writing
+ * a `grant` row: `family_snapshots`' primary key is
+ * `(pair_token, device_id, kind, day)`, and both readers (`syncFromChild`
+ * below, and `[deviceId].tsx`'s own `snapshots` filter) look a `grant` up by
+ * the *child's* `device_id`, not the pusher's. Writing it under the parent's
+ * own id (the pre-Task-33-review-fix behaviour) meant the predicate the child
+ * checks could never match, and collapsed every child's grant into one row.
+ * `family_push`'s `p_device`/`p_label` are plain parameters with no
+ * server-side pinning to the caller (`docs/family-schema.sql`), so this is a
+ * client-only change — confirmed against the RPC definition, no migration.
+ */
+export async function pushSnapshot(
+  kind: SnapshotKind,
+  day: number,
+  payload: unknown,
+  target?: { deviceId: string; deviceLabel: string }
+) {
   const s = await loadSettings();
   if (!s.pairToken || !s.deviceId) return;
   await rpc("family_push", {
     p_token: s.pairToken,
-    p_device: s.deviceId,
-    p_label: s.deviceLabel ?? "",
+    p_device: target?.deviceId ?? s.deviceId,
+    p_label: target?.deviceLabel ?? (s.deviceLabel ?? ""),
     p_kind: kind,
     p_day: day,
     p_payload: payload,
@@ -303,33 +322,55 @@ export async function syncFromChild(now: number) {
 
     // Task 33: check whether the parent has answered an outstanding "ask for
     // more data" request. Gated on `pendingLimitRequest` so a device with
-    // nothing outstanding makes no extra call, and `since` is the request's
-    // own timestamp — the grant can only have been written after it — so this
-    // pulls a handful of rows, not the family's whole history. Kept inside
-    // this same `syncRun` call so a failed pull marks the run failed like any
-    // other network step here.
+    // nothing outstanding makes no extra call. Kept inside this same
+    // `syncRun` call so a failed pull marks the run failed like any other
+    // network step here.
     if (s.pendingLimitRequest) {
-      const rows = await pullSnapshots(s.pendingLimitRequest.at - GRANT_LOOKBACK_MS);
-      const grantRow = rows.find((r) => r.kind === "grant" && r.deviceId === s.deviceId);
-      const grant: GrantPayload | undefined =
-        grantRow &&
-        typeof grantRow.payload?.grantedBytes === "number" &&
-        typeof grantRow.payload?.requestAt === "number"
-          ? grantRow.payload
-          : undefined;
+      if (isRequestExpired(s.pendingLimitRequest.at, now)) {
+        // Review Finding I-3: an unanswered request cannot wait forever —
+        // clear it so the child's card gets its "Ask for more data" button
+        // back, and so this block stops pulling on every future sync.
+        await saveSettings({ pendingLimitRequest: null });
+      } else {
+        // ponytail: `family_pull` (docs/family-schema.sql) has no per-device
+        // or per-kind filter, so this downloads every family member's rows
+        // updated since the cursor below — every sibling's `recent` payload
+        // (up to 50 apps, names, package names) included, on this device's
+        // own connection, for as long as a request stays outstanding.
+        // Bounded, not eliminated: `since` narrows it to ~GRANT_LOOKBACK_MS
+        // per call and `REQUEST_TTL_MS` bounds how many cycles this can
+        // repeat for (review Finding I-4) — a handful of pulls over at most
+        // a few days, not the family's whole history forever. A real fix
+        // needs a narrower RPC (e.g. filtered by device/kind), which is a
+        // migration — raise it if this ever bites a real metered plan.
+        const rows = await pullSnapshots(s.pendingLimitRequest.at - GRANT_LOOKBACK_MS);
+        const grantRow = rows
+          .filter((r) => r.kind === "grant" && r.deviceId === s.deviceId)
+          // Newest first — matches `[deviceId].tsx` and `backgroundCheck.ts`'s
+          // identical tie-break (review Finding M-6). Harmless while the PK
+          // guarantees one grant row per child, but it is the correct
+          // tie-break if that ever stops being true.
+          .sort((a, b) => b.updatedAt - a.updatedAt)[0];
+        const grant: GrantPayload | undefined =
+          grantRow &&
+          typeof grantRow.payload?.grantedBytes === "number" &&
+          typeof grantRow.payload?.requestAt === "number"
+            ? grantRow.payload
+            : undefined;
 
-      if (grant) {
-        const outcome = applyGrant(
-          grant,
-          s.pendingLimitRequest.at,
-          s.appliedGrantRequestAt,
-          s.mobileLimitBytes
-        );
-        await saveSettings({
-          ...(outcome.clearPending ? { pendingLimitRequest: null } : {}),
-          appliedGrantRequestAt: outcome.appliedRequestAt,
-          ...(outcome.apply ? { mobileLimitBytes: outcome.newLimitBytes } : {}),
-        });
+        if (grant) {
+          const outcome = applyGrant(
+            grant,
+            s.pendingLimitRequest.at,
+            s.appliedGrantRequestAt,
+            s.mobileLimitBytes
+          );
+          await saveSettings({
+            ...(outcome.clearPending ? { pendingLimitRequest: null } : {}),
+            appliedGrantRequestAt: outcome.appliedRequestAt,
+            ...(outcome.apply ? { mobileLimitBytes: outcome.newLimitBytes } : {}),
+          });
+        }
       }
     }
   });

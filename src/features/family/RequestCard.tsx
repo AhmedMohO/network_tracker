@@ -28,6 +28,14 @@ import { pushSnapshot } from './sync';
  * (`features/family/request.ts`'s `applyGrant`), the same one
  * `useLimitStatus('MOBILE')` reads, and the same mobile-only convention the
  * parent's own per-child notification threshold already uses.
+ *
+ * Review Finding M-9: `useLimitStatus` below still runs on every render this
+ * component gets — Rules of Hooks forbids calling it only after a role
+ * check — so the actual fix is at the call site: `(tabs)/index.tsx` mounts
+ * `<RequestCard />` at all only for `familyRole === 'child'`, using the role
+ * it already has, so a parent/unpaired install never renders this component
+ * (and never runs this hook) in the first place. The guard just below stays
+ * as a cheap defensive backstop, not the real fix.
  */
 export function RequestCard() {
   const theme = useTheme();
@@ -60,6 +68,21 @@ export function RequestCard() {
     }
   };
 
+  // Review Finding I-3: a way out that doesn't wait for the (multi-day) TTL
+  // `syncFromChild` enforces on its own — no network call needed, since the
+  // server row is simply superseded the next time this device asks again (or
+  // left as an unread answer for one it no longer cares about, the same as
+  // any other request past its TTL).
+  const cancelRequest = async () => {
+    setBusy(true);
+    try {
+      await saveSettings({ pendingLimitRequest: null });
+      reloadSettings();
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <Card style={styles.card}>
       <View style={styles.header}>
@@ -76,13 +99,23 @@ export function RequestCard() {
       </ThemedText>
 
       {pending ? (
-        <ThemedText type="small" themeColor="textSecondary">
-          {t('family.requestPending', {
-            label,
-            bytes: formatBytes(pending.askedBytes),
-            when: formatDateTime(pending.at),
-          })}
-        </ThemedText>
+        <>
+          <ThemedText type="small" themeColor="textSecondary">
+            {t('family.requestPending', {
+              label,
+              bytes: formatBytes(pending.askedBytes),
+              when: formatDateTime(pending.at),
+            })}
+          </ThemedText>
+          <Button
+            variant="ghost"
+            size="sm"
+            title={t('family.requestCancelButton')}
+            onPress={cancelRequest}
+            disabled={busy}
+            accessibilityLabel={t('family.requestCancelButton')}
+          />
+        </>
       ) : (
         <Button
           variant="default"

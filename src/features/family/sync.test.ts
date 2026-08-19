@@ -235,14 +235,56 @@ describe("syncFromChild", () => {
     expect(urls.some((u) => u.includes("family_pull"))).toBe(false);
   });
 
-  it("applies a matching grant and clears the pending request", async () => {
+  it("applies a grant derived from the parent's own pushSnapshot call — producer/consumer round trip (review Finding I-2)", async () => {
+    // The old version of this test hand-wrote a `family_pull` row stamped
+    // with the child's own device id — a shape no code in this repo actually
+    // produced, since the parent's unfixed `pushSnapshot` wrote its *own*
+    // device id (review Finding C-1). That let this suite stay green over a
+    // grant that could never reach a child on real hardware. This version
+    // drives the actual producer call — `pushSnapshot('grant', ..., target)`,
+    // the exact call `[deviceId].tsx`'s `answerRequest` makes — captures the
+    // real request body it sends, and feeds *that* into the mocked
+    // `family_pull` response, so a regression in either side breaks this test.
+    const childDeviceId = "d".repeat(32);
+    // Realistic and recent relative to the sync's own `now` (1_700_000_000_000)
+    // below — a small epoch-relative number here would trip the I-3 TTL check
+    // and take the "expired, clear without pulling" branch instead of this
+    // test's intended "grant found and applied" one.
+    const requestAt = 1_700_000_000_000 - 60_000;
+    const grantedBytes = 2 * 1024 ** 3;
+
+    let capturedBody: any = null;
+    (loadSettings as jest.Mock).mockResolvedValueOnce({
+      familyRole: "parent",
+      pairToken: "t".repeat(32),
+      // The parent's own id — deliberately different from `childDeviceId`,
+      // so this fails loudly if `pushSnapshot` ever falls back to it again.
+      deviceId: "p".repeat(32),
+      deviceLabel: "Dad's phone",
+    });
+    (globalThis as any).fetch = jest.fn((_url: string, init: any) => {
+      capturedBody = JSON.parse(init.body);
+      return Promise.resolve(okResponse());
+    });
+    await pushSnapshot(
+      "grant",
+      0,
+      { grantedBytes, at: 2_000, requestAt },
+      { deviceId: childDeviceId, deviceLabel: "Child" }
+    );
+    // Sanity check on the producer side alone, independent of anything the
+    // child does below: the row must be stamped with the child's id, not the
+    // pushing (parent) device's own id.
+    expect(capturedBody.p_device).toBe(childDeviceId);
+    expect(capturedBody.p_device).not.toBe("p".repeat(32));
+
     (loadSettings as jest.Mock).mockResolvedValue({
       familyRole: "child",
       pairToken: "t".repeat(32),
-      deviceId: "d".repeat(32),
+      deviceId: childDeviceId,
       deviceLabel: "Child",
       lastSyncErrorAt: null,
-      pendingLimitRequest: { askedBytes: 2 * 1024 ** 3, at: 1_000 },
+      pendingLimitRequest: { askedBytes: grantedBytes, at: requestAt },
       appliedGrantRequestAt: null,
       mobileLimitBytes: 5 * 1024 ** 3,
     });
@@ -251,14 +293,16 @@ describe("syncFromChild", () => {
       if (String(url).includes("family_pull")) {
         return Promise.resolve({
           ok: true,
+          // Derived from `capturedBody` — the producer's real output — not
+          // hand-authored.
           text: async () =>
             JSON.stringify([
               {
-                device_id: "d".repeat(32),
-                device_label: "Child",
-                kind: "grant",
-                day: 0,
-                payload: { grantedBytes: 2 * 1024 ** 3, at: 2_000, requestAt: 1_000 },
+                device_id: capturedBody.p_device,
+                device_label: capturedBody.p_label,
+                kind: capturedBody.p_kind,
+                day: capturedBody.p_day,
+                payload: capturedBody.p_payload,
                 updated_at: "2026-08-19T00:00:00.000+00:00",
               },
             ]),
@@ -271,8 +315,90 @@ describe("syncFromChild", () => {
 
     expect(saveSettings).toHaveBeenCalledWith({
       pendingLimitRequest: null,
-      appliedGrantRequestAt: 1_000,
+      appliedGrantRequestAt: requestAt,
       mobileLimitBytes: 7 * 1024 ** 3,
+    });
+  });
+
+  it("clears an expired pending request without pulling (review Finding I-3)", async () => {
+    const now = 1_700_000_000_000;
+    const requestAt = now - 4 * 24 * 60 * 60 * 1000; // 4 days ago, past the 3-day TTL
+    (loadSettings as jest.Mock).mockResolvedValue({
+      familyRole: "child",
+      pairToken: "t".repeat(32),
+      deviceId: "d".repeat(32),
+      deviceLabel: "Child",
+      lastSyncErrorAt: null,
+      pendingLimitRequest: { askedBytes: 2 * 1024 ** 3, at: requestAt },
+      appliedGrantRequestAt: null,
+      mobileLimitBytes: 5 * 1024 ** 3,
+    });
+    (readArchive as jest.Mock).mockResolvedValue([]);
+
+    await syncFromChild(now);
+
+    const urls = (globalThis.fetch as jest.Mock).mock.calls.map(([url]: any[]) => String(url));
+    expect(urls.some((u) => u.includes("family_pull"))).toBe(false);
+    expect(saveSettings).toHaveBeenCalledWith({ pendingLimitRequest: null });
+  });
+
+  it("picks the newest grant row when more than one is returned for this device (review Finding M-6)", async () => {
+    (loadSettings as jest.Mock).mockResolvedValue({
+      familyRole: "child",
+      pairToken: "t".repeat(32),
+      deviceId: "d".repeat(32),
+      deviceLabel: "Child",
+      lastSyncErrorAt: null,
+      pendingLimitRequest: { askedBytes: 2 * 1024 ** 3, at: 1_700_000_000_000 - 60_000 },
+      appliedGrantRequestAt: null,
+      mobileLimitBytes: 5 * 1024 ** 3,
+    });
+    (readArchive as jest.Mock).mockResolvedValue([]);
+    (globalThis as any).fetch = jest.fn((url: string) => {
+      if (String(url).includes("family_pull")) {
+        return Promise.resolve({
+          ok: true,
+          // `family_pull` orders ascending by `updated_at` — the older,
+          // smaller grant is returned first. `find` (the pre-fix code) would
+          // have picked this one; `.sort(...)[0]` must pick the newer one.
+          text: async () =>
+            JSON.stringify([
+              {
+                device_id: "d".repeat(32),
+                device_label: "Child",
+                kind: "grant",
+                day: 0,
+                payload: {
+                  grantedBytes: 1 * 1024 ** 3,
+                  at: 1_700_000_000_000 - 30_000,
+                  requestAt: 1_700_000_000_000 - 60_000,
+                },
+                updated_at: "2026-08-19T00:00:00.000+00:00",
+              },
+              {
+                device_id: "d".repeat(32),
+                device_label: "Child",
+                kind: "grant",
+                day: 0,
+                payload: {
+                  grantedBytes: 9 * 1024 ** 3,
+                  at: 1_700_000_000_000 - 10_000,
+                  requestAt: 1_700_000_000_000 - 60_000,
+                },
+                updated_at: "2026-08-19T00:00:10.000+00:00",
+              },
+            ]),
+        });
+      }
+      return Promise.resolve(okResponse());
+    });
+
+    await syncFromChild(1_700_000_000_000);
+
+    expect(saveSettings).toHaveBeenCalledWith({
+      pendingLimitRequest: null,
+      appliedGrantRequestAt: 1_700_000_000_000 - 60_000,
+      mobileLimitBytes: 14 * 1024 ** 3, // 5 + 9, not 5 + 1
     });
   });
 

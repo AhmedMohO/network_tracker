@@ -2,6 +2,7 @@ import {
   decideAlert,
   decideChildRequest,
   decideQuietChild,
+  decideRequestNotice,
   isStale,
   limitAlertKey,
   spikeAlertKey,
@@ -225,5 +226,54 @@ describe("decideChildRequest", () => {
 
   it("fires again once a new tap replaces the request with a newer at", () => {
     expect(decideChildRequest(2_000, 1_000)).toBe(true);
+  });
+});
+
+// Review Finding M-8: `decideChildRequest` alone is a one-expression
+// identity check; the real new behaviour in `checkChild` — including the
+// M-7 fix — is `decideRequestNotice` below. These drive that behaviour
+// directly, with plain objects standing in for what `checkChild` derives
+// from the newest `request`/`grant` snapshot rows.
+describe("decideRequestNotice", () => {
+  it("does not fire when there is no outstanding request at all", () => {
+    expect(decideRequestNotice(null, null, undefined)).toEqual({ fire: false });
+  });
+
+  it("fires for a new request never notified about, with no grant yet", () => {
+    expect(decideRequestNotice({ askedBytes: 2_000, at: 100 }, null, undefined)).toEqual({
+      fire: true,
+      askedBytes: 2_000,
+      notifiedAt: 100,
+    });
+  });
+
+  it("does not re-fire for the same request already notified", () => {
+    expect(decideRequestNotice({ askedBytes: 2_000, at: 100 }, null, 100)).toEqual({
+      fire: false,
+    });
+  });
+
+  it("does not fire when a grant already answers this exact request (review Finding M-7)", () => {
+    // This is the scenario the review named: parent grants immediately, the
+    // background check runs 15 minutes later and must not notify about a
+    // request it can see was already answered.
+    expect(
+      decideRequestNotice({ askedBytes: 2_000, at: 100 }, { requestAt: 100 }, undefined)
+    ).toEqual({ fire: false });
+  });
+
+  it("still fires when a grant exists but answers a different, superseded request", () => {
+    // The lingering grant row (never deleted — same ponytail note as
+    // `applyGrant`) answers an *older* request; the child has since asked
+    // again (`at: 200`), and the parent has not yet answered that one.
+    expect(
+      decideRequestNotice({ askedBytes: 2_000, at: 200 }, { requestAt: 100 }, undefined)
+    ).toEqual({ fire: true, askedBytes: 2_000, notifiedAt: 200 });
+  });
+
+  it("fires again for a fresh request even though an older one was already answered and notified", () => {
+    expect(
+      decideRequestNotice({ askedBytes: 3_000, at: 300 }, { requestAt: 100 }, 100)
+    ).toEqual({ fire: true, askedBytes: 3_000, notifiedAt: 300 });
   });
 });

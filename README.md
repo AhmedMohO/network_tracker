@@ -45,6 +45,27 @@ This command will move the starter code to the **app-example** directory and cre
 
 To enable family tracking (parent-child device sync), you need a Supabase project. The app's `app.json` includes placeholder values for the Supabase URL and anon key. The **anon key is a public client credential and is safe to commit** — it grants nothing without a valid pair token. However, the **service-role key must never enter this repository**. Before family sync features will work, apply `docs/family-schema.sql` in the Supabase SQL editor and schedule the `family_prune()` function to run daily.
 
+## Privacy
+
+Nothing leaves a device unless it is explicitly paired with another one (Settings → Family sharing). Pairing is opt-in on both sides — a parent shares a link or QR code, a child accepts it — and unpairing at any point deletes everything, from either side.
+
+The two lists below are quoted **verbatim** from what the app itself ships — `family.whatIsShared` / `family.whatNeverLeaves` in `src/i18n/en.ts` — not paraphrased, and not from the original plan doc (`docs/plans/2026-08-19-family-tracking.md`'s own §Privacy list, which predates several fields the running code now sends and is out of date against it). If the two ever disagree, the strings in `src/i18n/en.ts` are correct and this section should be updated to match them — not the other way around.
+
+**What is shared**, once a device is paired as a child (shown in-app on that device via the persistent, non-dismissible sharing banner → "Details", and in Settings under "Family sharing"):
+
+> What is shared, once a day and a few times more often for today so far: the pairing code this device joined with, this device's id and label, and the day each set of figures covers; for every app that used data, its name, its Android package name, the id Android assigned it, and its download and upload byte totals, with everything past the 50 largest folded into a single combined total; the same figures again split into a mobile-data list and a Wi-Fi list; the coverage window Android reported them over when it differs from the one asked for; and — with each of today's more frequent updates — the time of that check-in, the package name of the app most recently in the foreground, this device's battery percentage, and whether it was on mobile data, Wi-Fi, or neither; and, when this device asks to raise its own local data alert level, the amount it asked for and the time of the request — and, once the paired device answers, the amount granted, which is zero when declined, and the time of that answer.
+
+**What never leaves the device:**
+
+> What never leaves this device: your location, Wi-Fi network name, browsing content, message content, and screen contents.
+
+A few things that list implies but doesn't spell out:
+
+- **No enforcement.** Nothing in this feature can block, pause, restrict, or otherwise limit another device's data use. A "data alert level" raised by a parent only changes when the *child's own device* chooses to warn *itself* — it is not a remote control.
+- **No live monitoring.** Every figure the parent sees carries the check-in time it was true as of; nothing is a live feed, and a missing check-in is shown as "no check-in", never silently as zero usage.
+- **Who can read the shared data:** anyone holding the pair token, a bearer secret sent once over the OS share sheet (or a scanned QR code) — treat it like a password. Unpairing rotates the token rather than merely forgetting it locally, so an old link stops working.
+- **Retention:** shared rows are pruned automatically after 90 days. "Stop sharing and delete my data" (available from either side of a pairing) hard-deletes every row for that pairing immediately, not just locally.
+
 ## Learn more
 
 To learn more about developing your project with Expo, look at the following resources:

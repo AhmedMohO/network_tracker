@@ -127,3 +127,32 @@ export function decideQuietChild(
 export function decideChildRequest(at: number, notifiedAt: number | undefined): boolean {
   return notifiedAt !== at;
 }
+
+/**
+ * The full "should the parent be notified about this child's outstanding
+ * request" decision — not just the one-shot check above. Review Finding M-7:
+ * the background check used to fire on an unanswered `request` row without
+ * checking whether a `grant` had already answered it, even though the exact
+ * one-line guard already exists two files away, in `[deviceId].tsx`'s own
+ * `pendingRequest` useMemo (`grantRow?.payload?.requestAt === at`). Reused
+ * here, pulled out of that screen's JSX and into pure, testable logic, so
+ * both places agree by construction instead of by two people remembering to
+ * keep two copies in sync.
+ *
+ * Also the fix for review Finding M-8: `decideChildRequest` alone is a
+ * one-expression identity comparison that three tests restated without
+ * covering the actual new behaviour in `checkChild`. This is that behaviour,
+ * pulled out where it can be driven with plain objects instead of requiring
+ * `backgroundCheck.ts` (which imports `@/i18n` at module scope and cannot be
+ * safely imported under jest) to be loaded at all.
+ */
+export function decideRequestNotice(
+  requestRow: { askedBytes: number; at: number } | null,
+  grantRow: { requestAt: number } | null,
+  notifiedAt: number | undefined
+): { fire: false } | { fire: true; askedBytes: number; notifiedAt: number } {
+  if (!requestRow) return { fire: false };
+  if (grantRow && grantRow.requestAt === requestRow.at) return { fire: false };
+  if (!decideChildRequest(requestRow.at, notifiedAt)) return { fire: false };
+  return { fire: true, askedBytes: requestRow.askedBytes, notifiedAt: requestRow.at };
+}

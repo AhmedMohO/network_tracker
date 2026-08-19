@@ -123,7 +123,13 @@ export default function Dashboard() {
                 {network !== 'ALL' && limitStatus ? (
                   <LimitCard status={limitStatus.status} coverage={limitStatus.coverage} />
                 ) : null}
-                <RequestCard />
+                {/* Gated on role here, not only inside `RequestCard` itself
+                    (review Finding M-9): `RequestCard` calls `useLimitStatus`
+                    unconditionally (Rules of Hooks), so mounting it at all
+                    only for a child device is what actually stops a
+                    parent/unpaired install from running that native query
+                    every 15 minutes for a component that renders null. */}
+                {settings?.familyRole === 'child' ? <RequestCard /> : null}
                 <TotalsCard totals={data.totals} coverage={data.coverage} hidden={hidden} />
                 <UsageChartCard />
                 <View style={styles.headingRow}>
