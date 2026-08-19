@@ -172,22 +172,24 @@ async function checkNetwork(
 }
 
 /**
- * One child's cycle-to-date total: completed `daily` rows across the cycle so
- * far (via `buildDailySeries` — gap-aware, so a day the child never pushed
- * contributes nothing rather than a fabricated zero) plus today's `recent`
- * total, the same shape `useChildren`'s screens already render from this same
- * cache.
+ * One child's cycle-to-date total, straight from `buildDailySeries` over the
+ * whole cycle: completed `daily` rows plus the newest `recent` heartbeat
+ * folded in as the (partial) day its own clock says it covers. Gap-aware —
+ * a day the child never pushed contributes nothing rather than a fabricated
+ * zero — and the same figure the per-child screen renders from this same
+ * cache, so the card and the notification can never disagree.
+ *
+ * It used to add `recent.totals` on top as "today" unconditionally, which
+ * counted a three-day-old heartbeat as today's usage; `buildDailySeries`
+ * keying that row by `payload.at` is what removed the need for the
+ * special case.
  *
  * `Settings.childLimits[deviceId].mobileLimitBytes` is named for parity with
  * this device's own `mobileLimitBytes`/`wifiLimitBytes` fields, but this
- * compares it against the child's *total* usage (mobile + Wi-Fi): a child's
- * `daily` archive push (`dailyPayload`, via `syncFromChild`) reads
- * `readArchive(..., "ALL")` and never records a network split, so a
- * mobile-only figure cannot be reconstructed for a past day without
- * fabricating precision that day's data never had. `recent`'s payload does
- * carry a real `totals.mobile`/`totals.wifi` split for today, but mixing that
- * with an all-network figure for every day before it would misrepresent the
- * whole sum as mobile-only, which is worse than naming the field loosely.
+ * compares it against the child's *total* usage (mobile + Wi-Fi). The child
+ * does push a real per-network split now, but a day pushed before it did has
+ * none, and silently mixing split and unsplit days would misreport the sum as
+ * mobile-only — worse than naming the field loosely.
  */
 export function childCycleUsedBytes(
   snapshots: Snapshot[],
@@ -195,19 +197,7 @@ export function childCycleUsedBytes(
   now: number
 ): number {
   const { query } = cycleRanges(cycleStartDay, now);
-  const todayStart = presetRange("today", now).start;
-  const series = buildDailySeries(snapshots, query.start, todayStart);
-
-  const newestRecent = snapshots
-    .filter((s) => s.kind === "recent")
-    .sort((a, b) => b.updatedAt - a.updatedAt)[0];
-  const totals = newestRecent?.payload?.totals;
-  const todayTotal =
-    totals && typeof totals.mobile === "number" && typeof totals.wifi === "number"
-      ? totals.mobile + totals.wifi
-      : 0;
-
-  return series.totals.total + todayTotal;
+  return buildDailySeries(snapshots, query.start, now, undefined, now).totals.total;
 }
 
 /**
@@ -409,10 +399,17 @@ export async function runUsageCheck(now: number) {
   // `k.split(":")`), which is identical regardless of which network's key
   // produced it, so there is no real per-network spike concept to derive for
   // a child here.
-  const children = await checkChildren(
-    now,
-    spikeAlertKey(presetRange("today", now).start, "MOBILE")
-  );
+  // Same swallow-and-continue posture as every other step in this run: a
+  // failure here must not cost the sync-broken check below its turn.
+  let children: "posted" | "quiet" = "quiet";
+  try {
+    children = await checkChildren(
+      now,
+      spikeAlertKey(presetRange("today", now).start, "MOBILE")
+    );
+  } catch {
+    // See above.
+  }
 
   // `decideAlert`'s pruning is keyed to a limit/spike alert's own network and
   // cycle, so a "sync is broken" key does not fit `alertOnce` — every call

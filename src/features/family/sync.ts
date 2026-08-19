@@ -1,6 +1,6 @@
 import Constants from "expo-constants";
 
-import { readArchive } from "@/features/archive/db";
+import { readArchive, snapshotDay } from "@/features/archive/db";
 import type { AppUsage } from "@/features/usage/aggregate";
 import { fetchUsage } from "@/features/usage/api";
 import { presetRange } from "@/features/usage/range";
@@ -72,31 +72,64 @@ export async function syncRun(fn: () => Promise<void>): Promise<void> {
   }
 }
 
-/**
- * Short keys (`dl`/`ul`/`pkg`) because this is written once per day per device
- * and read over a metered connection; the long names buy nothing on the wire.
- * Apps past `MAX_APPS` fold into `otherBytes` rather than being dropped, so the
- * parent's total still equals the child's.
- */
-export function dailyPayload(apps: AppUsage[]) {
+/** Compresses an `AppUsage[]` into the short-key wire format, capping at `MAX_APPS`. */
+function compressApps(apps: AppUsage[]) {
   const used = apps.filter((a) => a.total > 0).sort((a, b) => b.total - a.total);
   const kept = used.slice(0, MAX_APPS);
   return {
-    apps: kept.map((a) => ({
+    list: kept.map((a) => ({
       uid: a.uid, name: a.name, pkg: a.packageName, dl: a.download, ul: a.upload,
     })),
     otherBytes: used.slice(MAX_APPS).reduce((s, a) => s + a.total, 0),
   };
 }
 
+/**
+ * Short keys (`dl`/`ul`/`pkg`) because this is written once per day per device
+ * and read over a metered connection; the long names buy nothing on the wire.
+ * Apps past `MAX_APPS` fold into `otherBytes` rather than being dropped, so the
+ * parent's total still equals the child's.
+ *
+ * `mobileApps`/`wifiApps`, when supplied, let the parent filter the child's
+ * app list by network type — matching the `NetworkFilterTabs` the user already
+ * has on their own dashboard.
+ */
+export function dailyPayload(
+  allApps: AppUsage[],
+  extras?: {
+    mobileApps?: AppUsage[];
+    wifiApps?: AppUsage[];
+    totals?: { mobile: number; wifi: number };
+  }
+) {
+  const all = compressApps(allApps);
+  const m = extras?.mobileApps && compressApps(extras.mobileApps);
+  const w = extras?.wifiApps && compressApps(extras.wifiApps);
+  return {
+    apps: all.list,
+    otherBytes: all.otherBytes,
+    ...(extras?.totals ? { totals: extras.totals } : {}),
+    ...(m ? { mobileApps: m.list, mobileOtherBytes: m.otherBytes } : {}),
+    ...(w ? { wifiApps: w.list, wifiOtherBytes: w.otherBytes } : {}),
+  };
+}
+
+/**
+ * Today so far. Carries the same `mobileApps`/`wifiApps` lists a `daily` row
+ * does — `syncFromChild` already queries all three networks to build the
+ * scalar `totals`, so keeping the per-network lists it was throwing away
+ * costs no extra native query, and it is the only way the parent's
+ * `NetworkFilterTabs` can filter today at all.
+ */
 export function recentPayload(
   apps: AppUsage[],
   totals: { mobile: number; wifi: number },
   context: DeviceContext | null,
   at: number,
-  coverage: { start: number; end: number } | null
+  coverage: { start: number; end: number } | null,
+  perNetwork?: { mobileApps: AppUsage[]; wifiApps: AppUsage[] }
 ) {
-  return { ...dailyPayload(apps), totals, context, at, coverage };
+  return { ...dailyPayload(apps, perNetwork), totals, context, at, coverage };
 }
 
 /** No-ops when unpaired. Every caller relies on that; do not add a throw. */
@@ -149,27 +182,62 @@ export async function forgetPair(token: string) {
 }
 
 /**
+ * Loads a day's per-network usage: tries the local archive first (populated
+ * by `snapshotDay`), falls back to live `fetchUsage` from Android when the
+ * archive is empty. This is the critical fix for immediate sync after
+ * pairing, where `snapshotDay` has not yet run.
+ */
+async function loadDayUsage(dayStart: number) {
+  const range = { start: dayStart, end: dayStart + DAY, preset: "custom" as const };
+
+  let allApps = await readArchive(dayStart, dayStart + DAY, "ALL");
+  let mobileApps = await readArchive(dayStart, dayStart + DAY, "MOBILE");
+  let wifiApps = await readArchive(dayStart, dayStart + DAY, "WIFI");
+
+  // Archive empty → fall back to live query (Android retains ~30 days).
+  if (allApps.length === 0) {
+    const all = await fetchUsage(range, "ALL");
+    allApps = all.apps;
+  }
+  if (mobileApps.length === 0) {
+    const mob = await fetchUsage(range, "MOBILE");
+    mobileApps = mob.apps;
+  }
+  if (wifiApps.length === 0) {
+    const wif = await fetchUsage(range, "WIFI");
+    wifiApps = wif.apps;
+  }
+
+  const mobile = mobileApps.reduce((s, a) => s + a.total, 0);
+  const wifi = wifiApps.reduce((s, a) => s + a.total, 0);
+  const totals = mobile > 0 || wifi > 0 ? { mobile, wifi } : undefined;
+
+  return { allApps, mobileApps, wifiApps, totals };
+}
+
+/**
  * The child's whole contribution: yesterday's completed day, and a `recent` row
  * for today so far. Both are idempotent — the RPC upserts — so a repeated run
  * costs a request and changes nothing.
- *
- * Yesterday comes from the archive rather than a fresh query, because
- * `snapshotDay` has just written it and Android is the slower of the two.
  */
 export async function syncFromChild(now: number, context: DeviceContext | null = null) {
   const s = await loadSettings();
   if (s.familyRole !== "child" || !s.pairToken) return;
 
   await syncRun(async () => {
-    // An empty archive means no data for that day, not zero data — the
-    // realistic cause is Usage Access having been revoked, and a pushed
-    // zero would read as a real quiet day rather than the gap it is. A day
-    // that genuinely saw zero traffic across every UID still has rows, so
-    // this only skips the case that would otherwise fabricate a figure.
     const yesterday = presetRange("yesterday", now).start;
-    const archive = await readArchive(yesterday, yesterday + DAY, "ALL");
-    if (archive.length > 0) {
-      await pushSnapshot("daily", yesterday, dailyPayload(archive));
+    const day = await loadDayUsage(yesterday);
+
+    if (day.allApps.length > 0) {
+      await pushSnapshot(
+        "daily",
+        yesterday,
+        dailyPayload(day.allApps, {
+          mobileApps: day.mobileApps,
+          wifiApps: day.wifiApps,
+          totals: day.totals,
+        })
+      );
     }
 
     const today = presetRange("today", now);
@@ -184,7 +252,8 @@ export async function syncFromChild(now: number, context: DeviceContext | null =
         { mobile: mobile.totals.total, wifi: wifi.totals.total },
         context,
         now,
-        all.coverage
+        all.coverage,
+        { mobileApps: mobile.apps, wifiApps: wifi.apps }
       )
     );
   });
@@ -220,4 +289,62 @@ export async function pullFromParent(now: number): Promise<void> {
   await syncRun(async () => {
     await refreshCache();
   });
+}
+
+/** Maximum number of days to backfill on first pair. */
+const BACKFILL_DAYS = 30;
+
+/**
+ * Pushes up to `BACKFILL_DAYS` of daily data to the server, so the parent has
+ * history for "Last 7 days"/"Last 30 days" instead of only the single day
+ * `syncFromChild` pushes per run. Each push is an upsert, so re-running is
+ * safe. Populates the local archive via `snapshotDay` first (if empty), then
+ * pushes. Best-effort per day: failures skip silently.
+ *
+ * **Resumable, and that is the point.** This is ~30 iterations of five
+ * sequential NetworkStatsManager queries plus an HTTP POST — minutes of work,
+ * far longer than the JS context is guaranteed to live. It used to be started
+ * fire-and-forget on the line before `reloadAppAsync()`, which tore the
+ * context down mid-loop and left the parent holding one day of history
+ * forever. `backfillDoneUntil` records the oldest day already pushed, so a
+ * killed run resumes from where it stopped on the next app start rather than
+ * restarting from day 1 and dying in the same place again.
+ */
+export async function backfillFromChild(now: number): Promise<void> {
+  const s = await loadSettings();
+  if (s.familyRole !== "child" || !s.pairToken) return;
+
+  const todayStart = presetRange("today", now).start;
+  const oldestWanted = todayStart - BACKFILL_DAYS * DAY;
+  if (s.backfillDoneUntil !== null && s.backfillDoneUntil <= oldestWanted) return;
+
+  for (let i = 1; i <= BACKFILL_DAYS; i++) {
+    const dayStart = todayStart - i * DAY;
+    // Resume: everything at or below this was pushed by an earlier run.
+    if (s.backfillDoneUntil !== null && dayStart >= s.backfillDoneUntil) continue;
+    try {
+      // Ensure the archive is populated for this day (idempotent).
+      const existing = await readArchive(dayStart, dayStart + DAY, "ALL");
+      if (existing.length === 0) {
+        try { await snapshotDay(dayStart); } catch { /* Android may not have data this old */ }
+      }
+
+      const day = await loadDayUsage(dayStart);
+      if (day.allApps.length === 0) continue;
+      await pushSnapshot(
+        "daily",
+        dayStart,
+        dailyPayload(day.allApps, {
+          mobileApps: day.mobileApps,
+          wifiApps: day.wifiApps,
+          totals: day.totals,
+        })
+      );
+    } catch {
+      // Best-effort per day: skip failures silently.
+    }
+    // Stamped after every day, not once at the end: a run killed halfway
+    // must not lose the days it did push.
+    await saveSettings({ backfillDoneUntil: dayStart });
+  }
 }

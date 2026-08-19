@@ -13,7 +13,7 @@ import { formatBytes } from './format';
 /** A share this small still gets a visible sliver rather than nothing at all. */
 const MIN_VISIBLE_PERCENT = 1;
 
-export function AppRow({ app, onPress }: { app: AppUsage; onPress: () => void }) {
+export function AppRow({ app, onPress }: { app: AppUsage; onPress?: () => void }) {
   const theme = useTheme();
   const { t } = useTranslation();
   const share = app.percentage <= 0 ? 0 : Math.max(app.percentage, MIN_VISIBLE_PERCENT);

@@ -9,7 +9,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { BottomTabInset, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
-import { TodayTotals } from '@/features/family/TodayTotals';
+import { isTodayHeartbeat, TodayTotals } from '@/features/family/TodayTotals';
 import type { ChildDevice } from '@/features/family/useChildren';
 import { useChildren } from '@/features/family/useChildren';
 import { useFamily } from '@/features/family/useFamily';
@@ -39,7 +39,7 @@ function ChildRow({ child, onPress }: { child: ChildDevice; onPress: () => void 
         <ThemedText type="small" themeColor="textSecondary">
           {child.lastSeen > 0 ? t('family.lastSeen', { when }) : when}
         </ThemedText>
-        {child.recent ? <TodayTotals recent={child.recent} /> : null}
+        {child.recent && isTodayHeartbeat(child.recent.at) ? <TodayTotals recent={child.recent} /> : null}
       </View>
       <ChevronRight size={16} color={theme.textSecondary} style={{ opacity: 0.6 }} />
     </Pressable>

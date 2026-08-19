@@ -138,6 +138,7 @@ describe("unpair", () => {
       lastSyncOkAt: null,
       lastSyncErrorAt: null,
       syncErrorNotifiedAt: null,
+      backfillDoneUntil: null,
     });
   });
 

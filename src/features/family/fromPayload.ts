@@ -1,9 +1,22 @@
+import type { NetworkFilter } from "@modules/network-usage";
+
 import type { AppUsage } from "@/features/usage/aggregate";
+
+type WireApp = { uid: number; name: string; pkg: string | null; dl: number; ul: number };
 
 /** Shape `dailyPayload`/`recentPayload` (in `./sync`) write to the wire. */
 type WirePayload = {
-  apps: { uid: number; name: string; pkg: string | null; dl: number; ul: number }[];
+  apps: WireApp[];
   otherBytes: number;
+  /** Added by the child's `dailyPayload` when mobile/wifi archive data exists. */
+  totals?: { mobile: number; wifi: number };
+  /** Per-network app lists, present when the child pushed them. */
+  mobileApps?: WireApp[];
+  mobileOtherBytes?: number;
+  wifiApps?: WireApp[];
+  wifiOtherBytes?: number;
+  /** `recent` rows only: the child's own clock when the row was built. */
+  at?: number;
 };
 
 /**
@@ -13,33 +26,14 @@ type WirePayload = {
  */
 const OTHER_UID = -100;
 
-/**
- * Inverse of `dailyPayload`: turns a synced payload back into the
- * `AppUsage[]` shape `TotalsCard`, `AppRow` and `UsageChart` already render.
- *
- * Percentages divide by the grand total *including* `otherBytes` — dividing
- * by the visible rows only would quietly inflate every percentage on the
- * parent's screen. The trimmed tail becomes its own row (a synthetic UID
- * rather than being hidden), so the parent's total still accounts for every
- * byte the child measured. No foreground/background split is reported,
- * for the same reason `readArchive` reports none: the payload does not
- * carry it, and inventing one would be worse than reporting nothing.
- *
- * `otherAppsLabel` is the translated name for the trimmed-tail row, supplied
- * by the caller — same reason `toAppUsage` in `features/usage/aggregate`
- * takes an `unknown`/`rename` callback instead of importing `@/i18n`
- * directly: that pulls in `expo-sqlite/kv-store` at module scope (see
- * `src/i18n/index.ts`'s `Storage.getItemSync`), which jest-expo does not
- * stub, and would crash this module's own unmocked unit tests.
- */
-export function fromPayload(
-  payload: WirePayload | null | undefined,
-  otherAppsLabel = "Other apps"
+/** Converts a wire app list + otherBytes into AppUsage[]. */
+function appsFromList(
+  apps: WireApp[] | undefined,
+  otherBytes: number,
+  otherAppsLabel: string
 ): AppUsage[] {
-  const apps = payload?.apps;
   if (!Array.isArray(apps)) return [];
 
-  const otherBytes = payload?.otherBytes ?? 0;
   const grandTotal = apps.reduce((sum, a) => sum + a.dl + a.ul, 0) + otherBytes;
   const percentage = (total: number) => (grandTotal === 0 ? 0 : (total / grandTotal) * 100);
 
@@ -63,9 +57,6 @@ export function fromPayload(
       uid: OTHER_UID,
       name: otherAppsLabel,
       packageName: null,
-      // The trimmed tail's own download/upload split is not on the wire —
-      // only its combined total is. Reporting a fabricated split would be
-      // worse than reporting none.
       download: 0,
       upload: 0,
       total: otherBytes,
@@ -76,4 +67,69 @@ export function fromPayload(
   }
 
   return rows;
+}
+
+/**
+ * Inverse of `dailyPayload`: turns a synced payload back into the
+ * `AppUsage[]` shape `TotalsCard`, `AppRow` and `UsageChart` already render.
+ *
+ * When `network` is `"MOBILE"` or `"WIFI"`, returns the per-network app list
+ * if it exists in the payload; falls back to the combined `apps` list when
+ * the payload predates per-network support. `"ALL"` always returns the
+ * combined list.
+ *
+ * `otherAppsLabel` is the translated name for the trimmed-tail row, supplied
+ * by the caller — same reason `toAppUsage` in `features/usage/aggregate`
+ * takes an `unknown`/`rename` callback instead of importing `@/i18n`
+ * directly: that pulls in `expo-sqlite/kv-store` at module scope (see
+ * `src/i18n/index.ts`'s `Storage.getItemSync`), which jest-expo does not
+ * stub, and would crash this module's own unmocked unit tests.
+ */
+export function fromPayload(
+  payload: WirePayload | null | undefined,
+  otherAppsLabel = "Other apps",
+  network: NetworkFilter = "ALL"
+): AppUsage[] {
+  if (!payload) return [];
+
+  if (network === "MOBILE" && payload.mobileApps) {
+    return appsFromList(payload.mobileApps, payload.mobileOtherBytes ?? 0, otherAppsLabel);
+  }
+  if (network === "WIFI" && payload.wifiApps) {
+    return appsFromList(payload.wifiApps, payload.wifiOtherBytes ?? 0, otherAppsLabel);
+  }
+  // "ALL" or fallback when per-network data is not available.
+  return appsFromList(payload.apps, payload.otherBytes ?? 0, otherAppsLabel);
+}
+
+/** Sum of one wire list plus its trimmed tail. */
+function listTotal(apps: WireApp[], otherBytes: number | undefined): number {
+  return apps.reduce((s, a) => s + a.dl + a.ul, 0) + (otherBytes ?? 0);
+}
+
+/**
+ * Extracts the mobile/wifi network split from a payload, or `null` if the
+ * payload does not carry one.
+ *
+ * Two sources, in order: the explicit `totals` a child writes alongside the
+ * lists, and — for a payload that has the per-network *lists* but no
+ * `totals` (`loadDayUsage` omits `totals` when both sides read zero) — the
+ * sum of those lists. Both lists must be present: deriving `wifi: 0` from a
+ * payload that only ever carried `mobileApps` would invent a fact the child
+ * never sent, which is the one thing this feature must not do.
+ */
+export function extractNetworkTotals(
+  payload: WirePayload | null | undefined
+): { mobile: number; wifi: number } | null {
+  if (payload?.totals) {
+    const { mobile, wifi } = payload.totals;
+    if (typeof mobile === "number" && typeof wifi === "number") return { mobile, wifi };
+  }
+  if (Array.isArray(payload?.mobileApps) && Array.isArray(payload?.wifiApps)) {
+    return {
+      mobile: listTotal(payload.mobileApps, payload.mobileOtherBytes),
+      wifi: listTotal(payload.wifiApps, payload.wifiOtherBytes),
+    };
+  }
+  return null;
 }

@@ -3,10 +3,11 @@ import * as Linking from 'expo-linking';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
-import { Alert, Platform, useColorScheme } from 'react-native';
+import { Alert, AppState, Platform, useColorScheme } from 'react-native';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { parsePairLink } from '@/features/family/pair';
+import { backfillFromChild, syncFromChild } from '@/features/family/sync';
 import { joinAsChild } from '@/features/family/useFamily';
 // Importing this at module scope registers the TaskManager task on load.
 import { registerBackgroundCheck } from '@/features/limits/backgroundCheck';
@@ -19,6 +20,9 @@ import i18n, { syncLayoutDirection } from '@/i18n';
 
 SplashScreen.preventAutoHideAsync();
 
+/** Shortest gap between two foreground-triggered child pushes. */
+const FOREGROUND_SYNC_INTERVAL = 5 * 60_000;
+
 export default function RootLayout() {
   const colorScheme = useColorScheme();
 
@@ -29,11 +33,41 @@ export default function RootLayout() {
   }, []);
 
   // Notifications and background tasks have no meaningful web implementation.
+  //
+  // Registered unconditionally, *not* behind the notification permission:
+  // `USAGE_CHECK_TASK` is also the only thing that pushes a child's usage and
+  // pulls a parent's. Gating it on notifications meant a child that declined
+  // the permission prompt never synced at all, and the only way to move data
+  // was the debug "Run Usage Check" button. The permission is still requested
+  // — a granted one is what lets the alerts inside the task actually post.
   useEffect(() => {
     if (Platform.OS !== 'android') return;
-    ensureNotificationSetup().then((granted) => {
-      if (granted) registerBackgroundCheck();
+    registerBackgroundCheck().catch(() => {});
+    ensureNotificationSetup().catch(() => {});
+  }, []);
+
+  // Android's background task is a floor of 15 minutes and a promise of
+  // nothing: WorkManager defers it under Doze, and an OEM battery manager can
+  // withhold it for hours. Coming back to the foreground is the one moment
+  // this app knows it has CPU, so a paired child pushes then too. Both calls
+  // no-op unless this device is a paired child / has history left to send.
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    let lastPushAt = 0;
+    const push = () => {
+      const now = Date.now();
+      // The push is ~6 native queries and 2 POSTs; app-switching should not
+      // re-run it every few seconds.
+      if (now - lastPushAt < FOREGROUND_SYNC_INTERVAL) return;
+      lastPushAt = now;
+      syncFromChild(now).catch(() => {});
+      backfillFromChild(now).catch(() => {});
+    };
+    push();
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') push();
     });
+    return () => sub.remove();
   }, []);
 
   // A downloaded bundle is applied by a reload, and a reload mid-session throws
@@ -78,6 +112,12 @@ export default function RootLayout() {
                 // rather than leaving them staring at a dismissed dialog on
                 // a still-unpaired device.
                 joinAsChild(pairing.token, pairing.label)
+                  .then(() => syncFromChild(Date.now()).catch(() => {}))
+                  // No backfill here: `reloadAppAsync` below tears the JS
+                  // context down, and starting a minutes-long loop on the
+                  // line before that only ever got one or two days pushed.
+                  // The foreground effect above picks it up after the reload,
+                  // resuming from `backfillDoneUntil`.
                   .then(() => reloadAppAsync())
                   .catch((e) => {
                     Alert.alert(

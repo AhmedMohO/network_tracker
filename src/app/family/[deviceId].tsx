@@ -1,5 +1,5 @@
-import { Stack, useLocalSearchParams } from 'expo-router';
-import { AlertTriangle, BarChart3, BellRing, Clock, Gauge, Percent } from 'lucide-react-native';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { AlertTriangle, BarChart3, BellRing, Clock, Gauge, Percent, Smartphone, Wifi } from 'lucide-react-native';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FlatList, StyleSheet, View } from 'react-native';
@@ -13,7 +13,7 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { BottomTabInset, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { buildDailySeries } from '@/features/family/dailySeries';
-import { TodayTotals } from '@/features/family/TodayTotals';
+import { isTodayHeartbeat, TodayTotals } from '@/features/family/TodayTotals';
 import { useChildSnapshots, type RecentPayload } from '@/features/family/useChildren';
 import { summarizeChildren, useFamily } from '@/features/family/useFamily';
 // `childCycleUsedBytes` is `backgroundCheck.ts`'s own child-cycle math, reused
@@ -26,6 +26,7 @@ import { isStale } from '@/features/limits/alerts';
 import { cycleRanges, limitStatus } from '@/features/limits/limits';
 import { AppRow } from '@/features/usage/AppRow';
 import { formatBytes } from '@/features/usage/format';
+import { NetworkFilterTabs } from '@/features/usage/NetworkFilterTabs';
 import { RangePicker } from '@/features/usage/RangePicker';
 import { saveSettings } from '@/features/usage/settings';
 import { TotalsCard } from '@/features/usage/TotalsCard';
@@ -43,8 +44,9 @@ export default function ChildUsageScreen() {
   const { deviceId: rawDeviceId } = useLocalSearchParams<{ deviceId: string }>();
   const deviceId = rawDeviceId ?? '';
   const { role } = useFamily();
-  const { range, settings, reloadSettings } = useUsageContext();
+  const { range, network, settings, reloadSettings } = useUsageContext();
   const { snapshots } = useChildSnapshots(deviceId);
+  const router = useRouter();
 
   const [limitGb, setLimitGb] = useState('');
   const [warnPercent, setWarnPercent] = useState('80');
@@ -85,19 +87,24 @@ export default function ChildUsageScreen() {
   );
 
   const series = useMemo(
-    () => buildDailySeries(snapshots, range.start, range.end, t('family.otherApps')),
-    [snapshots, range.start, range.end, t]
+    () => buildDailySeries(snapshots, range.start, range.end, t('family.otherApps'), Date.now(), network),
+    [snapshots, range.start, range.end, t, network]
   );
 
-  // Today never gets a `daily` row (`syncFromChild` only pushes one for
-  // yesterday and earlier), so the ranged chart above can never show it. This
-  // is the child's own newest `recent` heartbeat instead — a partial day, not
-  // a completed one, so it is never merged into `series`.
+  // The child's own newest `recent` heartbeat. `buildDailySeries` already
+  // folds this into the range as a partial day (that is what makes the
+  // default "today" range show anything at all), so this card is not the only
+  // place it appears — it is the place that carries what a bin cannot: the
+  // child's "as of" clock and Android's coverage window. Only rendered when
+  // the heartbeat really is from today; a three-day-old one under a "Today so
+  // far" heading is just a wrong number.
   const recent = useMemo((): RecentPayload | null => {
     const rows = snapshots
       .filter((s) => s.kind === 'recent')
       .sort((a, b) => b.updatedAt - a.updatedAt);
-    return rows[0]?.payload ?? null;
+    const payload: RecentPayload | undefined = rows[0]?.payload;
+    if (!payload) return null;
+    return isTodayHeartbeat(payload.at) ? payload : null;
   }, [snapshots]);
 
   // Same figure `backgroundCheck.ts`'s `checkChild` alerts against, so this
@@ -156,6 +163,7 @@ export default function ChildUsageScreen() {
         </ThemedText>
 
         <RangePicker />
+        <NetworkFilterTabs />
 
         <FlatList
           data={series.apps}
@@ -166,9 +174,44 @@ export default function ChildUsageScreen() {
             <View style={styles.header}>
               <TotalsCard totals={series.totals} />
 
-              {/* Distinct from the ranged chart below: a partial, in-progress
-                  day is a different measurement from a completed one, so it
-                  is never stacked into the same total. */}
+              {/* Mobile vs WiFi breakdown for the selected range, when every
+                  day in the range carries the network split. */}
+              {series.networkTotals ? (
+                <View style={styles.networkRow}>
+                  <View style={styles.networkChip}>
+                    <Smartphone size={13} color={theme.textSecondary} />
+                    <ThemedText type="small" themeColor="textSecondary">
+                      {t('network.mobile')}
+                    </ThemedText>
+                    <ThemedText type="smallBold">
+                      {formatBytes(series.networkTotals.mobile)}
+                    </ThemedText>
+                  </View>
+                  <View style={styles.networkChip}>
+                    <Wifi size={13} color={theme.textSecondary} />
+                    <ThemedText type="small" themeColor="textSecondary">
+                      {t('network.wifi')}
+                    </ThemedText>
+                    <ThemedText type="smallBold">
+                      {formatBytes(series.networkTotals.wifi)}
+                    </ThemedText>
+                  </View>
+                </View>
+              ) : null}
+
+              {/* The split covers only the days that carry one. Saying which
+                  days are missing from it beats either hiding the whole row
+                  (what this used to do the moment one legacy day fell in
+                  range) or letting it quietly under-report. */}
+              {series.networkTotals && series.splitMissingDays > 0 ? (
+                <ThemedText type="small" themeColor="textSecondary">
+                  {t('family.splitMissingDays', { count: series.splitMissingDays })}
+                </ThemedText>
+              ) : null}
+
+              {/* The range's own totals above already include today, from the
+                  heartbeat below. This card is what carries the child's "as
+                  of" clock and Android's coverage window for it. */}
               <View style={styles.chartCard}>
                 <View style={styles.chartHeader}>
                   <Clock size={16} color={theme.accent} />
@@ -180,7 +223,11 @@ export default function ChildUsageScreen() {
                   <TodayTotals recent={recent} />
                 ) : (
                   <ThemedText type="small" themeColor="textSecondary">
-                    {t('family.neverCheckedIn')}
+                    {/* A device that checked in last week has checked in —
+                        just not today. The two are different facts. */}
+                    {summary && summary.lastSeen > 0
+                      ? t('family.noCheckInToday')
+                      : t('family.neverCheckedIn')}
                   </ThemedText>
                 )}
               </View>
@@ -209,6 +256,14 @@ export default function ChildUsageScreen() {
 
               {/* A day with no `daily` row is a gap, not a zero-usage day —
                   the child may simply have been offline. */}
+              {/* The totals and the last chart bin include a day that is
+                  still running, so they are a floor, not a final figure. */}
+              {series.partialDay !== null ? (
+                <ThemedText type="small" themeColor="textSecondary">
+                  {t('family.includesPartialDay')}
+                </ThemedText>
+              ) : null}
+
               {series.missingDays > 0 ? (
                 <View style={styles.missingRow}>
                   <AlertTriangle size={13} color={theme.textSecondary} />
@@ -307,10 +362,16 @@ export default function ChildUsageScreen() {
             </View>
           }
           renderItem={({ item }) => (
-            // No per-app drill-down for a child's remote payload (Task 29
-            // scope is the list itself, not a `usage/[uid]`-style detail for
-            // it), so this only ever renders the row.
-            <AppRow app={item} onPress={() => {}} />
+            <AppRow
+              app={item}
+              // `fromPayload`'s trimmed-tail row is a sum of many apps under a
+              // synthetic uid, so there is no per-app screen to open for it.
+              onPress={
+                item.uid < 0
+                  ? undefined
+                  : () => router.push(`/family/app/${item.uid}?deviceId=${deviceId}`)
+              }
+            />
           )}
         />
       </SafeAreaView>
@@ -371,5 +432,17 @@ const styles = StyleSheet.create({
   },
   fieldGroup: {
     gap: Spacing.one,
+  },
+  networkRow: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+  },
+  networkChip: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.one,
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.three,
   },
 });

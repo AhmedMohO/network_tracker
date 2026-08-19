@@ -34,6 +34,13 @@ export type Settings = {
   childLimits: Record<string, { mobileLimitBytes: number | null; warnAtPercent: number }>;
   /** Per-child one-shot record for the 24-hour quiet notice; see `decideQuietChild`. */
   childQuietNotifiedAt: Record<string, number>;
+  /**
+   * Child-only resume cursor for `backfillFromChild`: the oldest day already
+   * pushed, or `null` when the backfill has never run. A boolean "done" flag
+   * would be a lie for the common case — the backfill is minutes of native
+   * queries and routinely outlives the JS context that started it.
+   */
+  backfillDoneUntil: number | null;
 };
 
 const KEY = "settings.v1";
@@ -56,6 +63,7 @@ const DEFAULTS: Settings = {
   syncErrorNotifiedAt: null,
   childLimits: {},
   childQuietNotifiedAt: {},
+  backfillDoneUntil: null,
 };
 
 export async function loadSettings(): Promise<Settings> {

@@ -6,7 +6,13 @@ import { useUsageContext } from "@/features/usage/useUsageContext";
 import i18n from "@/i18n";
 
 import { newDeviceId, newPairToken } from "./pair";
-import { forgetPair, type Snapshot } from "./sync";
+import {
+  backfillFromChild,
+  forgetPair,
+  refreshCache,
+  syncFromChild,
+  type Snapshot,
+} from "./sync";
 
 /**
  * `Device.deviceName` is unset on some emulators and locked-down builds, so
@@ -87,6 +93,10 @@ export async function unpair(): Promise<void> {
     lastSyncOkAt: null,
     lastSyncErrorAt: null,
     syncErrorNotifiedAt: null,
+    // Pairing again means a new token and an empty server side, so the next
+    // child role has to backfill from scratch rather than inherit a cursor
+    // saying the history is already up there.
+    backfillDoneUntil: null,
   });
 }
 
@@ -151,8 +161,23 @@ export function useFamily() {
     pairedLabel: settings?.pairedLabel ?? null,
     busy,
     error,
-    becomeParent: (label: string) => run(() => becomeParent(label)),
-    joinAsChild: (t: string, label: string) => run(() => joinAsChild(t, label)),
+    becomeParent: (label: string) =>
+      run(async () => {
+        await becomeParent(label);
+        // Warm the cache immediately so the Family tab has data if a child
+        // has already paired and pushed.
+        try { await refreshCache(); } catch { /* best-effort */ }
+      }),
+    joinAsChild: (t: string, label: string) =>
+      run(async () => {
+        await joinAsChild(t, label);
+        // Push this child's data immediately so the parent sees it without
+        // waiting for the 15-minute background task.
+        try { await syncFromChild(Date.now()); } catch { /* best-effort */ }
+        // Backfill historical days in the background — non-blocking so the
+        // UI stays responsive.
+        backfillFromChild(Date.now()).catch(() => {});
+      }),
     unpair: () => run(() => unpair()),
     setDeviceLabel: (label: string) => run(() => saveSettings({ deviceLabel: label })),
   };
