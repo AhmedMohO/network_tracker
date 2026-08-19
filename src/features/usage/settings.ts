@@ -15,6 +15,8 @@ export type Settings = {
   pairToken: string | null;
   deviceId: string | null;
   deviceLabel: string | null;
+  /** The label of the device that minted the link this device joined with. Child-only; set by `joinAsChild`. */
+  pairedLabel: string | null;
   /** Set by `features/family/sync`'s `syncRun` when a whole sync run succeeds. */
   lastSyncOkAt: number | null;
   /** Set on the first failure of a run of failures; cleared once a full run succeeds. */
@@ -37,6 +39,7 @@ const DEFAULTS: Settings = {
   pairToken: null,
   deviceId: null,
   deviceLabel: null,
+  pairedLabel: null,
   lastSyncOkAt: null,
   lastSyncErrorAt: null,
   syncErrorNotifiedAt: null,

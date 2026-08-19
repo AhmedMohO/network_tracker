@@ -181,7 +181,12 @@ export const en = {
       'Lists Android’s own services and hotspot traffic alongside your apps. Off by default.',
     saveFailed: 'Could not save that setting.',
     privacyTitle: 'Privacy',
-    privacyBody: 'Every number here is read from Android on this device. Nothing is uploaded.',
+    privacyBodyUnpaired:
+      'Every number here is read from Android on this device. Nothing is uploaded — this device is not paired with a family member.',
+    privacyBodyParent:
+      'Every number here is read from Android on this device. Because this device is paired as a parent, it also downloads what each paired child device shares — see the Family sharing section above for what that is.',
+    privacyBodyChild:
+      'Every number here is read from Android on this device. Because this device is paired as a child, some of it is also shared with a parent device — see the Family sharing section above for exactly what that is.',
   },
   limits: {
     title: 'Data limits',
@@ -231,5 +236,46 @@ export const en = {
     syncBrokenTitle: 'Family sharing has stopped',
     syncBrokenBody:
       "Usage sharing hasn't reached the family server since {{date}}. Open the app on a paired device, or check the project isn't paused.",
+    title: 'Family sharing',
+    defaultDeviceLabel: 'This device',
+    intro: 'Pair this device with another family member to share usage between them.',
+    parentButton: 'This is a parent device',
+    childButton: 'This is a child device',
+    pasteLinkLabel: 'Or paste a pairing link',
+    pasteLinkPlaceholder: 'nettrack://pair?…',
+    pasteLinkButton: 'Join',
+    pasteLinkInvalid: 'That does not look like a pairing link.',
+    joinedToast: 'Paired with {{label}}.',
+    deviceLabelLabel: "This device's label",
+    deviceLabelPlaceholder: 'e.g. Dad’s phone',
+    saveLabel: 'Save label',
+    labelSaved: 'Label saved.',
+    sendLink: 'Send pairing link',
+    sendLinkHint: 'Opens the share sheet with a link the other device can tap',
+    shareFailed: 'Could not open the share sheet.',
+    childrenHeading: 'Paired children',
+    noChildren: 'No child devices yet. Send the pairing link to add one.',
+    lastSeen: 'Last seen {{when}}',
+    unpairAll: 'Unpair everyone',
+    unpairAllConfirmTitle: 'Unpair everyone?',
+    unpairAllConfirmBody:
+      'This permanently deletes every child’s shared usage history from the server. It cannot be undone, and every paired device will need a new link.',
+    unpairMeButton: 'Stop sharing and delete my data',
+    unpairMeConfirmTitle: 'Stop sharing?',
+    unpairMeConfirmBody:
+      'This permanently deletes everything this device has shared from the server. It cannot be undone.',
+    unpairFailedTitle: 'Could not unpair',
+    unpairFailed: 'Could not reach the server, so nothing was deleted. Check your connection and try again.',
+    unpairDone: 'Unpaired.',
+    sharingWith: 'Usage on this device is shared with {{label}}',
+    bannerDetails: 'Details',
+    whatIsShared:
+      'What is shared, once a day and a few times more often for today so far: per-app data usage totals, app names, this device’s battery percent, network type (mobile, Wi-Fi, or none), and whatever app is in the foreground.',
+    whatNeverLeaves:
+      'What never leaves this device: your location, Wi-Fi network name, browsing content, message content, and screen contents.',
+    joinTitle: 'Join family sharing?',
+    joinBody:
+      '{{label}} wants to pair with this device. Once joined, this device’s usage will be shared with them — see Settings for exactly what that includes.',
+    join: 'Join',
   },
 };

@@ -1,15 +1,19 @@
 import { reloadAppAsync } from 'expo';
+import * as Linking from 'expo-linking';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import { Alert, Platform, useColorScheme } from 'react-native';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
+import { parsePairLink } from '@/features/family/pair';
+import { joinAsChild } from '@/features/family/useFamily';
 // Importing this at module scope registers the TaskManager task on load.
 import { registerBackgroundCheck } from '@/features/limits/backgroundCheck';
 import { ensureNotificationSetup } from '@/features/limits/notify';
 import { applyOtaUpdate, checkForOtaUpdate } from '@/features/updates/ota';
 import { PermissionGate } from '@/features/usage/PermissionGate';
+import { loadSettings } from '@/features/usage/settings';
 import { UsageProvider } from '@/features/usage/useUsageContext';
 import i18n, { syncLayoutDirection } from '@/i18n';
 
@@ -43,6 +47,37 @@ export default function RootLayout() {
       ]);
     });
   }, []);
+
+  // Covers both a cold start via the link and the app already running. This
+  // sits above `UsageProvider`, so it cannot use `useFamily` — it goes
+  // through the plain `joinAsChild` export instead, and reloads the app
+  // afterwards so every screen (in particular the child's disclosure banner)
+  // picks up the new pairing immediately rather than on next restart.
+  const url = Linking.useURL();
+  useEffect(() => {
+    if (!url) return;
+    const pairing = parsePairLink(url);
+    if (!pairing) return;
+    loadSettings().then((s) => {
+      // Already paired with this exact link: no prompt, not even a no-op one.
+      if (s.pairToken === pairing.token) return;
+      // Never pair silently: a link can arrive from anyone, and the whole point
+      // of this feature is that the person being monitored knows about it.
+      Alert.alert(
+        i18n.t('family.joinTitle'),
+        i18n.t('family.joinBody', { label: pairing.label }),
+        [
+          { text: i18n.t('common.cancel'), style: 'cancel' },
+          {
+            text: i18n.t('family.join'),
+            onPress: () => {
+              joinAsChild(pairing.token, pairing.label).then(() => reloadAppAsync());
+            },
+          },
+        ]
+      );
+    });
+  }, [url]);
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>

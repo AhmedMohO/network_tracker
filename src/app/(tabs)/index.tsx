@@ -19,6 +19,7 @@ import { Button } from '@/components/ui/button';
 import { BottomTabInset, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { toCsv, toJson } from '@/features/export/csv';
 import { shareExport } from '@/features/export/share';
+import { SharingBanner } from '@/features/family/SharingBanner';
 import { LimitCard } from '@/features/limits/LimitCard';
 import { useLimitStatus } from '@/features/limits/useLimitStatus';
 import { partitionApps } from '@/features/usage/aggregate';
@@ -66,6 +67,7 @@ export default function Dashboard() {
   return (
     <ThemedView style={styles.screen}>
       <SafeAreaView edges={['top']} style={styles.safeArea}>
+        <SharingBanner />
         <View style={styles.topBar}>
           <NetworkFilterTabs />
           <Button
