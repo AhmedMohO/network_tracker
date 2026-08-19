@@ -1,11 +1,14 @@
+import { Lock, ShieldAlert, ShieldCheck } from 'lucide-react-native';
 import { useEffect, useState, type ReactNode } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
-import { AppState, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { AppState, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 /**
@@ -28,9 +31,6 @@ export function PermissionGate({ children }: { children: ReactNode }) {
   const { t } = useTranslation();
   const [granted, setGranted] = useState(false);
 
-  // This component sits above <Stack>, so navigation focus events never reach
-  // it. Returning from the system settings screen re-activates the app, and
-  // that is the only moment the answer can change.
   useEffect(() => {
     if (Platform.OS !== 'android') return;
     const check = () => setGranted(readUsageAccess());
@@ -45,10 +45,17 @@ export function PermissionGate({ children }: { children: ReactNode }) {
     return (
       <ThemedView style={styles.screen}>
         <SafeAreaView style={styles.safeArea}>
-          <View style={styles.content}>
-            <ThemedText type="subtitle">{t('permission.androidOnly')}</ThemedText>
-            <ThemedText themeColor="textSecondary">{t('permission.androidOnlyBody')}</ThemedText>
-          </View>
+          <Card style={styles.contentCard}>
+            <View style={[styles.heroIconBox, { backgroundColor: theme.accentMuted }]}>
+              <ShieldAlert size={36} color={theme.accent} />
+            </View>
+            <ThemedText type="subtitle" style={styles.centerText}>
+              {t('permission.androidOnly')}
+            </ThemedText>
+            <ThemedText themeColor="textSecondary" style={styles.centerText}>
+              {t('permission.androidOnlyBody')}
+            </ThemedText>
+          </Card>
         </SafeAreaView>
       </ThemedView>
     );
@@ -59,34 +66,40 @@ export function PermissionGate({ children }: { children: ReactNode }) {
   return (
     <ThemedView style={styles.screen}>
       <SafeAreaView style={styles.safeArea}>
-        <View style={styles.content}>
-          <ThemedText type="subtitle">{t('permission.title')}</ThemedText>
-          <ThemedText themeColor="textSecondary">
-            {/* `app` is bolded in place, so the sentence stays one translatable
-                unit instead of three fragments the translator has to reorder. */}
+        <Card style={styles.contentCard}>
+          <View style={[styles.heroIconBox, { backgroundColor: theme.accentMuted }]}>
+            <ShieldCheck size={40} color={theme.accent} />
+          </View>
+
+          <ThemedText type="subtitle" style={styles.centerText}>
+            {t('permission.title')}
+          </ThemedText>
+
+          <ThemedText themeColor="textSecondary" style={styles.bodyText}>
             <Trans
               i18nKey="permission.body"
               values={{ app: t('common.appName') }}
               components={{ 1: <ThemedText type="default" style={styles.appName} /> }}
             />
           </ThemedText>
-          <ThemedText type="small" themeColor="textSecondary">
-            {t('permission.privacy')}
-          </ThemedText>
-          <Pressable
+
+          <View style={[styles.privacyBox, { backgroundColor: theme.backgroundSelected, borderColor: theme.border }]}>
+            <Lock size={15} color={theme.textSecondary} />
+            <ThemedText type="small" themeColor="textSecondary" style={styles.privacyText}>
+              {t('permission.privacy')}
+            </ThemedText>
+          </View>
+
+          <Button
+            size="lg"
+            variant="default"
+            title={t('permission.open')}
             onPress={openSettings}
-            accessibilityRole="button"
             accessibilityLabel={t('permission.open')}
             accessibilityHint={t('permission.openHint')}
-            style={({ pressed }) => [
-              styles.button,
-              { backgroundColor: theme.accent, opacity: pressed ? 0.8 : 1 },
-            ]}>
-            <ThemedText type="default" themeColor="accentForeground">
-              {t('permission.open')}
-            </ThemedText>
-          </Pressable>
-        </View>
+            style={styles.actionBtn}
+          />
+        </Card>
       </SafeAreaView>
     </ThemedView>
   );
@@ -94,21 +107,51 @@ export function PermissionGate({ children }: { children: ReactNode }) {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  safeArea: { flex: 1, justifyContent: 'center' },
-  content: {
+  safeArea: {
+    flex: 1,
+    justifyContent: 'center',
     padding: Spacing.four,
+  },
+  contentCard: {
+    padding: Spacing.five,
     gap: Spacing.three,
     width: '100%',
     maxWidth: MaxContentWidth,
     alignSelf: 'center',
+    alignItems: 'center',
   },
-  appName: { fontWeight: '700' },
-  button: {
-    minHeight: 48,
-    borderRadius: Spacing.three,
+  heroIconBox: {
+    width: 72,
+    height: 72,
+    borderRadius: Radius['2xl'],
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: Spacing.four,
+    marginBottom: Spacing.one,
+  },
+  centerText: {
+    textAlign: 'center',
+  },
+  bodyText: {
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  appName: { fontWeight: '700' },
+  privacyBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    width: '100%',
+  },
+  privacyText: {
+    flex: 1,
+    fontSize: 13,
+  },
+  actionBtn: {
+    width: '100%',
     marginTop: Spacing.two,
   },
 });

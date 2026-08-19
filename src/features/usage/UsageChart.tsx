@@ -1,12 +1,15 @@
 import type { SeriesBin } from '@modules/network-usage';
-import { useEffect, useState } from 'react';
+import { AlertCircle, BarChart3, Clock, Sparkles, TrendingUp } from 'lucide-react-native';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import Svg, { Rect } from 'react-native-svg';
 
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Spacing, TextEnd } from '@/constants/theme';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Radius, Spacing, TextEnd } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { formatDateTime, formatDay, formatSpan, formatTime } from '@/i18n/format';
 
@@ -26,7 +29,7 @@ const BAR_GAP = 0.2;
 /** A non-zero bucket keeps a visible sliver instead of disappearing. */
 const MIN_BAR = 1.5;
 /** Bars that are not the selected one, once a selection exists. */
-const DIMMED = 0.4;
+const DIMMED = 0.35;
 const DAY = 86_400_000;
 
 const total = (b: SeriesBin) => b.rxBytes + b.txBytes;
@@ -41,12 +44,12 @@ function binLabel(bin: SeriesBin): string {
 export function UsageChart({ bins, height = 140 }: { bins: SeriesBin[]; height?: number }) {
   const theme = useTheme();
   const { t } = useTranslation();
-  const [selected, setSelected] = useState<number | null>(null);
+  // A tapped bar belongs to the series it was tapped in, so the selection
+  // carries its own `bins`: a new one (range or filter change) drops it rather
+  // than leaving an index pointing into unrelated data.
+  const [picked, setPicked] = useState<{ bins: SeriesBin[]; index: number } | null>(null);
   const [width, setWidth] = useState(0);
-
-  // A new query means new bins; keeping the old index would point at a
-  // different moment in time under the same caption.
-  useEffect(() => setSelected(null), [bins]);
+  const selected = picked !== null && picked.bins === bins ? picked.index : null;
 
   const values = bins.map(total);
   const sum = values.reduce((acc, v) => acc + v, 0);
@@ -55,7 +58,8 @@ export function UsageChart({ bins, height = 140 }: { bins: SeriesBin[]; height?:
   // window, and an empty or flat-zero chart must read as an answer, not a gap.
   if (sum <= 0) {
     return (
-      <View style={[styles.blank, { height, borderColor: theme.border }]}>
+      <View style={[styles.blank, { height, borderColor: theme.border, backgroundColor: theme.backgroundSelected }]}>
+        <BarChart3 size={24} color={theme.textSecondary} style={{ opacity: 0.5 }} />
         <ThemedText type="small" themeColor="textSecondary">
           {t('chart.empty')}
         </ThemedText>
@@ -80,26 +84,32 @@ export function UsageChart({ bins, height = 140 }: { bins: SeriesBin[]; height?:
     if (width <= 0) return;
     const index = Math.min(bins.length - 1, Math.max(0, Math.floor((x / width) * bins.length)));
     // Tapping the selected bar again clears it, so the hint can come back.
-    setSelected((current) => (current === index ? null : index));
+    setPicked(selected === index ? null : { bins, index });
   };
 
   return (
     <View style={styles.chart}>
       {/* Fixed slot: the readout replacing the hint must not shift the bars. */}
-      <View style={styles.readout}>
+      <View style={[styles.readout, { backgroundColor: theme.backgroundSelected, borderColor: theme.border }]}>
         {selected === null ? (
-          <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
-            {t('chart.tapHint')}
-          </ThemedText>
-        ) : (
-          <>
+          <View style={styles.hintRow}>
+            <Sparkles size={12} color={theme.accent} />
             <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
-              {binLabel(bins[selected])}
+              {t('chart.tapHint')}
             </ThemedText>
+          </View>
+        ) : (
+          <View style={styles.activeReadoutRow}>
+            <View style={styles.activeReadoutTime}>
+              <Clock size={12} color={theme.accent} />
+              <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+                {binLabel(bins[selected])}
+              </ThemedText>
+            </View>
             <ThemedText type="smallBold" themeColor="accent" style={styles.readoutValue}>
               {formatBytes(values[selected])}
             </ThemedText>
-          </>
+          </View>
         )}
       </View>
 
@@ -114,13 +124,14 @@ export function UsageChart({ bins, height = 140 }: { bins: SeriesBin[]; height?:
           width="100%"
           height={height}
           viewBox={`0 0 ${VIEW} ${VIEW}`}
-          // Bars are axis-aligned rectangles, so stretching the box to the
-          // container distorts nothing; without this the chart would letterbox.
           preserveAspectRatio="none">
           {bins.map((b, i) => {
             const value = values[i];
             if (value <= 0) return null;
             const barHeight = Math.max((value / scale) * VIEW, MIN_BAR);
+            const isSelected = selected === i;
+            const isDimmed = selected !== null && !isSelected;
+
             return (
               <Rect
                 key={b.start}
@@ -128,8 +139,9 @@ export function UsageChart({ bins, height = 140 }: { bins: SeriesBin[]; height?:
                 y={VIEW - barHeight}
                 width={slot * (1 - BAR_GAP)}
                 height={barHeight}
-                fill={theme.accent}
-                opacity={selected === null || selected === i ? 1 : DIMMED}
+                rx={1.5}
+                fill={isSelected ? theme.accent : theme.primary}
+                opacity={isDimmed ? DIMMED : 1}
               />
             );
           })}
@@ -138,10 +150,10 @@ export function UsageChart({ bins, height = 140 }: { bins: SeriesBin[]; height?:
 
       {/* The axis: without it a bar is a shape with no moment attached. */}
       <View style={[styles.axis, { borderTopColor: theme.border }]}>
-        <ThemedText type="small" themeColor="textSecondary">
+        <ThemedText type="small" themeColor="textSecondary" style={styles.axisText}>
           {formatDay(bins[0].start)}
         </ThemedText>
-        <ThemedText type="small" themeColor="textSecondary">
+        <ThemedText type="small" themeColor="textSecondary" style={styles.axisText}>
           {formatDay(bins[bins.length - 1].end)}
         </ThemedText>
       </View>
@@ -152,7 +164,6 @@ export function UsageChart({ bins, height = 140 }: { bins: SeriesBin[]; height?:
 /**
  * The chart plus the two things that keep it honest: the width one bar covers,
  * and the range Android actually returned when it differs from the request.
- * Pass a `uid` for one app, omit it for the device total.
  */
 export function UsageChartCard({ uid }: { uid?: number }) {
   const theme = useTheme();
@@ -165,98 +176,163 @@ export function UsageChartCard({ uid }: { uid?: number }) {
   const drift = data ? coverageDrift(range, data.coveredStart, data.coveredEnd) : null;
 
   return (
-    <ThemedView type="backgroundElement" style={styles.card}>
+    <Card style={styles.card}>
       <View style={styles.header}>
-        <ThemedText type="small" themeColor="textSecondary">
-          {t('chart.title')}
-        </ThemedText>
-        {peak > 0 ? (
-          <ThemedText type="small" themeColor="textSecondary">
-            {t('chart.peak', { bytes: formatBytes(peak) })}
+        <View style={styles.titleGroup}>
+          <View style={[styles.headerIconBox, { backgroundColor: theme.accentMuted }]}>
+            <BarChart3 size={16} color={theme.accent} />
+          </View>
+          <ThemedText type="smallBold" themeColor="textSecondary">
+            {t('chart.title')}
           </ThemedText>
+        </View>
+
+        {peak > 0 ? (
+          <Badge
+            variant="accent"
+            icon={<TrendingUp size={11} color={theme.accent} />}
+            label={t('chart.peak', { bytes: formatBytes(peak) })}
+          />
         ) : null}
       </View>
 
       {loading && !data ? (
-        <ActivityIndicator color={theme.accent} accessibilityLabel={t('chart.loading')} />
+        <View style={styles.loadingBox}>
+          <ActivityIndicator color={theme.accent} accessibilityLabel={t('chart.loading')} />
+        </View>
       ) : null}
 
       {error ? (
-        <View style={styles.errorBlock}>
-          <ThemedText type="small">{t('chart.errorTitle')}</ThemedText>
-          <ThemedText type="small" themeColor="textSecondary">
-            {error}
-          </ThemedText>
-          <Pressable
-            onPress={reload}
-            accessibilityRole="button"
-            accessibilityLabel={t('chart.retryA11y')}
-            style={({ pressed }) => [
-              styles.retry,
-              { borderColor: theme.accent, opacity: pressed ? 0.7 : 1 },
-            ]}>
-            <ThemedText type="smallBold" themeColor="accent">
-              {t('common.retry')}
+        <View style={[styles.errorBlock, { backgroundColor: theme.backgroundSelected, borderColor: theme.border }]}>
+          <AlertCircle size={20} color={theme.destructive} />
+          <View style={{ flex: 1, gap: 2 }}>
+            <ThemedText type="smallBold" themeColor="destructive">
+              {t('chart.errorTitle')}
             </ThemedText>
-          </Pressable>
+            <ThemedText type="small" themeColor="textSecondary">
+              {error}
+            </ThemedText>
+          </View>
+          <Button
+            size="sm"
+            variant="outline"
+            title={t('common.retry')}
+            onPress={reload}
+            accessibilityLabel={t('chart.retryA11y')}
+          />
         </View>
       ) : null}
 
       {data && !error ? (
         <>
           <UsageChart bins={data.bins} />
-          {peak > 0 ? (
-            <ThemedText type="small" themeColor="textSecondary">
-              {t('chart.barSpan', { span: formatSpan(bucketMs) })}
-            </ThemedText>
-          ) : null}
-          {/* Coverage information, not a failure — plain secondary body text. */}
-          {drift ? (
-            <ThemedText type="small" themeColor="textSecondary">
-              {t('chart.coverage', {
-                from: formatDateTime(drift.start),
-                to: formatDateTime(drift.end),
-              })}
-            </ThemedText>
-          ) : null}
+          <View style={styles.footerInfo}>
+            {peak > 0 ? (
+              <ThemedText type="small" themeColor="textSecondary" style={styles.infoText}>
+                {t('chart.barSpan', { span: formatSpan(bucketMs) })}
+              </ThemedText>
+            ) : null}
+            {drift ? (
+              <ThemedText type="small" themeColor="textSecondary" style={styles.infoText}>
+                {t('chart.coverage', {
+                  from: formatDateTime(drift.start),
+                  to: formatDateTime(drift.end),
+                })}
+              </ThemedText>
+            ) : null}
+          </View>
         </>
       ) : null}
-    </ThemedView>
+    </Card>
   );
 }
 
 const styles = StyleSheet.create({
-  card: { borderRadius: Spacing.three, padding: Spacing.three, gap: Spacing.two },
-  header: { flexDirection: 'row', justifyContent: 'space-between', gap: Spacing.two },
-  chart: { gap: Spacing.one },
-  readout: {
-    minHeight: 20,
+  card: {
+    padding: Spacing.four,
+    gap: Spacing.three,
+  },
+  header: {
     flexDirection: 'row',
-    alignItems: 'baseline',
+    alignItems: 'center',
     justifyContent: 'space-between',
     gap: Spacing.two,
   },
-  readoutValue: { fontVariant: ['tabular-nums'], textAlign: TextEnd },
+  titleGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  headerIconBox: {
+    width: 28,
+    height: 28,
+    borderRadius: Radius.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chart: { gap: Spacing.two },
+  readout: {
+    minHeight: 28,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    paddingHorizontal: Spacing.two + 2,
+    justifyContent: 'center',
+  },
+  hintRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.one,
+  },
+  activeReadoutRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.two,
+  },
+  activeReadoutTime: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.one,
+    flex: 1,
+  },
+  readoutValue: {
+    fontVariant: ['tabular-nums'],
+    textAlign: TextEnd,
+  },
   axis: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     borderTopWidth: StyleSheet.hairlineWidth,
     paddingTop: Spacing.one,
   },
+  axisText: {
+    fontSize: 11,
+  },
   blank: {
     borderWidth: 1,
-    borderRadius: Spacing.two,
+    borderRadius: Radius.lg,
     alignItems: 'center',
     justifyContent: 'center',
     padding: Spacing.three,
+    gap: Spacing.two,
   },
-  errorBlock: { gap: Spacing.two },
-  retry: {
-    minHeight: 44,
-    alignSelf: 'flex-start',
+  loadingBox: {
+    paddingVertical: Spacing.four,
+    alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.three,
+  },
+  errorBlock: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+    padding: Spacing.three,
+    borderRadius: Radius.lg,
     borderWidth: 1,
+  },
+  footerInfo: {
+    gap: Spacing.one,
+  },
+  infoText: {
+    fontSize: 12,
   },
 });

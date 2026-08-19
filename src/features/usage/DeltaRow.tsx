@@ -1,31 +1,28 @@
+import { ArrowRight, Sparkles, TrendingDown, TrendingUp } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
-import { Spacing, TextEnd } from '@/constants/theme';
+import { Badge } from '@/components/ui/badge';
+import { Radius, Spacing } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
 
 import type { UsageDelta } from './aggregate';
 import { AppIcon } from './AppIcon';
 import { formatBytes } from './format';
 
-/** "+42%", or the `new` word when there is nothing to divide by. */
-function changeLabel(percent: number | null, isNew: string): string {
-  if (percent === null) return isNew;
-  return `${percent > 0 ? '+' : ''}${Math.round(percent)}%`;
-}
-
 export function DeltaRow({ delta, packageName }: { delta: UsageDelta; packageName: string | null }) {
+  const theme = useTheme();
   const { t } = useTranslation();
   const previous = formatBytes(delta.previous);
   const current = formatBytes(delta.current);
-  const change = changeLabel(delta.changePercent, t('compare.new'));
-  // Up is the one worth flagging; a drop is good news and stays quiet.
-  const color =
-    delta.changePercent === null || delta.changePercent === 0
-      ? 'textSecondary'
-      : delta.changePercent > 0
-        ? 'danger'
-        : 'accent';
+
+  const isNew = delta.changePercent === null;
+  const isUp = (delta.changePercent ?? 0) > 0;
+  const isDown = (delta.changePercent ?? 0) < 0;
+  const changeValue = isNew
+    ? t('compare.new')
+    : `${isUp ? '+' : ''}${Math.round(delta.changePercent!)}%`;
 
   return (
     <View
@@ -34,22 +31,51 @@ export function DeltaRow({ delta, packageName }: { delta: UsageDelta; packageNam
         name: delta.name,
         previous,
         current,
-        change,
+        change: changeValue,
       })}
-      style={styles.row}>
-      <AppIcon packageName={packageName} name={delta.name} />
+      style={[
+        styles.row,
+        { backgroundColor: theme.card, borderColor: theme.border },
+      ]}>
+      <AppIcon packageName={packageName} name={delta.name} size={40} />
       <View style={styles.body}>
         <View style={styles.line}>
           <ThemedText type="default" numberOfLines={1} style={styles.name}>
             {delta.name}
           </ThemedText>
-          <ThemedText type="smallBold" themeColor={color} style={styles.change}>
-            {change}
+
+          {isNew ? (
+            <Badge
+              variant="accent"
+              icon={<Sparkles size={11} color={theme.accent} />}
+              label={changeValue}
+            />
+          ) : isUp ? (
+            <Badge
+              variant="destructive"
+              icon={<TrendingUp size={11} color={theme.destructive} />}
+              label={changeValue}
+            />
+          ) : isDown ? (
+            <Badge
+              variant="success"
+              icon={<TrendingDown size={11} color={theme.success} />}
+              label={changeValue}
+            />
+          ) : (
+            <Badge variant="secondary" label={changeValue} />
+          )}
+        </View>
+
+        <View style={styles.bytesRow}>
+          <ThemedText type="small" themeColor="textSecondary" style={styles.bytes}>
+            {previous}
+          </ThemedText>
+          <ArrowRight size={12} color={theme.textSecondary} />
+          <ThemedText type="smallBold" style={styles.bytes}>
+            {current}
           </ThemedText>
         </View>
-        <ThemedText type="small" themeColor="textSecondary" style={styles.bytes}>
-          {previous} → {current}
-        </ThemedText>
       </View>
     </View>
   );
@@ -57,16 +83,22 @@ export function DeltaRow({ delta, packageName }: { delta: UsageDelta; packageNam
 
 const styles = StyleSheet.create({
   row: {
-    minHeight: 56,
+    minHeight: 64,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: Spacing.two,
+    paddingVertical: Spacing.two + 2,
+    paddingHorizontal: Spacing.three,
+    borderRadius: Radius.xl,
+    borderWidth: 1,
     gap: Spacing.three,
   },
-  body: { flex: 1, gap: Spacing.one },
-  line: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
-  name: { flex: 1 },
-  // Fixed width so the percentages line up into a scannable column.
-  change: { width: 64, textAlign: TextEnd, fontVariant: ['tabular-nums'] },
+  body: { flex: 1, gap: 4 },
+  line: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.two },
+  name: { flex: 1, fontWeight: '600', fontSize: 15 },
+  bytesRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.one,
+  },
   bytes: { fontVariant: ['tabular-nums'] },
 });

@@ -11,9 +11,9 @@ export default function AppTabs() {
 
   return (
     <NativeTabs
-      backgroundColor={colors.background}
-      indicatorColor={colors.backgroundElement}
-      labelStyle={{ selected: { color: colors.text } }}>
+      backgroundColor={colors.card}
+      indicatorColor={colors.secondary}
+      labelStyle={{ selected: { color: colors.accent } }}>
       <NativeTabs.Trigger name="index">
         <NativeTabs.Trigger.Label>{t('tabs.home')}</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
@@ -25,7 +25,7 @@ export default function AppTabs() {
       <NativeTabs.Trigger name="compare">
         <NativeTabs.Trigger.Label>{t('tabs.compare')}</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
-          src={require('@/assets/images/tabIcons/explore.png')}
+          src={require('@/assets/images/tabIcons/compare.png')}
           renderingMode="template"
         />
       </NativeTabs.Trigger>
@@ -33,7 +33,7 @@ export default function AppTabs() {
       <NativeTabs.Trigger name="live">
         <NativeTabs.Trigger.Label>{t('tabs.live')}</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
-          src={require('@/assets/images/tabIcons/explore.png')}
+          src={require('@/assets/images/tabIcons/live.png')}
           renderingMode="template"
         />
       </NativeTabs.Trigger>
@@ -41,7 +41,7 @@ export default function AppTabs() {
       <NativeTabs.Trigger name="settings">
         <NativeTabs.Trigger.Label>{t('tabs.settings')}</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
-          src={require('@/assets/images/tabIcons/explore.png')}
+          src={require('@/assets/images/tabIcons/settings.png')}
           renderingMode="template"
         />
       </NativeTabs.Trigger>
@@ -49,7 +49,7 @@ export default function AppTabs() {
       <NativeTabs.Trigger name="probe">
         <NativeTabs.Trigger.Label>{t('tabs.probe')}</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
-          src={require('@/assets/images/tabIcons/explore.png')}
+          src={require('@/assets/images/tabIcons/probe.png')}
           renderingMode="template"
         />
       </NativeTabs.Trigger>

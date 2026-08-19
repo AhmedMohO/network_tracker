@@ -2,13 +2,24 @@ import NetworkUsage from '@modules/network-usage';
 import * as Application from 'expo-application';
 import { File, Paths } from 'expo-file-system';
 import { Stack } from 'expo-router';
+import {
+  AlertCircle,
+  AlertTriangle,
+  CheckCircle2,
+  DownloadCloud,
+  FileText,
+  Sparkles,
+} from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { fetchLatestRelease, isNewerVersion, type ReleaseInfo } from '@/features/updates/apk';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -41,8 +52,6 @@ export default function Update() {
   const download = async () => {
     if (!release?.apkUrl) return;
 
-    // Ask for install permission before spending the user's data on a download
-    // that would stop at the last step anyway.
     if (!NetworkUsage.canInstallPackages()) {
       setMessage(t('updateScreen.needPermission'));
       NetworkUsage.openInstallPermissionSettings();
@@ -67,49 +76,88 @@ export default function Update() {
     <ThemedView style={styles.screen}>
       <Stack.Screen options={{ title: t('updateScreen.title') }} />
       <ScrollView contentContainerStyle={styles.content}>
-        <ThemedText type="small" themeColor="textSecondary">
-          {t('updateScreen.installed', { version: current })}
-        </ThemedText>
-
-        {checking && <ActivityIndicator color={theme.accent} accessibilityLabel={t('common.loading')} />}
-
-        {!checking && !newer && (
-          <ThemedText type="default">{t('updateScreen.upToDate')}</ThemedText>
-        )}
-
-        {newer && release && (
-          <View style={styles.block}>
-            <ThemedText type="subtitle">
-              {t('updateScreen.available', { version: release.version })}
-            </ThemedText>
-            {release.notes ? <ThemedText type="small">{release.notes}</ThemedText> : null}
-            <ThemedText type="small" themeColor="textSecondary">
-              {t('updateScreen.unknownSourceWarning')}
-            </ThemedText>
-            {busy ? (
-              <ActivityIndicator color={theme.accent} accessibilityLabel={t('updateScreen.downloading')} />
-            ) : (
-              <Pressable
-                onPress={download}
-                accessibilityRole="button"
-                accessibilityLabel={t('updateScreen.install')}
-                style={({ pressed }) => [
-                  styles.button,
-                  { backgroundColor: theme.accent, opacity: pressed ? 0.8 : 1 },
-                ]}>
-                <ThemedText type="default" themeColor="accentForeground">
-                  {t('updateScreen.install')}
-                </ThemedText>
-              </Pressable>
-            )}
+        {/* Status Card */}
+        <Card style={styles.card}>
+          <View style={styles.statusHeader}>
+            <View style={[styles.iconBox, { backgroundColor: theme.accentMuted }]}>
+              <DownloadCloud size={20} color={theme.accent} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <ThemedText type="default" style={{ fontWeight: '700' }}>
+                {t('updateScreen.title')}
+              </ThemedText>
+              <ThemedText type="small" themeColor="textSecondary">
+                {t('updateScreen.installed', { version: current })}
+              </ThemedText>
+            </View>
           </View>
-        )}
 
-        {message && (
-          <ThemedText type="small" themeColor="danger" accessibilityRole="alert">
-            {message}
-          </ThemedText>
-        )}
+          {checking && (
+            <View style={styles.loadingBox}>
+              <ActivityIndicator color={theme.accent} accessibilityLabel={t('common.loading')} />
+            </View>
+          )}
+
+          {!checking && release !== null && !newer && (
+            <View style={[styles.upToDateBox, { backgroundColor: theme.backgroundSelected, borderColor: theme.border }]}>
+              <CheckCircle2 size={24} color={theme.success} />
+              <ThemedText type="default" style={{ fontWeight: '600' }}>
+                {t('updateScreen.upToDate')}
+              </ThemedText>
+            </View>
+          )}
+
+          {newer && release && (
+            <View style={styles.updateAvailableGroup}>
+              <Badge
+                variant="accent"
+                icon={<Sparkles size={12} color={theme.accent} />}
+                label={t('updateScreen.available', { version: release.version })}
+              />
+
+              {release.notes ? (
+                <View style={[styles.notesCard, { backgroundColor: theme.backgroundSelected, borderColor: theme.border }]}>
+                  <View style={styles.notesHeader}>
+                    <FileText size={14} color={theme.textSecondary} />
+                    <ThemedText type="smallBold" themeColor="textSecondary">
+                      Release Notes
+                    </ThemedText>
+                  </View>
+                  <ThemedText type="small">{release.notes}</ThemedText>
+                </View>
+              ) : null}
+
+              <View style={[styles.warningBox, { backgroundColor: theme.warningMuted, borderColor: theme.warning + '44' }]}>
+                <AlertTriangle size={15} color={theme.warning} />
+                <ThemedText type="small" themeColor="textSecondary" style={styles.warningText}>
+                  {t('updateScreen.unknownSourceWarning')}
+                </ThemedText>
+              </View>
+
+              <Button
+                size="lg"
+                variant="default"
+                icon={<DownloadCloud size={18} color={theme.primaryForeground} />}
+                title={t('updateScreen.install')}
+                loading={busy}
+                onPress={download}
+                accessibilityLabel={
+                  busy ? t('updateScreen.downloading') : t('updateScreen.install')
+                }
+                style={styles.installBtn}
+              />
+            </View>
+          )}
+
+          {message && (
+            <View style={[styles.errorBox, { backgroundColor: theme.destructive + '22', borderColor: theme.destructive + '44' }]}>
+              <AlertCircle size={15} color={theme.destructive} />
+              <ThemedText type="small" themeColor="destructive" accessibilityRole="alert" style={{ flex: 1 }}>
+                {message}
+              </ThemedText>
+            </View>
+          )}
+        </Card>
       </ScrollView>
     </ThemedView>
   );
@@ -123,14 +171,76 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: MaxContentWidth,
     alignSelf: 'center',
+    paddingBottom: Spacing.six,
   },
-  block: { gap: Spacing.two },
-  button: {
-    minHeight: 48,
-    borderRadius: Spacing.three,
+  card: {
+    padding: Spacing.four,
+    gap: Spacing.three,
+  },
+  statusHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+  },
+  iconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: Radius.lg,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: Spacing.four,
-    alignSelf: 'flex-start',
+  },
+  loadingBox: {
+    paddingVertical: Spacing.four,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  upToDateBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    padding: Spacing.four,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+  },
+  updateAvailableGroup: {
+    gap: Spacing.three,
+    alignItems: 'flex-start',
+  },
+  notesCard: {
+    width: '100%',
+    padding: Spacing.three,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    gap: Spacing.one,
+  },
+  notesHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.one,
+  },
+  warningBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.two,
+    padding: Spacing.three,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    width: '100%',
+  },
+  warningText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  installBtn: {
+    width: '100%',
+  },
+  errorBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    padding: Spacing.three,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
   },
 });

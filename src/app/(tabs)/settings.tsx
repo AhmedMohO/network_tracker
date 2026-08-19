@@ -1,14 +1,31 @@
 import { reloadAppAsync } from 'expo';
 import { useRouter } from 'expo-router';
+import {
+  Calendar,
+  Check,
+  DownloadCloud,
+  Gauge,
+  Globe,
+  Languages,
+  Lock,
+  Percent,
+  Save,
+  Sliders,
+  Smartphone,
+  Wifi,
+} from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pressable, ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { toast } from '@/components/toast';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { BottomTabInset, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { LimitCard } from '@/features/limits/LimitCard';
 import type { LimitNetwork } from '@/features/limits/limits';
 import { useLimitStatus } from '@/features/limits/useLimitStatus';
@@ -20,50 +37,29 @@ import { LANGUAGES, setLanguage, type Language } from '@/i18n';
 /** A GB-denominated limit stores as bytes; this converts both ways. */
 const GB = 1024 ** 3;
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <ThemedView type="backgroundElement" style={styles.card}>
-      <ThemedText type="small" themeColor="textSecondary">
-        {title}
-      </ThemedText>
-      {children}
-    </ThemedView>
-  );
-}
-
-function Field({
-  label,
-  value,
-  onChangeText,
-  placeholder,
+function SectionHeader({
+  icon,
+  title,
 }: {
-  label: string;
-  value: string;
-  onChangeText: (v: string) => void;
-  placeholder?: string;
+  icon: React.ReactNode;
+  title: string;
 }) {
   const theme = useTheme();
   return (
-    <View style={styles.field}>
-      <ThemedText type="small" themeColor="textSecondary">
-        {label}
+    <View style={styles.sectionHeader}>
+      <View style={[styles.sectionIconBox, { backgroundColor: theme.accentMuted }]}>
+        {icon}
+      </View>
+      <ThemedText type="smallBold" themeColor="textSecondary">
+        {title}
       </ThemedText>
-      <TextInput
-        value={value}
-        onChangeText={onChangeText}
-        keyboardType="numeric"
-        placeholder={placeholder}
-        placeholderTextColor={theme.textSecondary}
-        accessibilityLabel={label}
-        style={[styles.input, { borderColor: theme.border, color: theme.text }]}
-      />
     </View>
   );
 }
 
-const LIMIT_TABS: { id: LimitNetwork; key: string }[] = [
-  { id: 'MOBILE', key: 'network.mobile' },
-  { id: 'WIFI', key: 'network.wifi' },
+const LIMIT_TABS: { id: LimitNetwork; key: string; icon: React.ComponentType<{ size: number; color: string }> }[] = [
+  { id: 'MOBILE', key: 'network.mobile', icon: Smartphone },
+  { id: 'WIFI', key: 'network.wifi', icon: Wifi },
 ];
 
 export default function SettingsScreen() {
@@ -73,7 +69,6 @@ export default function SettingsScreen() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<LimitNetwork>('MOBILE');
   const isWifi = activeTab === 'WIFI';
-  // Only the visible tab's limit is queried; switching tabs refetches.
   const limitStatus = useLimitStatus(activeTab);
 
   const [mobileLimitGb, setMobileLimitGb] = useState('');
@@ -82,9 +77,6 @@ export default function SettingsScreen() {
   const [wifiLimitGb, setWifiLimitGb] = useState('');
   const [wifiWarnPercent, setWifiWarnPercent] = useState('80');
 
-  // One cycle day for both networks: it is also what the dashboard's cycle
-  // presets read, so a per-network day would put the range picker and the
-  // limit card on different windows.
   const [cycleDay, setCycleDay] = useState('1');
 
   useEffect(() => {
@@ -102,7 +94,6 @@ export default function SettingsScreen() {
     if (language === i18n.language) return;
     const needsReload = await setLanguage(language);
     if (needsReload) {
-      // The toast is a system window, so it outlives the bundle reload.
       toast(t('settings.restartNeeded'));
       reloadAppAsync();
     }
@@ -117,8 +108,6 @@ export default function SettingsScreen() {
     }
   };
 
-  /** Both networks are saved together, so edits made on the tab you switched
-   * away from are not silently dropped. */
   const saveLimit = async () => {
     const limitBytes = (value: string) => {
       const gb = Number(value);
@@ -149,10 +138,19 @@ export default function SettingsScreen() {
     <ThemedView style={styles.screen}>
       <SafeAreaView edges={['top']} style={styles.safeArea}>
         <ScrollView contentContainerStyle={styles.content}>
-          <ThemedText type="subtitle">{t('settings.title')}</ThemedText>
+          {/* Header Title */}
+          <ThemedText type="subtitle" style={styles.screenTitle}>
+            {t('settings.title')}
+          </ThemedText>
 
-          <Section title={t('settings.language')}>
-            <View style={styles.chipRow}>
+          {/* Language Selection Card */}
+          <Card style={styles.card}>
+            <SectionHeader
+              icon={<Languages size={16} color={theme.accent} />}
+              title={t('settings.language')}
+            />
+
+            <View style={styles.languageGrid}>
               {LANGUAGES.map((language) => {
                 const active = i18n.language === language;
                 return (
@@ -162,31 +160,51 @@ export default function SettingsScreen() {
                     accessibilityRole="button"
                     accessibilityState={{ selected: active }}
                     style={({ pressed }) => [
-                      styles.chip,
+                      styles.languageTile,
                       {
-                        backgroundColor: active ? theme.accentMuted : 'transparent',
+                        backgroundColor: active ? theme.accentMuted : theme.backgroundSelected,
                         borderColor: active ? theme.accent : theme.border,
                         opacity: pressed ? 0.8 : 1,
                       },
                     ]}>
+                    <Globe size={16} color={active ? theme.accent : theme.textSecondary} />
                     <ThemedText
                       type={active ? 'smallBold' : 'small'}
                       themeColor={active ? 'accent' : 'text'}>
                       {t(language === 'ar' ? 'settings.arabic' : 'settings.english')}
                     </ThemedText>
+                    {active ? <Check size={14} color={theme.accent} style={{ marginStart: 'auto' }} /> : null}
                   </Pressable>
                 );
               })}
             </View>
-          </Section>
+          </Card>
 
-          <Section title={t('limits.title')}>
-            {/* Outside the tabs on purpose: one cycle day serves both
-                networks and the dashboard's cycle presets. */}
-            <Field label={t('limits.cycleDay')} value={cycleDay} onChangeText={setCycleDay} />
+          {/* Data Limits Card */}
+          <Card style={styles.card}>
+            <SectionHeader
+              icon={<Gauge size={16} color={theme.accent} />}
+              title={t('limits.title')}
+            />
 
-            <View style={styles.chipRow} accessibilityRole="tablist">
-              {LIMIT_TABS.map(({ id, key }) => {
+            {/* Cycle Start Day */}
+            <View style={styles.fieldGroup}>
+              <ThemedText type="small" themeColor="textSecondary">
+                {t('limits.cycleDay')}
+              </ThemedText>
+              <Input
+                value={cycleDay}
+                onChangeText={setCycleDay}
+                keyboardType="numeric"
+                icon={<Calendar size={16} color={theme.textSecondary} />}
+                placeholder="1"
+                accessibilityLabel={t('limits.cycleDay')}
+              />
+            </View>
+
+            {/* Network Selector Tabs */}
+            <View style={[styles.networkTablist, { backgroundColor: theme.backgroundSelected, borderColor: theme.border }]} accessibilityRole="tablist">
+              {LIMIT_TABS.map(({ id, key, icon: Icon }) => {
                 const selected = activeTab === id;
                 return (
                   <Pressable
@@ -196,16 +214,16 @@ export default function SettingsScreen() {
                     accessibilityLabel={t(key)}
                     accessibilityState={{ selected }}
                     style={({ pressed }) => [
-                      styles.chip,
+                      styles.networkTab,
                       {
-                        backgroundColor: selected ? theme.accent : 'transparent',
-                        borderColor: selected ? theme.accent : theme.border,
-                        opacity: pressed ? 0.8 : 1,
+                        backgroundColor: selected ? theme.primary : 'transparent',
+                        opacity: pressed ? 0.85 : 1,
                       },
                     ]}>
+                    <Icon size={14} color={selected ? theme.primaryForeground : theme.textSecondary} />
                     <ThemedText
                       type={selected ? 'smallBold' : 'small'}
-                      themeColor={selected ? 'accentForeground' : 'text'}>
+                      themeColor={selected ? 'primaryForeground' : 'textSecondary'}>
                       {t(key)}
                     </ThemedText>
                   </Pressable>
@@ -220,38 +238,59 @@ export default function SettingsScreen() {
             {limitStatus ? (
               <LimitCard status={limitStatus.status} coverage={limitStatus.coverage} />
             ) : (
-              <ThemedText type="small" themeColor="textSecondary">
-                {t(isWifi ? 'limits.noneWifi' : 'limits.noneMobile')}
-              </ThemedText>
+              <View style={[styles.emptyLimitBox, { backgroundColor: theme.backgroundSelected, borderColor: theme.border }]}>
+                <ThemedText type="small" themeColor="textSecondary">
+                  {t(isWifi ? 'limits.noneWifi' : 'limits.noneMobile')}
+                </ThemedText>
+              </View>
             )}
 
-            <Field
-              label={t(isWifi ? 'limits.wifiLimitGb' : 'limits.mobileLimitGb')}
-              value={isWifi ? wifiLimitGb : mobileLimitGb}
-              onChangeText={isWifi ? setWifiLimitGb : setMobileLimitGb}
-              placeholder={t('limits.limitPlaceholder')}
-            />
-            <Field
-              label={t('limits.warnAt')}
-              value={isWifi ? wifiWarnPercent : mobileWarnPercent}
-              onChangeText={isWifi ? setWifiWarnPercent : setMobileWarnPercent}
-            />
-
-            <Pressable
-              onPress={saveLimit}
-              accessibilityRole="button"
-              accessibilityLabel={t('limits.save')}
-              style={({ pressed }) => [
-                styles.saveButton,
-                { backgroundColor: theme.accent, opacity: pressed ? 0.8 : 1 },
-              ]}>
-              <ThemedText type="default" themeColor="accentForeground">
-                {t('limits.save')}
+            {/* GB Limit Input */}
+            <View style={styles.fieldGroup}>
+              <ThemedText type="small" themeColor="textSecondary">
+                {t(isWifi ? 'limits.wifiLimitGb' : 'limits.mobileLimitGb')}
               </ThemedText>
-            </Pressable>
-          </Section>
+              <Input
+                value={isWifi ? wifiLimitGb : mobileLimitGb}
+                onChangeText={isWifi ? setWifiLimitGb : setMobileLimitGb}
+                keyboardType="numeric"
+                icon={<Gauge size={16} color={theme.textSecondary} />}
+                placeholder={t('limits.limitPlaceholder')}
+                accessibilityLabel={t(isWifi ? 'limits.wifiLimitGb' : 'limits.mobileLimitGb')}
+              />
+            </View>
 
-          <Section title={t('settings.showSystemApps')}>
+            {/* Warn at Percentage */}
+            <View style={styles.fieldGroup}>
+              <ThemedText type="small" themeColor="textSecondary">
+                {t('limits.warnAt')}
+              </ThemedText>
+              <Input
+                value={isWifi ? wifiWarnPercent : mobileWarnPercent}
+                onChangeText={isWifi ? setWifiWarnPercent : setMobileWarnPercent}
+                keyboardType="numeric"
+                icon={<Percent size={16} color={theme.textSecondary} />}
+                placeholder="80"
+                accessibilityLabel={t('limits.warnAt')}
+              />
+            </View>
+
+            <Button
+              variant="default"
+              icon={<Save size={16} color={theme.primaryForeground} />}
+              title={t('limits.save')}
+              onPress={saveLimit}
+              accessibilityLabel={t('limits.save')}
+              style={styles.saveBtn}
+            />
+          </Card>
+
+          {/* System Apps Toggle Card */}
+          <Card style={styles.card}>
+            <SectionHeader
+              icon={<Sliders size={16} color={theme.accent} />}
+              title={t('settings.showSystemApps')}
+            />
             <View style={styles.switchRow}>
               <ThemedText type="small" themeColor="textSecondary" style={styles.switchLabel}>
                 {t('settings.showSystemAppsHint')}
@@ -261,31 +300,36 @@ export default function SettingsScreen() {
                 onValueChange={toggleSystemApps}
                 accessibilityLabel={t('settings.showSystemApps')}
                 trackColor={{ true: theme.accentMuted, false: theme.backgroundSelected }}
-                thumbColor={settings?.showSystemApps ? theme.accent : theme.border}
+                thumbColor={settings?.showSystemApps ? theme.primary : theme.border}
               />
             </View>
-          </Section>
+          </Card>
 
-          <Section title={t('updateScreen.title')}>
-            <Pressable
+          {/* Updates Card */}
+          <Card style={styles.card}>
+            <SectionHeader
+              icon={<DownloadCloud size={16} color={theme.accent} />}
+              title={t('updateScreen.title')}
+            />
+            <Button
+              variant="secondary"
+              icon={<DownloadCloud size={16} color={theme.text} />}
+              title={t('updateScreen.check')}
               onPress={() => router.push('/update')}
-              accessibilityRole="button"
               accessibilityLabel={t('updateScreen.check')}
-              style={({ pressed }) => [
-                styles.saveButton,
-                { backgroundColor: theme.accent, opacity: pressed ? 0.8 : 1 },
-              ]}>
-              <ThemedText type="default" themeColor="accentForeground">
-                {t('updateScreen.check')}
-              </ThemedText>
-            </Pressable>
-          </Section>
+            />
+          </Card>
 
-          <Section title={t('settings.privacyTitle')}>
+          {/* Privacy Guarantee Card */}
+          <Card style={styles.card}>
+            <SectionHeader
+              icon={<Lock size={16} color={theme.accent} />}
+              title={t('settings.privacyTitle')}
+            />
             <ThemedText type="small" themeColor="textSecondary">
               {t('settings.privacyBody')}
             </ThemedText>
-          </Section>
+          </Card>
         </ScrollView>
       </SafeAreaView>
     </ThemedView>
@@ -297,33 +341,76 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1, width: '100%', maxWidth: MaxContentWidth, alignSelf: 'center' },
   content: {
     padding: Spacing.three,
-    paddingBottom: BottomTabInset + Spacing.three,
+    paddingBottom: BottomTabInset + Spacing.four,
     gap: Spacing.three,
   },
-  card: { borderRadius: Spacing.three, padding: Spacing.three, gap: Spacing.two },
-  chipRow: { flexDirection: 'row', gap: Spacing.two, flexWrap: 'wrap' },
-  chip: {
-    minHeight: 44,
-    justifyContent: 'center',
-    paddingHorizontal: Spacing.four,
-    borderRadius: 999,
-    borderWidth: 1,
+  screenTitle: {
+    fontWeight: '800',
+    fontSize: 26,
+    paddingHorizontal: 2,
   },
-  switchRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
-  switchLabel: { flex: 1 },
-  field: { gap: Spacing.one },
-  input: {
-    minHeight: 44,
-    borderWidth: 1,
-    borderRadius: Spacing.two,
-    paddingHorizontal: Spacing.three,
-    fontSize: 16,
+  card: {
+    padding: Spacing.four,
+    gap: Spacing.three,
   },
-  saveButton: {
-    minHeight: 48,
-    borderRadius: Spacing.three,
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  sectionIconBox: {
+    width: 28,
+    height: 28,
+    borderRadius: Radius.sm,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: Spacing.four,
   },
+  languageGrid: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+  },
+  languageTile: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: Spacing.three,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    gap: Spacing.two,
+    minHeight: 46,
+  },
+  networkTablist: {
+    flexDirection: 'row',
+    borderRadius: Radius.full,
+    padding: 3,
+    borderWidth: 1,
+    gap: 2,
+  },
+  networkTab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.one,
+    paddingVertical: Spacing.one + 2,
+    borderRadius: Radius.full,
+    minHeight: 44,
+  },
+  fieldGroup: {
+    gap: Spacing.one,
+  },
+  emptyLimitBox: {
+    padding: Spacing.three,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+  },
+  saveBtn: {
+    marginTop: Spacing.one,
+  },
+  switchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+  },
+  switchLabel: { flex: 1 },
 });

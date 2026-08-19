@@ -1,4 +1,5 @@
 import { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
+import { Calendar, CalendarRange, Clock, X } from 'lucide-react-native';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
@@ -6,7 +7,8 @@ import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { toast } from '@/components/toast';
-import { Spacing } from '@/constants/theme';
+import { Button } from '@/components/ui/button';
+import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { formatDateTime, formatSpan } from '@/i18n/format';
 
@@ -73,20 +75,27 @@ function Endpoint({
       accessibilityLabel={`${label}: ${formatDateTime(value)}`}
       style={({ pressed }) => [
         styles.endpoint,
-        { borderColor: theme.border, opacity: pressed ? 0.7 : 1 },
+        {
+          borderColor: theme.border,
+          backgroundColor: theme.card,
+          opacity: pressed ? 0.75 : 1,
+        },
       ]}>
-      <ThemedText type="small" themeColor="textSecondary">
-        {label}
+      <View style={styles.endpointHeader}>
+        <Clock size={14} color={theme.textSecondary} />
+        <ThemedText type="small" themeColor="textSecondary">
+          {label}
+        </ThemedText>
+      </View>
+      <ThemedText type="default" style={styles.endpointValue}>
+        {formatDateTime(value)}
       </ThemedText>
-      <ThemedText type="default">{formatDateTime(value)}</ThemedText>
     </Pressable>
   );
 }
 
 /**
- * Preset chips plus a custom-range sheet. The sheet edits a draft the user can
- * see in full before applying it, rather than the old blind chain of four
- * system dialogs whose result only became visible once it was already active.
+ * Preset chips plus a custom-range sheet with sleek Shadcn UI styling.
  */
 export function RangePicker() {
   const theme = useTheme();
@@ -108,7 +117,7 @@ export function RangePicker() {
     );
   };
 
-  const chip = (label: string, onPress: () => void, active: boolean) => (
+  const chip = (label: string, onPress: () => void, active: boolean, isCustom = false) => (
     <Pressable
       key={label}
       onPress={onPress}
@@ -118,19 +127,24 @@ export function RangePicker() {
       style={({ pressed }) => [
         styles.chip,
         {
-          backgroundColor: active ? theme.accentMuted : 'transparent',
+          backgroundColor: active ? theme.accentMuted : theme.card,
           borderColor: active ? theme.accent : theme.border,
           opacity: pressed ? 0.8 : 1,
         },
       ]}>
-      <ThemedText type={active ? 'smallBold' : 'small'} themeColor={active ? 'accent' : 'text'}>
+      {isCustom ? (
+        <CalendarRange size={13} color={active ? theme.accent : theme.textSecondary} />
+      ) : null}
+      <ThemedText
+        type={active ? 'smallBold' : 'small'}
+        themeColor={active ? 'accent' : 'textSecondary'}>
         {label}
       </ThemedText>
     </Pressable>
   );
 
   return (
-    <View>
+    <View style={styles.container}>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -145,14 +159,22 @@ export function RangePicker() {
         {chip(
           t('range.customChip'),
           () => setDraft({ start: range.start, end: range.end }),
-          range.preset === 'custom'
+          range.preset === 'custom',
+          true
         )}
       </ScrollView>
 
-      {/* The active window in words: a chip alone never says which days it is. */}
-      <ThemedText type="small" themeColor="textSecondary" style={styles.summary} numberOfLines={1}>
-        {formatDateTime(range.start)} – {formatDateTime(range.end)}
-      </ThemedText>
+      {/* The active window in words with calendar icon */}
+      <View style={styles.summaryContainer}>
+        <Calendar size={13} color={theme.textSecondary} />
+        <ThemedText
+          type="small"
+          themeColor="textSecondary"
+          style={styles.summary}
+          numberOfLines={1}>
+          {formatDateTime(range.start)} – {formatDateTime(range.end)}
+        </ThemedText>
+      </View>
 
       <Modal
         visible={draft !== null}
@@ -165,10 +187,25 @@ export function RangePicker() {
           accessibilityLabel={t('common.close')}
           onPress={() => setDraft(null)}
         />
-        <ThemedView style={styles.sheet}>
+        <ThemedView type="card" style={[styles.sheet, { borderColor: theme.border }]}>
           {draft ? (
             <>
-              <ThemedText type="default">{t('range.customTitle')}</ThemedText>
+              <View style={styles.sheetHeader}>
+                <View style={styles.sheetTitleGroup}>
+                  <CalendarRange size={20} color={theme.accent} />
+                  <ThemedText type="default" style={styles.sheetTitle}>
+                    {t('range.customTitle')}
+                  </ThemedText>
+                </View>
+                <Pressable
+                  onPress={() => setDraft(null)}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('common.close')}>
+                  <X size={20} color={theme.textSecondary} />
+                </Pressable>
+              </View>
+
               <ThemedText type="small" themeColor="textSecondary">
                 {t('range.customHint')}
               </ThemedText>
@@ -203,32 +240,19 @@ export function RangePicker() {
               )}
 
               <View style={styles.actions}>
-                <Pressable
+                <Button
+                  variant="outline"
+                  title={t('common.cancel')}
                   onPress={() => setDraft(null)}
-                  accessibilityRole="button"
-                  style={({ pressed }) => [
-                    styles.action,
-                    { borderColor: theme.border, opacity: pressed ? 0.7 : 1 },
-                  ]}>
-                  <ThemedText type="default">{t('common.cancel')}</ThemedText>
-                </Pressable>
-                <Pressable
+                  style={styles.actionBtn}
+                />
+                <Button
+                  variant="default"
+                  title={t('common.apply')}
                   onPress={apply}
                   disabled={problem !== null}
-                  accessibilityRole="button"
-                  accessibilityState={{ disabled: problem !== null }}
-                  style={({ pressed }) => [
-                    styles.action,
-                    {
-                      backgroundColor: theme.accent,
-                      borderColor: theme.accent,
-                      opacity: problem ? 0.5 : pressed ? 0.8 : 1,
-                    },
-                  ]}>
-                  <ThemedText type="default" themeColor="accentForeground">
-                    {t('common.apply')}
-                  </ThemedText>
-                </Pressable>
+                  style={styles.actionBtn}
+                />
               </View>
             </>
           ) : null}
@@ -239,38 +263,75 @@ export function RangePicker() {
 }
 
 const styles = StyleSheet.create({
-  chipRow: { gap: Spacing.two, paddingHorizontal: Spacing.three, alignItems: 'center' },
+  container: {
+    gap: Spacing.one,
+  },
+  chipRow: {
+    gap: Spacing.one + 2,
+    paddingHorizontal: Spacing.three,
+    alignItems: 'center',
+  },
   chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.one,
     minHeight: 44,
     justifyContent: 'center',
-    paddingVertical: Spacing.two,
+    paddingVertical: Spacing.one,
     paddingHorizontal: Spacing.three,
-    borderRadius: 999,
+    borderRadius: Radius.full,
     borderWidth: 1,
   },
-  summary: { paddingHorizontal: Spacing.three, paddingTop: Spacing.two },
-  backdrop: { flex: 1, backgroundColor: '#00000080' },
+  summaryContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.one,
+    paddingHorizontal: Spacing.three,
+    paddingTop: Spacing.one,
+  },
+  summary: {
+    flex: 1,
+  },
+  backdrop: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.55)' },
   sheet: {
     padding: Spacing.four,
     gap: Spacing.three,
-    borderTopLeftRadius: Spacing.four,
-    borderTopRightRadius: Spacing.four,
+    borderTopLeftRadius: Radius['2xl'],
+    borderTopRightRadius: Radius['2xl'],
+    borderTopWidth: 1,
+  },
+  sheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  sheetTitleGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  sheetTitle: {
+    fontWeight: '700',
+    fontSize: 18,
   },
   endpoint: {
     borderWidth: 1,
-    borderRadius: Spacing.three,
+    borderRadius: Radius.lg,
     padding: Spacing.three,
     gap: Spacing.half,
-    minHeight: 64,
+    minHeight: 60,
     justifyContent: 'center',
   },
-  actions: { flexDirection: 'row', gap: Spacing.two },
-  action: {
-    flex: 1,
-    minHeight: 48,
-    borderRadius: Spacing.three,
-    borderWidth: 1,
+  endpointHeader: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: Spacing.one,
+  },
+  endpointValue: {
+    fontWeight: '600',
+  },
+  actions: { flexDirection: 'row', gap: Spacing.two, marginTop: Spacing.one },
+  actionBtn: {
+    flex: 1,
   },
 });

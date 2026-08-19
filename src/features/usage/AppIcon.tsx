@@ -2,19 +2,17 @@ import { Image } from 'expo-image';
 import { StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
-import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 import { useAppIcon } from './useAppIcon';
 
 /**
- * The app's own launcher icon, with the first letter of its name as the
- * placeholder — system buckets like tethering have no package and no icon.
+ * The app's launcher icon with subtle rounded border and clean fallback avatar.
  */
 export function AppIcon({
   packageName,
   name,
-  size = 36,
+  size = 38,
 }: {
   packageName: string | null;
   name: string;
@@ -22,30 +20,57 @@ export function AppIcon({
 }) {
   const theme = useTheme();
   const uri = useAppIcon(packageName);
-  const box = { width: size, height: size, borderRadius: size / 4 };
+  const borderRadius = Math.round(size * 0.26);
+  const box = { width: size, height: size, borderRadius };
 
   if (uri) {
     return (
-      <Image
-        source={{ uri }}
-        style={box}
-        contentFit="contain"
-        // Decorative: the row's own label already announces the app name.
-        accessibilityElementsHidden
-        importantForAccessibility="no"
-      />
+      <View style={[box, styles.wrapper, { borderColor: theme.border }]}>
+        <Image
+          source={{ uri }}
+          style={styles.image}
+          contentFit="contain"
+          accessibilityElementsHidden
+          importantForAccessibility="no"
+        />
+      </View>
     );
   }
 
+  const initial = name.trim().charAt(0).toUpperCase() || '?';
+
   return (
-    <View style={[box, styles.fallback, { backgroundColor: theme.backgroundSelected }]}>
-      <ThemedText type="smallBold" themeColor="textSecondary">
-        {name.trim().charAt(0).toUpperCase() || '?'}
+    <View
+      style={[
+        box,
+        styles.fallback,
+        {
+          backgroundColor: theme.accentMuted,
+          borderColor: theme.border,
+          borderWidth: 1,
+        },
+      ]}>
+      <ThemedText
+        type="smallBold"
+        themeColor="accent"
+        style={{ fontSize: Math.round(size * 0.42) }}>
+        {initial}
       </ThemedText>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  fallback: { alignItems: 'center', justifyContent: 'center', padding: Spacing.half },
+  wrapper: {
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  image: {
+    width: '100%',
+    height: '100%',
+  },
+  fallback: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });

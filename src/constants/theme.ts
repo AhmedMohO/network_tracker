@@ -1,6 +1,6 @@
 /**
- * Below are the colors that are used in the app. The colors are defined in the light and dark mode.
- * There are many other ways to style your app. For example, [Nativewind](https://www.nativewind.dev/), [Tamagui](https://tamagui.dev/), [unistyles](https://reactnativeunistyles.vercel.app), etc.
+ * Below are the colors and design tokens that are used in the app, tailored
+ * for a sleek, modern Shadcn UI theme in both light and dark modes.
  */
 
 import '@/global.css';
@@ -9,40 +9,104 @@ import { I18nManager, Platform } from 'react-native';
 
 export const Colors = {
   light: {
-    text: '#000000',
-    background: '#ffffff',
-    backgroundElement: '#F0F0F3',
-    backgroundSelected: '#E0E1E6',
-    textSecondary: '#60646C',
-    // Darkened from the #208AEF brand blue so white-on-accent and
-    // accent-on-surface both clear WCAG AA (4.5:1) for 14-16px text.
-    accent: '#1268B5',
-    accentMuted: '#1268B51F',
-    accentForeground: '#ffffff',
-    // >= 3:1 against both `background` and `backgroundElement`, so an
-    // unselected chip or tab outline reads as a real affordance.
-    border: '#828892',
-    danger: '#B3261E',
-    // Second series colour: far enough from the blue accent in hue and
-    // lightness to stay distinguishable, including for red-green deficiency.
-    accentAlt: '#7A4CC4',
-    // Amber alert tone, distinct from both `accent` (blue) and `danger`
-    // (red) by hue alone. >= 4.5:1 against `background` and `backgroundElement`.
-    warning: '#946200',
+    text: '#090A0C',
+    textSecondary: '#64748B',
+    background: '#F8FAFC',
+    backgroundElement: '#FFFFFF',
+    backgroundSelected: '#F1F5F9',
+
+    // Shadcn Semantic Tokens
+    card: '#FFFFFF',
+    cardForeground: '#090A0C',
+    popover: '#FFFFFF',
+    popoverForeground: '#090A0C',
+
+    primary: '#0284C7',
+    primaryForeground: '#FFFFFF',
+
+    secondary: '#F1F5F9',
+    secondaryForeground: '#0F172A',
+
+    muted: '#F8FAFC',
+    mutedForeground: '#64748B',
+
+    accent: '#0284C7',
+    accentMuted: 'rgba(2, 132, 199, 0.12)',
+    accentForeground: '#FFFFFF',
+    accentAlt: '#7C3AED',
+    accentAltMuted: 'rgba(124, 58, 237, 0.12)',
+
+    border: '#E2E8F0',
+    borderSubtle: '#F1F5F9',
+    input: '#E2E8F0',
+    ring: '#0284C7',
+
+    danger: '#EF4444',
+    destructive: '#EF4444',
+    destructiveForeground: '#FFFFFF',
+
+    warning: '#D97706',
+    warningMuted: 'rgba(217, 119, 6, 0.12)',
+    warningForeground: '#FFFFFF',
+
+    success: '#10B981',
+    successMuted: 'rgba(16, 185, 129, 0.12)',
+    successForeground: '#FFFFFF',
+
+    chart1: '#0284C7',
+    chart2: '#7C3AED',
+    chart3: '#10B981',
+    chart4: '#F59E0B',
   },
   dark: {
-    text: '#ffffff',
-    background: '#000000',
-    backgroundElement: '#212225',
-    backgroundSelected: '#2E3135',
-    textSecondary: '#B0B4BA',
-    accent: '#5CA9F5',
-    accentMuted: '#5CA9F52E',
-    accentForeground: '#04101C',
-    border: '#6A6F78',
-    danger: '#FF8A80',
-    accentAlt: '#C4A2F5',
-    warning: '#E8A200',
+    text: '#F8FAFC',
+    textSecondary: '#94A3B8',
+    background: '#090D16',
+    backgroundElement: '#111726',
+    backgroundSelected: '#1E293B',
+
+    // Shadcn Semantic Tokens
+    card: '#111726',
+    cardForeground: '#F8FAFC',
+    popover: '#111726',
+    popoverForeground: '#F8FAFC',
+
+    primary: '#38BDF8',
+    primaryForeground: '#082F49',
+
+    secondary: '#1E293B',
+    secondaryForeground: '#F8FAFC',
+
+    muted: '#151D2E',
+    mutedForeground: '#94A3B8',
+
+    accent: '#38BDF8',
+    accentMuted: 'rgba(56, 189, 248, 0.16)',
+    accentForeground: '#082F49',
+    accentAlt: '#A78BFA',
+    accentAltMuted: 'rgba(167, 139, 250, 0.16)',
+
+    border: '#1E293B',
+    borderSubtle: '#151D2E',
+    input: '#1E293B',
+    ring: '#38BDF8',
+
+    danger: '#F87171',
+    destructive: '#F87171',
+    destructiveForeground: '#090D16',
+
+    warning: '#FBBF24',
+    warningMuted: 'rgba(251, 191, 36, 0.16)',
+    warningForeground: '#090D16',
+
+    success: '#34D399',
+    successMuted: 'rgba(52, 211, 153, 0.16)',
+    successForeground: '#090D16',
+
+    chart1: '#38BDF8',
+    chart2: '#A78BFA',
+    chart3: '#34D399',
+    chart4: '#FBBF24',
   },
 } as const;
 
@@ -50,13 +114,9 @@ export type ThemeColor = keyof typeof Colors.light & keyof typeof Colors.dark;
 
 export const Fonts = Platform.select({
   ios: {
-    /** iOS `UIFontDescriptorSystemDesignDefault` */
     sans: 'system-ui',
-    /** iOS `UIFontDescriptorSystemDesignSerif` */
     serif: 'ui-serif',
-    /** iOS `UIFontDescriptorSystemDesignRounded` */
     rounded: 'ui-rounded',
-    /** iOS `UIFontDescriptorSystemDesignMonospaced` */
     mono: 'ui-monospace',
   },
   default: {
@@ -81,6 +141,41 @@ export const Spacing = {
   four: 24,
   five: 32,
   six: 64,
+} as const;
+
+export const Radius = {
+  none: 0,
+  xs: 4,
+  sm: 6,
+  md: 10,
+  lg: 14,
+  xl: 18,
+  '2xl': 24,
+  full: 9999,
+} as const;
+
+export const Shadows = {
+  sm: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  md: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  lg: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 6,
+  },
 } as const;
 
 /** `textAlign` value that hugs the end of the line in either direction. */
