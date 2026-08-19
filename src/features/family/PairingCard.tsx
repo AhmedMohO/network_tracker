@@ -1,7 +1,9 @@
-import { Smartphone, UserMinus, UserPlus, Users } from 'lucide-react-native';
+import { useRouter } from 'expo-router';
+import { QrCode, ScanLine, Smartphone, UserMinus, UserPlus, Users } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Alert, Share, StyleSheet, View } from 'react-native';
+import QRCode from 'react-native-qrcode-svg';
 
 import { ThemedText } from '@/components/themed-text';
 import { toast } from '@/components/toast';
@@ -15,6 +17,9 @@ import { formatDateTime } from '@/i18n/format';
 import { pairLink, parsePairLink } from './pair';
 import { useChildren } from './useChildren';
 import { defaultDeviceLabel, useFamily } from './useFamily';
+
+/** How long the parent's QR code stays on screen before auto-dismissing. */
+const QR_TIMEOUT_MS = 2 * 60_000;
 
 /** Matches the section header used by every other card on the settings screen. */
 function SectionHeader({ icon, title }: { icon: React.ReactNode; title: string }) {
@@ -38,15 +43,28 @@ function SectionHeader({ icon, title }: { icon: React.ReactNode; title: string }
 export function PairingCard() {
   const theme = useTheme();
   const { t } = useTranslation();
+  const router = useRouter();
   const family = useFamily();
   const { children } = useChildren();
   const [showPaste, setShowPaste] = useState(false);
   const [pasteText, setPasteText] = useState('');
   const [labelDraft, setLabelDraft] = useState('');
+  const [showQr, setShowQr] = useState(false);
 
   useEffect(() => {
     setLabelDraft(family.deviceLabel ?? '');
   }, [family.deviceLabel]);
+
+  // Auto-dismiss the QR code after QR_TIMEOUT_MS.
+  useEffect(() => {
+    if (!showQr) return;
+    const id = setTimeout(() => setShowQr(false), QR_TIMEOUT_MS);
+    return () => clearTimeout(id);
+  }, [showQr]);
+
+  const link = family.token
+    ? pairLink(family.token, family.deviceLabel ?? defaultDeviceLabel())
+    : null;
 
   const confirmUnpair = (titleKey: string, bodyKey: string, actionKey: string) =>
     new Promise<boolean>((resolve) => {
@@ -91,9 +109,9 @@ export function PairingCard() {
   };
 
   const sendLink = async () => {
-    if (!family.token || !family.deviceLabel) return;
+    if (!link) return;
     try {
-      await Share.share({ message: pairLink(family.token, family.deviceLabel) });
+      await Share.share({ message: link });
     } catch {
       toast(t('family.shareFailed'));
     }
@@ -142,6 +160,13 @@ export function PairingCard() {
           />
           {showPaste && (
             <View style={styles.fieldGroup}>
+              <Button
+                variant="outline"
+                icon={<ScanLine size={16} color={theme.text} />}
+                title={t('family.scanQrButton')}
+                onPress={() => router.push('/scan')}
+                accessibilityLabel={t('family.scanQrButton')}
+              />
               <ThemedText type="small" themeColor="textSecondary">
                 {t('family.pasteLinkLabel')}
               </ThemedText>
@@ -194,6 +219,25 @@ export function PairingCard() {
             accessibilityLabel={t('family.sendLink')}
             accessibilityHint={t('family.sendLinkHint')}
           />
+
+          <Button
+            variant="secondary"
+            icon={<QrCode size={16} color={theme.text} />}
+            title={t('family.showQrButton')}
+            onPress={() => setShowQr((v) => !v)}
+            accessibilityLabel={t('family.showQrButton')}
+          />
+
+          {showQr && link && (
+            <View style={[styles.qrBox, { backgroundColor: '#fff', borderColor: theme.border }]}>
+              <QRCode
+                value={link}
+                size={200}
+                backgroundColor="#fff"
+                color="#000"
+              />
+            </View>
+          )}
 
           <View style={styles.fieldGroup}>
             <ThemedText type="smallBold" themeColor="textSecondary">
@@ -310,5 +354,13 @@ const styles = StyleSheet.create({
     padding: Spacing.three,
     borderRadius: Radius.lg,
     borderWidth: 1,
+  },
+  qrBox: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: Spacing.four,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    alignSelf: 'center',
   },
 });

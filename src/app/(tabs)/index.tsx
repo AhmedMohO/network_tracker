@@ -70,16 +70,18 @@ export default function Dashboard() {
         <SharingBanner />
         <View style={styles.topBar}>
           <NetworkFilterTabs />
-          <Button
-            size="sm"
-            variant="outline"
-            icon={<Share2 size={14} color={theme.text} />}
-            title={t('export.action')}
-            onPress={exportUsage}
-            disabled={!data}
-            accessibilityLabel={t('export.action')}
-            accessibilityHint={t('export.hint')}
-          />
+          {__DEV__ && (
+            <Button
+              size="sm"
+              variant="outline"
+              icon={<Share2 size={14} color={theme.text} />}
+              title={t('export.action')}
+              onPress={exportUsage}
+              disabled={!data}
+              accessibilityLabel={t('export.action')}
+              accessibilityHint={t('export.hint')}
+            />
+          )}
         </View>
 
         <RangePicker />

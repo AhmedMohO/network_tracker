@@ -336,5 +336,11 @@ export const en = {
     childLimitGb: 'Notify me when {{label}} passes (GB)',
     childLimitHint:
       'A notification on this device when {{label}} passes an amount — this cannot stop or pause {{label}}’s data use.',
+    scanQrButton: 'Scan QR code',
+    showQrButton: 'Show QR code',
+    scanQrTitle: 'Scan pairing QR',
+    scanQrHint: 'Point the camera at the QR code on the parent device.',
+    cameraPermissionNeeded: 'Camera access is needed to scan a QR code.',
+    cameraPermissionButton: 'Allow camera',
   },
 };

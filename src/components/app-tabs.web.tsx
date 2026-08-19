@@ -42,9 +42,11 @@ export default function AppTabs() {
           <TabTrigger name="settings" href="/settings" asChild>
             <TabButton icon={Settings}>{t('tabs.settings')}</TabButton>
           </TabTrigger>
-          <TabTrigger name="probe" href="/probe" asChild>
-            <TabButton icon={Terminal}>{t('tabs.probe')}</TabButton>
-          </TabTrigger>
+          {__DEV__ && (
+            <TabTrigger name="probe" href="/probe" asChild>
+              <TabButton icon={Terminal}>{t('tabs.probe')}</TabButton>
+            </TabTrigger>
+          )}
         </CustomTabList>
       </TabList>
     </Tabs>

@@ -321,5 +321,11 @@ export const ar: typeof en = {
     childLimitGb: 'نبّهني عندما يتجاوز {{label}} (جيجابايت)',
     childLimitHint:
       'إشعار على هذا الجهاز عندما يتجاوز {{label}} كمية معينة — لا يمكن لهذا أن يوقف أو يوقّف مؤقتًا استهلاك {{label}} للبيانات.',
+    scanQrButton: 'مسح رمز QR',
+    showQrButton: 'عرض رمز QR',
+    scanQrTitle: 'مسح رمز الاقتران',
+    scanQrHint: 'وجّه الكاميرا نحو رمز QR على جهاز الوالد.',
+    cameraPermissionNeeded: 'يلزم إذن الكاميرا لمسح رمز QR.',
+    cameraPermissionButton: 'السماح بالكاميرا',
   },
 };

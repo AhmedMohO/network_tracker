@@ -39,7 +39,14 @@
       "expo-localization",
       "expo-background-task",
       "expo-notifications",
-      "expo-sharing"
+      "expo-sharing",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow NetTrack to use the camera to scan a pairing QR code.",
+          "barcodeScannerEnabled": true
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
