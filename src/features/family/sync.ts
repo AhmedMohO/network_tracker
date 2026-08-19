@@ -1,5 +1,7 @@
 import Constants from "expo-constants";
 
+import type { NetworkUsageModule } from "@modules/network-usage";
+
 import { readArchive, snapshotDay } from "@/features/archive/db";
 import type { AppUsage } from "@/features/usage/aggregate";
 import { fetchUsage } from "@/features/usage/api";
@@ -10,11 +12,14 @@ import { mergeCache, readCache } from "./cache";
 
 export type SnapshotKind = "daily" | "recent" | "request" | "grant";
 
-export type DeviceContext = {
-  foregroundPackage: string | null;
-  batteryPercent: number | null;
-  connection: "MOBILE" | "WIFI" | "NONE";
-};
+/**
+ * `import type` only — erased at compile time, so this never pulls the native
+ * module into scope at runtime (same pattern `fromPayload.ts`/`dailySeries.ts`
+ * already use for `NetworkFilter`). Derived from `NetworkUsageModule` itself
+ * rather than hand-copied, so the wire type and the native return type cannot
+ * drift apart the way they did until this task.
+ */
+export type DeviceContext = ReturnType<NetworkUsageModule["getDeviceContext"]>;
 
 export type Snapshot = {
   deviceId: string;

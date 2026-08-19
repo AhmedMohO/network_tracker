@@ -1,3 +1,4 @@
+import NetworkUsage from "@modules/network-usage";
 import * as BackgroundTask from "expo-background-task";
 import * as TaskManager from "expo-task-manager";
 import { Platform } from "react-native";
@@ -379,7 +380,11 @@ export async function runUsageCheck(now: number) {
   // (via `rpc`) has already stamped `lastSyncErrorAt`; the check below is what
   // stops that stamp from being a secret.
   try {
-    await syncFromChild(now);
+    // Synchronous and throws on non-Android (`src/unavailable.ts`) or if the
+    // native side hits trouble — inside this same try so a probe failure
+    // costs the push nothing, same swallow-and-continue posture as the rest
+    // of this function.
+    await syncFromChild(now, NetworkUsage.getDeviceContext());
   } catch {
     // See above.
   }

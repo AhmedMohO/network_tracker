@@ -271,7 +271,7 @@ export const en = {
     sharingWith: 'Usage on this device is shared with {{label}}',
     bannerDetails: 'Details',
     whatIsShared:
-      'What is shared, once a day and a few times more often for today so far: this device’s id and label, per-app data usage totals, app names, and the coverage window Android reported them over when it differs from what was asked for.',
+      'What is shared, once a day and a few times more often for today so far: this device’s id and label, per-app data usage totals, app names, the coverage window Android reported them over when it differs from what was asked for, and — with each of today’s more frequent updates — which app was in the foreground, this device’s battery percentage, and whether it was on mobile data, Wi-Fi, or offline.',
     whatNeverLeaves:
       'What never leaves this device: your location, Wi-Fi network name, browsing content, message content, and screen contents.',
     joinTitle: 'Join family sharing?',
@@ -296,6 +296,18 @@ export const en = {
     splitMissingDays_one: 'Mobile/Wi-Fi split covers all but {{count}} day in this range.',
     splitMissingDays_other: 'Mobile/Wi-Fi split covers all but {{count}} days in this range.',
     noCheckInToday: 'No check-in from this device today yet.',
+    // The device-context probe (Task 32), attached to the heartbeat. Past
+    // tense always — "is currently using" is forbidden, since the reading is
+    // already up to 15 minutes old by the time it arrives. `noCheckInSince`
+    // replaces the whole line, app name included, once it is more than 45
+    // minutes old — see `isContextStale`.
+    lastCheckIn: 'Last check-in {{span}} ago',
+    wasUsingApp: 'was using {{app}}',
+    batteryPercent: '{{percent}}% battery',
+    contextOnMobile: 'on mobile data',
+    contextOnWifi: 'on Wi-Fi',
+    contextOffline: 'offline',
+    noCheckInSince: 'No check-in since {{when}}',
     includesPartialDay: 'Includes today so far — the day is still running.',
     detailEmpty: 'No usage recorded for this child in this range.',
     childRowHint: 'Opens this child’s usage',

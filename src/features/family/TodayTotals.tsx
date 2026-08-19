@@ -6,9 +6,45 @@ import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { formatBytes } from '@/features/usage/format';
 import { useTheme } from '@/hooks/use-theme';
-import { formatDateTime } from '@/i18n/format';
+import { formatDateTime, formatSpan } from '@/i18n/format';
 
+import { isContextStale, resolveForegroundAppName } from './context';
 import type { RecentPayload } from './useChildren';
+
+/**
+ * The device-context probe (Task 32) attached to the heartbeat, rendered past
+ * tense and pinned to the check-in time it was captured at — never "is
+ * currently", which nothing here can promise: the reading is up to 15
+ * minutes old by the time it arrives, and older still by the time anyone
+ * reads it. `isContextStale` (45 minutes, three missed heartbeats) decides
+ * whether naming an app would still be honest; past that, this names the gap
+ * instead. A missing `context` (a payload pushed before this task, or a
+ * probe that itself failed) renders nothing rather than guessing.
+ */
+function describeContext(
+  recent: RecentPayload,
+  now: number,
+  t: (key: string, options?: Record<string, unknown>) => string
+): string | null {
+  const { context, at, apps } = recent;
+  if (!context) return null;
+  if (isContextStale(at, now)) return t('family.noCheckInSince', { when: formatDateTime(at) });
+
+  const appName = resolveForegroundAppName(context.foregroundPackage, apps);
+  const parts: string[] = [];
+  if (appName) parts.push(t('family.wasUsingApp', { app: appName }));
+  if (context.batteryPercent != null) {
+    parts.push(t('family.batteryPercent', { percent: context.batteryPercent }));
+  }
+  parts.push(
+    context.connection === 'MOBILE'
+      ? t('family.contextOnMobile')
+      : context.connection === 'WIFI'
+        ? t('family.contextOnWifi')
+        : t('family.contextOffline')
+  );
+  return `${t('family.lastCheckIn', { span: formatSpan(now - at) })} — ${parts.join(' · ')}`;
+}
 
 /**
  * Whether a heartbeat's own timestamp falls on this device's calendar day —
@@ -37,6 +73,7 @@ export function isTodayHeartbeat(at: number, now = Date.now()): boolean {
 export function TodayTotals({ recent }: { recent: RecentPayload }) {
   const theme = useTheme();
   const { t } = useTranslation();
+  const contextText = describeContext(recent, Date.now(), t);
 
   return (
     <View style={styles.totalsGroup}>
@@ -65,6 +102,11 @@ export function TodayTotals({ recent }: { recent: RecentPayload }) {
             from: formatDateTime(recent.coverage.start),
             to: formatDateTime(recent.coverage.end),
           })}
+        </ThemedText>
+      ) : null}
+      {contextText ? (
+        <ThemedText type="small" themeColor="textSecondary">
+          {contextText}
         </ThemedText>
       ) : null}
     </View>
