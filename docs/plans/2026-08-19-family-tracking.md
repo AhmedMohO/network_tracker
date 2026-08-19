@@ -760,7 +760,7 @@ git commit -m "feat: family sync client and child-side push"
 
 # Phase 9 — Pairing UI and the parent's view
 
-The first phase with a two-device round trip. Nothing here is new logic; it is Phase 8's data rendered through components that already exist.
+The first phase with a two-device round trip. Tasks 28-29 are not new logic; they are Phase 8's data rendered through components that already exist. Task 30 is what makes the feature work while the app is closed - the parent is notified on the background task, not on opening a screen. The phase is not done without it.
 
 ---
 
@@ -864,6 +864,7 @@ Almost no new rendering code. The pulled payload maps to `AppUsage[]`, which `To
 
 **Files:**
 - Create: `src/features/family/useChildren.ts`
+- Create: `src/features/family/cache.ts`
 - Create: `src/features/family/fromPayload.ts`
 - Create: `src/features/family/fromPayload.test.ts`
 - Create: `src/app/family/index.tsx`
@@ -946,6 +947,8 @@ Pulls on focus, no interval — `useFocusEffect`, the same posture as `useLiveAp
 
 Cache the pulled rows in the existing `expo-sqlite/kv-store` keyed by `pairToken`, and pass the newest `updatedAt` as `pullSnapshots(since)` on the next call. An offline parent then still sees the last known state with its real "as of" time, rather than an empty screen.
 
+Put the cache itself in `src/features/family/cache.ts` as two plain functions — `readCache(): Promise<Snapshot[]>` and `mergeCache(rows: Snapshot[]): Promise<Snapshot[]>` (merge by `deviceId|kind|day`, newest `updatedAt` wins) — **not** inside the hook. Task 30's background pull writes the same cache from a headless task where no React tree exists, and the screen must render what the background already fetched rather than re-fetching it on focus. `useChildren` reads the cache first, renders, then pulls.
+
 - [ ] **Step 6: Write the two screens**
 
 `src/app/family/index.tsx` — one row per child: label, last-seen ("2 hours ago", `src/i18n/format.ts`), today's mobile/Wi-Fi totals from the `recent` payload. An empty list says *"No child devices have checked in yet"* and links to the pairing card, never a spinner that never resolves.
@@ -987,15 +990,93 @@ git commit -m "feat: parent-side family list and per-child usage screens"
 
 ---
 
+### Task 30: Background pull and parent-side alerts
+
+**Why this is in Phase 9 and not an optional later phase.** Tasks 28-29 give the parent a screen. A screen is only read when someone opens the app, and a monitoring feature the parent has to remember to check has not told them anything. This task is what makes the answer to *"does the app have to be open?"* **no**.
+
+What it is not: it is not live. The parent learns of a child's usage on the same 15-minute `USAGE_CHECK_TASK` floor both devices already run on, so the true end-to-end latency is **one child cycle plus one parent cycle - 15 to 45 minutes in practice, longer under Doze**. Every string in this task is written for that number. Nothing here says "now".
+
+Reuses `limitStatus`, `detectSpike`, `decideAlert` and `notify` unchanged. The new code is: fetching someone else's numbers on the existing schedule, and namespacing the alert keys.
+
+**Files:**
+- Modify: `src/features/limits/backgroundCheck.ts`, `src/features/limits/alerts.ts`
+- Modify: `src/features/family/sync.ts`, `src/features/usage/settings.ts` (per-child limits), `src/i18n/*`
+
+**Interfaces:**
+- Consumes: `syncRun`, `pullSnapshots`, `mergeCache`, `readCache`, `limitStatus`, `notify`
+- Produces:
+  - `pullFromParent(now: number): Promise<void>` in `sync.ts`
+  - `Settings.childLimits: Record<string, { mobileLimitBytes: number | null; warnAtPercent: number }>`, keyed by `deviceId`
+
+- [ ] **Step 1: Extend the alert keys**
+
+`limitAlertKey` and `spikeAlertKey` currently identify one device's cycle. Prefix a `deviceId` (empty string for this device) so a parent watching three children keeps three independent once-per-threshold records in the one `alertedKeys` array. Extend `alerts.test.ts` to prove two devices crossing the same threshold in the same cycle produce two notifications, and that each still fires only once.
+
+Read `decideAlert` before writing the prefix. It filters `alertedKeys` by splitting on `:` and checking field 0 against `NETWORKS` - a key whose first field is a `deviceId` is dropped from `live`, never counts as fired, and re-notifies every 15 minutes. That is the same mechanism that broke Task 27's sync-broken key. Either prefix in a position the split still parses, or change `decideAlert` and its tests together. Do not add a key shape the parser silently discards.
+
+- [ ] **Step 2: Write `pullFromParent` in `sync.ts`**
+
+The mirror of `syncFromChild`, and the same shape:
+
+```ts
+export async function pullFromParent(now: number): Promise<void> {
+  const s = await loadSettings();
+  if (s.familyRole !== "parent" || !s.pairToken) return;
+  await syncRun(async () => {
+    const cached = await readCache();
+    const since = Math.max(0, ...cached.map((r) => r.updatedAt));
+    await mergeCache(await pullSnapshots(since));
+  });
+}
+```
+
+`syncRun` is what Task 27 extracted for exactly this caller: the run's success or first failure is stamped once, so a paused Supabase project surfaces through the same two-day sync-broken notice the child already has. `since` is not an optimisation - a parent pulling 90 days of rows every 15 minutes is ~3.3 GB/month against a 5 GB free-tier egress cap; pulling deltas is ~42 MB.
+
+- [ ] **Step 3: Call it in `runUsageCheck`, and check the children**
+
+In `backgroundCheck.ts`, beside the existing `syncFromChild` call and with the same swallow-and-continue posture - a failed pull must never cost the parent's *own* alerts or archive snapshot. Then, for each child with a configured limit, sum its `daily` payloads across the current cycle plus its `recent` total for today and run the existing `limitStatus` against it.
+
+Three honesty rules:
+
+1. **Never alert on data older than 3 hours.** A child that has not checked in has not necessarily stopped using data; alerting from stale totals says something false about the present.
+2. **Notify when a child goes quiet for 24 hours**, once. That is the honest version of the wishlist's "tamper watchdog" - it reports an observation ("no check-in since yesterday"), not an accusation, and it does not fire on the ordinary overnight Doze gap.
+3. **Every notification names the child's check-in time, not the delivery time.** *"Leo passed 2 GB - as of 14:05"*. The parent is being told about a 15-to-45-minute-old fact and the notification must not read as a live one.
+
+- [ ] **Step 4: Per-child limit UI**
+
+A limit field on the child's detail screen, storing into `childLimits[deviceId]`. Reuse `LimitCard`.
+
+**The copy must not imply enforcement.** *"Notify me when Leo passes 2 GB"* - never *"Limit Leo to 2 GB"*. Nothing in this app can stop the child's traffic, and a settings screen that suggests otherwise is the single worst outcome of this plan.
+
+- [ ] **Step 5: Verify on two devices**
+
+- [ ] **With the parent's app closed - swiped away, not backgrounded - the parent receives a notification about the child's usage.** This is the requirement the whole task exists for. If it only arrives once the app is opened, the task is not done.
+- [ ] Set a low limit for the child, generate traffic on the child, force both background runs: the parent gets exactly one notification.
+- [ ] Force the parent's run again: no second notification for the same threshold.
+- [ ] A second child crossing the same threshold in the same cycle produces its own notification.
+- [ ] Kill the child's sync for 4 hours, then set a limit already exceeded by the stale data: **no alert fires**.
+- [ ] Open the family list right after a background pull: it renders from the cache with no visible fetch, and the numbers match what the notification said.
+- [ ] The parent's own limits still alert exactly as they did in Phase 3.
+- [ ] Record the observed end-to-end latency (child traffic to parent notification) on both devices. If it exceeds ~45 minutes on a healthy device, note the manufacturer - Samsung/Xiaomi battery management is the likely cause, and the release notes must say so rather than the UI implying promptness the OS will not deliver.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add -A
+git commit -m "feat: background parent pull and notifications for a child's usage"
+```
+
+---
+
 # Phase 10 — Device context at check-in
 
 What the source wishlist called "Live Activity". It is not live — it is a **15-minute heartbeat**, because that is Android's background floor and this plan does not add a foreground service. Every string in this phase says so.
 
-Skip this phase entirely if the parent only cares about byte totals. Phase 9 is complete without it.
+Skip this phase entirely if the parent only cares about byte totals. Phase 9 is complete without it - including the notifications, which are Task 30.
 
 ---
 
-### Task 30: Kotlin context probe
+### Task 31: Kotlin context probe
 
 Three small reads through APIs the app already has permission for. No new manifest permission, and deliberately none of the ones that would need one.
 
@@ -1047,7 +1128,7 @@ Three small reads through APIs the app already has permission for. No new manife
         return if (level in 0..100) level else null
     }
 
-    /** Transport only. Never the SSID, never the carrier — see Task 30 notes. */
+    /** Transport only. Never the SSID, never the carrier — see Task 31 notes. */
     fun connection(context: Context): String {
         val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return "NONE"
@@ -1090,7 +1171,7 @@ git commit -m "feat: foreground app, battery and connection type probe"
 
 ---
 
-### Task 31: Heartbeat payload and its honest rendering
+### Task 32: Heartbeat payload and its honest rendering
 
 **Files:**
 - Modify: `src/features/limits/backgroundCheck.ts`, `src/features/family/sync.ts`
@@ -1134,56 +1215,9 @@ git commit -m "feat: device context heartbeat with explicit check-in times"
 
 ---
 
-# Phase 11 — Alerts and requests
+# Phase 11 — Requests
 
-Optional. Phases 8–10 deliver the feature; this phase makes the parent's device speak first. Build it only if the family list is being opened often enough to be a chore.
-
----
-
-### Task 32: Parent-side alerts on a child's usage
-
-Reuses `limitStatus`, `detectSpike`, `decideAlert` and `notify` unchanged. The only new code is fetching someone else's numbers and namespacing the alert keys.
-
-**Files:**
-- Modify: `src/features/limits/backgroundCheck.ts`, `src/features/limits/alerts.ts`
-- Modify: `src/features/usage/settings.ts` (per-child limits), `src/i18n/*`
-
-**Interfaces:**
-- Produces: `Settings.childLimits: Record<string, { mobileLimitBytes: number | null; warnAtPercent: number }>`, keyed by `deviceId`
-
-- [ ] **Step 1: Extend the alert keys**
-
-`limitAlertKey` and `spikeAlertKey` currently identify one device's cycle. Prefix a `deviceId` (empty string for this device) so a parent watching three children keeps three independent once-per-threshold records in the one `alertedKeys` array. Extend `alerts.test.ts` to prove two devices crossing the same threshold in the same cycle produce two notifications, and that each still fires only once.
-
-- [ ] **Step 2: Check children in `runUsageCheck`**
-
-When `familyRole === 'parent'`, after the local checks: pull, and for each child with a configured limit, sum its `daily` payloads across the current cycle plus its `recent` total for today, then run the existing `limitStatus` against it.
-
-Two honesty rules:
-
-1. **Never alert on data older than 3 hours.** A child that has not checked in has not necessarily stopped using data; alerting from stale totals says something false about the present.
-2. **Notify when a child goes quiet for 24 hours**, once. That is the honest version of the wishlist's "tamper watchdog" — it reports an observation ("no check-in since yesterday"), not an accusation, and it does not fire on the ordinary overnight Doze gap.
-
-- [ ] **Step 3: Per-child limit UI**
-
-A limit field on the child's detail screen, storing into `childLimits[deviceId]`. Reuse `LimitCard`.
-
-**The copy must not imply enforcement.** *"Notify me when Leo passes 2 GB"* — never *"Limit Leo to 2 GB"*. Nothing in this app can stop the child's traffic, and a settings screen that suggests otherwise is the single worst outcome of this plan.
-
-- [ ] **Step 4: Verify on two devices**
-
-- [ ] Set a low limit for the child, generate traffic on the child, force both background runs: the parent gets exactly one notification.
-- [ ] Force the parent's run again: no second notification for the same threshold.
-- [ ] A second child crossing the same threshold in the same cycle produces its own notification.
-- [ ] Kill the child's sync for 4 hours, then set a limit already exceeded by the stale data: **no alert fires**.
-- [ ] The parent's own limits still alert exactly as they did in Phase 3.
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add -A
-git commit -m "feat: parent notifications for a child's usage thresholds"
-```
+Optional, and the only genuinely optional phase left: parent-side notification moved into Phase 9 (Task 30), because a parent who has to open the app to learn anything has not been told.
 
 ---
 
@@ -1240,7 +1274,7 @@ Everything in the Phase 3–7 release checklist still applies. These are additio
 - [ ] **Two Android versions, two manufacturers.** Aggressive battery management on Samsung/Xiaomi is the most likely cause of a child that never checks in — note the observed behaviour in the release rather than assuming the 15-minute cadence holds.
 - [ ] **Airplane mode on each side.** Neither device may lose local functionality because sync failed.
 - [ ] **Payload size.** Confirm a real `daily` payload is single-digit KB. A child on a metered plan is paying for this.
-- [ ] `npx jest` passes. `npx tsc --noEmit` passes.
+- [ ] `npx jest` passes. `./node_modules/.bin/tsc --noEmit` passes. (Bare `npx tsc` prints an offer to install the compiler and exits 0 without checking anything - it is not a gate.)
 - [ ] `README.md` and the in-app privacy card agree with §Privacy, word for word on the "what leaves" list.
 
 ---
