@@ -6,6 +6,8 @@ import { fetchUsage } from "@/features/usage/api";
 import { presetRange } from "@/features/usage/range";
 import { loadSettings, saveSettings } from "@/features/usage/settings";
 
+import { mergeCache, readCache } from "./cache";
+
 export type SnapshotKind = "daily" | "recent" | "request" | "grant";
 
 export type DeviceContext = {
@@ -185,5 +187,37 @@ export async function syncFromChild(now: number, context: DeviceContext | null =
         all.coverage
       )
     );
+  });
+}
+
+/**
+ * `readCache` → the cache's own newest row as the pull cursor → `pullSnapshots`
+ * → `mergeCache`. Shared by `useChildren.ts` (a failed pull there falls back
+ * to the cached rows already on screen — see its own wrapper) and
+ * `pullFromParent` below (a failed pull there must propagate, so `syncRun`
+ * can stamp it) — each wraps this in the error handling its caller needs
+ * rather than re-deriving the since-cursor logic.
+ */
+export async function refreshCache(): Promise<Snapshot[]> {
+  const cached = await readCache();
+  const since = cached.reduce((max, r) => Math.max(max, r.updatedAt), 0);
+  const fresh = await pullSnapshots(since);
+  return fresh.length > 0 ? await mergeCache(fresh) : cached;
+}
+
+/**
+ * The parent's mirror of `syncFromChild`: pulls whatever every paired child
+ * has pushed since this device's cache last saw, on the same 15-minute
+ * `USAGE_CHECK_TASK` both roles already run on. `since` is not an
+ * optimisation — a parent re-pulling 90 days of rows every 15 minutes is
+ * ~3.3 GB/month against a 5 GB free-tier egress cap; pulling deltas is
+ * ~42 MB. Wrapped in `syncRun` so a paused Supabase project surfaces through
+ * the same two-day sync-broken notice the child already has.
+ */
+export async function pullFromParent(now: number): Promise<void> {
+  const s = await loadSettings();
+  if (s.familyRole !== "parent" || !s.pairToken) return;
+  await syncRun(async () => {
+    await refreshCache();
   });
 }

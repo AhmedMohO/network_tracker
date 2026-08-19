@@ -291,5 +291,19 @@ export const en = {
     detailEmpty: 'No usage recorded for this child in this range.',
     childRowHint: 'Opens this child’s usage',
     childRowA11y: '{{label}}, {{when}}',
+    // Notifications about a child's usage, checked on the same 15-minute
+    // background schedule as this device's own alerts — so every string below
+    // names the child's own check-in time, never "now", and never implies
+    // this device can stop the child's traffic.
+    childOverTitle: '{{label}} passed a data limit',
+    childOverBody: '{{label}} had used {{used}} of {{limit}}, as of {{when}}.',
+    childWarnTitle: '{{label}} is nearing a data limit',
+    childWarnBody: '{{label}} had used {{percent}}% of the limit, as of {{when}}.',
+    childQuietTitle: '{{label}} has not checked in',
+    childQuietBody: 'No usage update from {{label}} since {{when}}.',
+    childLimitHeading: 'Notify me about this device',
+    childLimitGb: 'Notify me when {{label}} passes (GB)',
+    childLimitHint:
+      'A notification on this device when {{label}} passes an amount — this cannot stop or pause {{label}}’s data use.',
   },
 };

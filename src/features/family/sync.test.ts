@@ -9,6 +9,9 @@ jest.mock("@/features/usage/settings", () => ({
   loadSettings: jest.fn(),
   saveSettings: jest.fn(),
 }));
+// `./cache` reaches expo-sqlite/kv-store at module scope, which jest-expo does
+// not mock — same reasoning as the mocks above.
+jest.mock("./cache", () => ({ readCache: jest.fn(), mergeCache: jest.fn() }));
 // jest-expo does not populate Constants.expoConfig from app.json, so `rpc`'s
 // `!config?.url` guard would short-circuit every network-call assertion below
 // before `fetch` is ever reached. A fixed fake stands in for it.
@@ -20,9 +23,11 @@ jest.mock("expo-constants", () => ({
 import { readArchive } from "@/features/archive/db";
 import { fetchUsage } from "@/features/usage/api";
 import { loadSettings, saveSettings } from "@/features/usage/settings";
+import { mergeCache, readCache } from "./cache";
 import {
   dailyPayload,
   parseTimestamptz,
+  pullFromParent,
   pushSnapshot,
   recentPayload,
   syncFromChild,
@@ -213,5 +218,55 @@ describe("syncFromChild", () => {
     (readArchive as jest.Mock).mockResolvedValue([archiveRow()]);
     await syncFromChild(1_700_000_000_000);
     expect(pushedKinds()).toEqual(expect.arrayContaining(["daily", "recent"]));
+  });
+});
+
+describe("pullFromParent", () => {
+  beforeEach(() => {
+    (globalThis as any).fetch = jest.fn();
+    (readCache as jest.Mock).mockReset().mockResolvedValue([]);
+    (mergeCache as jest.Mock).mockReset().mockResolvedValue([]);
+    (saveSettings as jest.Mock).mockReset();
+  });
+
+  it("makes no network call and touches no cache when this device is not a parent", async () => {
+    (loadSettings as jest.Mock).mockResolvedValue({ familyRole: "child", pairToken: "t".repeat(32) });
+    await pullFromParent(1_700_000_000_000);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+    expect(readCache).not.toHaveBeenCalled();
+  });
+
+  it("makes no network call when a parent has not paired yet", async () => {
+    (loadSettings as jest.Mock).mockResolvedValue({ familyRole: "parent", pairToken: null });
+    await pullFromParent(1_700_000_000_000);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+    expect(readCache).not.toHaveBeenCalled();
+  });
+
+  it("pulls with the cache's own newest row as the since-cursor, and merges the result", async () => {
+    (loadSettings as jest.Mock)
+      .mockResolvedValueOnce({ familyRole: "parent", pairToken: "t".repeat(32) }) // pullFromParent's own guard
+      .mockResolvedValue({ pairToken: "t".repeat(32), lastSyncErrorAt: null }); // pullSnapshots' + syncRun's reads
+    (readCache as jest.Mock).mockResolvedValue([
+      { deviceId: "d1", deviceLabel: "Kid", kind: "recent", day: 0, payload: {}, updatedAt: 500 },
+    ]);
+    (globalThis.fetch as jest.Mock).mockResolvedValue({ ok: true, text: async () => "[]" });
+
+    await pullFromParent(1_700_000_000_000);
+
+    const [, init] = (globalThis.fetch as jest.Mock).mock.calls[0];
+    expect(JSON.parse(init.body).p_since).toBe(new Date(500).toISOString());
+    expect(mergeCache).not.toHaveBeenCalled(); // an empty pull has nothing new to merge
+  });
+
+  it("propagates a failed pull through syncRun so the sync-broken notice can see it", async () => {
+    (loadSettings as jest.Mock).mockResolvedValue({
+      familyRole: "parent",
+      pairToken: "t".repeat(32),
+      lastSyncErrorAt: null,
+    });
+    (globalThis.fetch as jest.Mock).mockRejectedValue(new Error("offline"));
+    await expect(pullFromParent(1_700_000_000_000)).rejects.toThrow("offline");
+    expect(saveSettings).toHaveBeenCalledWith({ lastSyncErrorAt: expect.any(Number) });
   });
 });

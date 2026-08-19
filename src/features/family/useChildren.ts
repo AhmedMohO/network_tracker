@@ -3,8 +3,8 @@ import { useCallback, useState } from "react";
 
 import { loadSettings } from "@/features/usage/settings";
 
-import { mergeCache, readCache } from "./cache";
-import { pullSnapshots, recentPayload, type Snapshot } from "./sync";
+import { readCache } from "./cache";
+import { recentPayload, refreshCache as pullAndMergeCache, type Snapshot } from "./sync";
 import { summarizeChildren } from "./useFamily";
 
 /** The shape `recentPayload` (in `./sync`) builds — see its own doc comment. */
@@ -19,23 +19,18 @@ export type ChildDevice = {
 };
 
 /**
- * Re-pulls everything newer than the cache's own newest row, merges it in,
- * and returns the merged set. Both `useChildren` and `useChildSnapshots`
- * share this so the "since" cursor is always the *global* newest row across
- * every child under this pair — not scoped to one device — matching how the
- * cache itself is shared. A failed pull is not fatal: the caller already has
- * the cached rows on screen with their real "as of" time, and the
- * screen-level "not synced" banner (driven by `lastSyncErrorAt`, set
+ * Wraps `sync.ts`'s `refreshCache` (the shared readCache → since → pull →
+ * mergeCache logic, also used by Task 30's `pullFromParent`) with the error
+ * handling this screen needs: a failed pull is not fatal here, since the
+ * caller already has the cached rows on screen with their real "as of" time,
+ * and the screen-level "not synced" banner (driven by `lastSyncErrorAt`, set
  * elsewhere) is what tells the user the pull itself is broken.
  */
 async function refreshCache(): Promise<Snapshot[]> {
-  const cached = await readCache();
-  const since = cached.reduce((max, r) => Math.max(max, r.updatedAt), 0);
   try {
-    const fresh = await pullSnapshots(since);
-    return fresh.length > 0 ? await mergeCache(fresh) : cached;
+    return await pullAndMergeCache();
   } catch {
-    return cached;
+    return readCache();
   }
 }
 

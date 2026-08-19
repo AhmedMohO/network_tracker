@@ -3,15 +3,24 @@ import * as TaskManager from "expo-task-manager";
 import { Platform } from "react-native";
 
 import { snapshotDay } from "@/features/archive/db";
-import { syncFromChild } from "@/features/family/sync";
+import { readCache } from "@/features/family/cache";
+import { buildDailySeries } from "@/features/family/dailySeries";
+import { pullFromParent, syncFromChild, type Snapshot } from "@/features/family/sync";
+import { summarizeChildren, type ChildSummary } from "@/features/family/useFamily";
 import i18n from "@/i18n";
 import { fetchUsage } from "@/features/usage/api";
 import { formatBytes } from "@/features/usage/format";
-import { formatDay } from "@/i18n/format";
+import { formatDateTime, formatDay } from "@/i18n/format";
 import { presetRange } from "@/features/usage/range";
-import { loadSettings, saveSettings } from "@/features/usage/settings";
+import { loadSettings, saveSettings, type Settings } from "@/features/usage/settings";
 
-import { decideAlert, limitAlertKey, spikeAlertKey } from "./alerts";
+import {
+  decideAlert,
+  decideQuietChild,
+  isStale,
+  limitAlertKey,
+  spikeAlertKey,
+} from "./alerts";
 import {
   cycleRanges,
   detectSpike,
@@ -162,6 +171,171 @@ async function checkNetwork(
   return "quiet";
 }
 
+/**
+ * One child's cycle-to-date total: completed `daily` rows across the cycle so
+ * far (via `buildDailySeries` — gap-aware, so a day the child never pushed
+ * contributes nothing rather than a fabricated zero) plus today's `recent`
+ * total, the same shape `useChildren`'s screens already render from this same
+ * cache.
+ *
+ * `Settings.childLimits[deviceId].mobileLimitBytes` is named for parity with
+ * this device's own `mobileLimitBytes`/`wifiLimitBytes` fields, but this
+ * compares it against the child's *total* usage (mobile + Wi-Fi): a child's
+ * `daily` archive push (`dailyPayload`, via `syncFromChild`) reads
+ * `readArchive(..., "ALL")` and never records a network split, so a
+ * mobile-only figure cannot be reconstructed for a past day without
+ * fabricating precision that day's data never had. `recent`'s payload does
+ * carry a real `totals.mobile`/`totals.wifi` split for today, but mixing that
+ * with an all-network figure for every day before it would misrepresent the
+ * whole sum as mobile-only, which is worse than naming the field loosely.
+ */
+export function childCycleUsedBytes(
+  snapshots: Snapshot[],
+  cycleStartDay: number,
+  now: number
+): number {
+  const { query } = cycleRanges(cycleStartDay, now);
+  const todayStart = presetRange("today", now).start;
+  const series = buildDailySeries(snapshots, query.start, todayStart);
+
+  const newestRecent = snapshots
+    .filter((s) => s.kind === "recent")
+    .sort((a, b) => b.updatedAt - a.updatedAt)[0];
+  const totals = newestRecent?.payload?.totals;
+  const todayTotal =
+    totals && typeof totals.mobile === "number" && typeof totals.wifi === "number"
+      ? totals.mobile + totals.wifi
+      : 0;
+
+  return series.totals.total + todayTotal;
+}
+
+/**
+ * One paired child: a limit check (only when configured, and never from data
+ * older than 3 hours — see `isStale`'s own doc comment for why), then an
+ * independent 24-hour quiet check that applies whether or not a limit is set.
+ */
+async function checkChild(
+  child: ChildSummary,
+  snapshots: Snapshot[],
+  settings: Settings,
+  now: number,
+  todaySpikeKey: string
+): Promise<{ posted: boolean; quietNotifiedAt?: number }> {
+  let posted = false;
+
+  const limit = settings.childLimits[child.deviceId];
+  if (limit?.mobileLimitBytes && !isStale(child.lastSeen, now)) {
+    const usedBytes = childCycleUsedBytes(snapshots, settings.cycleStartDay, now);
+    const { query: cycle, measurement } = cycleRanges(settings.cycleStartDay, now);
+    const status = limitStatus(
+      usedBytes,
+      limit.mobileLimitBytes,
+      measurement,
+      now,
+      limit.warnAtPercent
+    );
+
+    if (status.state !== "ok") {
+      // The child's own clock, quoted, not this device's delivery time — the
+      // parent is being told about a fact that is already 15-45 minutes old.
+      const newestRecent = snapshots
+        .filter((s) => s.kind === "recent")
+        .sort((a, b) => b.updatedAt - a.updatedAt)[0];
+      const when = formatDateTime(newestRecent?.payload?.at ?? child.lastSeen);
+
+      const key = limitAlertKey(
+        status.state,
+        cycle.start,
+        limit.mobileLimitBytes,
+        limit.warnAtPercent,
+        "MOBILE",
+        child.deviceId
+      );
+      const result =
+        status.state === "over"
+          ? await alertOnce(
+              key,
+              cycle.start,
+              todaySpikeKey,
+              i18n.t("family.childOverTitle", { label: child.label }),
+              i18n.t("family.childOverBody", {
+                label: child.label,
+                used: formatBytes(status.usedBytes),
+                limit: formatBytes(status.limitBytes),
+                when,
+              })
+            )
+          : await alertOnce(
+              key,
+              cycle.start,
+              todaySpikeKey,
+              i18n.t("family.childWarnTitle", { label: child.label }),
+              i18n.t("family.childWarnBody", {
+                label: child.label,
+                percent: Math.round(status.usedPercent),
+                when,
+              })
+            );
+      if (result === "posted") posted = true;
+    }
+  }
+
+  // Independent of any limit: an honest observation ("no check-in since
+  // yesterday"), not an accusation, and it never fires on the ordinary
+  // overnight Doze gap because the threshold is a full 24 hours.
+  if (
+    child.lastSeen > 0 &&
+    decideQuietChild(child.lastSeen, now, settings.childQuietNotifiedAt[child.deviceId])
+  ) {
+    await notify(
+      i18n.t("family.childQuietTitle", { label: child.label }),
+      i18n.t("family.childQuietBody", {
+        label: child.label,
+        when: formatDateTime(child.lastSeen),
+      })
+    );
+    posted = true;
+    return { posted, quietNotifiedAt: child.lastSeen };
+  }
+
+  return { posted };
+}
+
+/**
+ * Every paired child, read from the cache `pullFromParent` (above, in
+ * `runUsageCheck`) has just refreshed. Makes no network call of its own —
+ * this only reads the local cache — but still guarded on `parent` + paired
+ * so a non-parent install (which will have no cache to read anyway) does no
+ * work here either.
+ */
+async function checkChildren(now: number, todaySpikeKey: string): Promise<"posted" | "quiet"> {
+  const settings = await loadSettings();
+  if (settings.familyRole !== "parent" || !settings.pairToken) return "quiet";
+
+  const cached = await readCache();
+  if (cached.length === 0) return "quiet";
+
+  const children = summarizeChildren(cached);
+  let posted = false;
+  let quietPatch: Record<string, number> | null = null;
+
+  for (const child of children) {
+    const snapshots = cached.filter((r) => r.deviceId === child.deviceId);
+    const result = await checkChild(child, snapshots, settings, now, todaySpikeKey);
+    if (result.posted) posted = true;
+    if (result.quietNotifiedAt !== undefined) {
+      quietPatch = { ...(quietPatch ?? settings.childQuietNotifiedAt), [child.deviceId]: result.quietNotifiedAt };
+    }
+  }
+
+  if (quietPatch) {
+    await saveSettings({ childQuietNotifiedAt: quietPatch });
+  }
+
+  return posted ? "posted" : "quiet";
+}
+
 export async function runUsageCheck(now: number) {
   const settings = await loadSettings();
   // Sequentially, not in parallel: both checks read-modify-write `alertedKeys`,
@@ -202,6 +376,26 @@ export async function runUsageCheck(now: number) {
     // See above.
   }
 
+  // Same posture again, mirrored for the parent side: a failed pull must
+  // never cost this run its own alerts or archive write either. `pullFromParent`
+  // is itself a no-op (and makes no network call) unless this device is a
+  // paired parent.
+  try {
+    await pullFromParent(now);
+  } catch {
+    // See above.
+  }
+
+  // Reuses the same "today" spike-day string `checkNetwork` computes for
+  // mobile above — `decideAlert` only ever reads its date portion (field 2 of
+  // `k.split(":")`), which is identical regardless of which network's key
+  // produced it, so there is no real per-network spike concept to derive for
+  // a child here.
+  const children = await checkChildren(
+    now,
+    spikeAlertKey(presetRange("today", now).start, "MOBILE")
+  );
+
   // `decideAlert`'s pruning is keyed to a limit/spike alert's own network and
   // cycle, so a "sync is broken" key does not fit `alertOnce` — every call
   // would fail the network-prefix check and re-fire on the next 15-minute
@@ -222,7 +416,7 @@ export async function runUsageCheck(now: number) {
     await saveSettings({ syncErrorNotifiedAt: lastSyncErrorAt });
   }
 
-  return mobile === "posted" || wifi === "posted"
+  return mobile === "posted" || wifi === "posted" || children === "posted"
     ? ("posted" as const)
     : ("quiet" as const);
 }

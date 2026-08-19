@@ -292,5 +292,15 @@ export const ar: typeof en = {
     detailEmpty: 'لا يوجد استهلاك مسجَّل لهذا الطفل في هذا النطاق.',
     childRowHint: 'يفتح استهلاك هذا الطفل',
     childRowA11y: '{{label}}، {{when}}',
+    childOverTitle: 'تجاوز {{label}} حد بيانات',
+    childOverBody: 'استهلك {{label}} {{used}} من {{limit}}، حتى {{when}}.',
+    childWarnTitle: 'يقترب {{label}} من حد بيانات',
+    childWarnBody: 'استهلك {{label}} {{percent}} بالمئة من الحد، حتى {{when}}.',
+    childQuietTitle: 'لم يُبلّغ {{label}} عن نفسه',
+    childQuietBody: 'لا يوجد تحديث استهلاك من {{label}} منذ {{when}}.',
+    childLimitHeading: 'التنبيه على هذا الجهاز',
+    childLimitGb: 'نبّهني عندما يتجاوز {{label}} (جيجابايت)',
+    childLimitHint:
+      'إشعار على هذا الجهاز عندما يتجاوز {{label}} كمية معينة — لا يمكن لهذا أن يوقف أو يوقّف مؤقتًا استهلاك {{label}} للبيانات.',
   },
 };
