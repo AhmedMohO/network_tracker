@@ -68,10 +68,25 @@ begin
   delete from family_snapshots where pair_token = p_token;
 end $$;
 
-grant execute on function family_push, family_pull, family_forget to anon;
-
 -- 90-day retention, matching what the on-device archive is for.
 create or replace function family_prune() returns void
 language sql security definer set search_path = public as $$
   delete from family_snapshots where updated_at < now() - interval '90 days';
 $$;
+
+-- Postgres grants EXECUTE on every new function to PUBLIC by default, so an
+-- explicit `grant ... to anon` would widen nothing and would leave
+-- `family_prune` exposed on /rest/v1/rpc/family_prune to anyone holding the
+-- anon key. Revoke PUBLIC on all four, then re-grant only the three that
+-- are the API.
+revoke all on function family_push(text, text, text, text, bigint, jsonb) from public, anon, authenticated;
+revoke all on function family_pull(text, timestamptz) from public, anon, authenticated;
+revoke all on function family_forget(text) from public, anon, authenticated;
+
+-- Never reachable from the client. Only the pg_cron job, which runs as the
+-- function owner, needs to call this.
+revoke all on function family_prune() from public, anon, authenticated;
+
+grant execute on function family_push(text, text, text, text, bigint, jsonb) to anon;
+grant execute on function family_pull(text, timestamptz) to anon;
+grant execute on function family_forget(text) to anon;

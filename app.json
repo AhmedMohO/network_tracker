@@ -59,8 +59,8 @@
         "projectId": "dfff9ccc-34af-46da-bf48-88bf34995a5d"
       },
       "family": {
-        "url": "https://YOUR-PROJECT.supabase.co",
-        "anonKey": "YOUR-ANON-KEY"
+        "url": "https://nrnvjidwgverzmumttjd.supabase.co",
+        "anonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5ybnZqaWR3Z3ZlcnptdW10dGpkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcxMDMxNzAsImV4cCI6MjEwMjY3OTE3MH0.1e7Dc5H__XHswr4JjuNggS1eIVEMT2acZEmhmiCf9bc"
       }
     }
   }
