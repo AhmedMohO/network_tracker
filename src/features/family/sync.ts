@@ -1,6 +1,6 @@
 import Constants from "expo-constants";
 
-import type { NetworkUsageModule } from "@modules/network-usage";
+import NetworkUsage, { type NetworkUsageModule } from "@modules/network-usage";
 
 import { readArchive, snapshotDay } from "@/features/archive/db";
 import type { AppUsage } from "@/features/usage/aggregate";
@@ -13,11 +13,16 @@ import { mergeCache, readCache } from "./cache";
 export type SnapshotKind = "daily" | "recent" | "request" | "grant";
 
 /**
- * `import type` only — erased at compile time, so this never pulls the native
- * module into scope at runtime (same pattern `fromPayload.ts`/`dailySeries.ts`
- * already use for `NetworkFilter`). Derived from `NetworkUsageModule` itself
- * rather than hand-copied, so the wire type and the native return type cannot
- * drift apart the way they did until this task.
+ * Derived from `NetworkUsageModule` itself rather than hand-copied, so the
+ * wire type and the native return type cannot drift apart.
+ *
+ * The module is now imported for its value too (`syncFromChild` probes the
+ * context itself — see there). That adds no module-scope native surface this
+ * file did not already have: `@/features/usage/api`, imported two lines up,
+ * has the same default import at *its* line 1. The object is inert on import
+ * on every platform — the Android entry point only calls `requireNativeModule`,
+ * and the iOS/web entry points export the `unavailable` stub, which throws on
+ * invocation and not before.
  */
 export type DeviceContext = ReturnType<NetworkUsageModule["getDeviceContext"]>;
 
@@ -225,9 +230,28 @@ async function loadDayUsage(dayStart: number) {
  * for today so far. Both are idempotent — the RPC upserts — so a repeated run
  * costs a request and changes nothing.
  */
-export async function syncFromChild(now: number, context: DeviceContext | null = null) {
+export async function syncFromChild(now: number) {
   const s = await loadSettings();
   if (s.familyRole !== "child" || !s.pairToken) return;
+
+  // Probed here rather than passed in by the caller, for three reasons. The
+  // `recent` row is upserted whole (`payload = excluded.payload`), so a push
+  // that carried no context erased whatever the last one sent — with the probe
+  // here, all four push paths carry one and the disclosure's "with each of
+  // today's more frequent updates" is true. It sits after the role guard, so a
+  // parent or unpaired device never reads its own foreground app for a value
+  // nothing will transmit. And it is its own `try`: a throw — an old APK
+  // without the native method after a JS-only OTA, an absent system service —
+  // must cost the push nothing. Evaluated as a call argument it skipped
+  // `syncRun` entirely, so `lastSyncErrorAt` was never stamped and the
+  // two-day sync-broken notice could not fire on a sync that had stopped dead.
+  let context: DeviceContext | null = null;
+  try {
+    context = NetworkUsage.getDeviceContext();
+  } catch {
+    // The context is optional; the byte totals are not. `recentPayload` sends
+    // `context: null` rather than inventing one.
+  }
 
   await syncRun(async () => {
     const yesterday = presetRange("yesterday", now).start;

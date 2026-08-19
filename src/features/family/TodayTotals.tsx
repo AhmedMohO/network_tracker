@@ -8,7 +8,7 @@ import { formatBytes } from '@/features/usage/format';
 import { useTheme } from '@/hooks/use-theme';
 import { formatDateTime, formatSpan } from '@/i18n/format';
 
-import { isContextStale, resolveForegroundAppName } from './context';
+import { checkInAt, connectionKey, isContextStale, resolveForegroundAppName } from './context';
 import type { RecentPayload } from './useChildren';
 
 /**
@@ -20,15 +20,24 @@ import type { RecentPayload } from './useChildren';
  * whether naming an app would still be honest; past that, this names the gap
  * instead. A missing `context` (a payload pushed before this task, or a
  * probe that itself failed) renders nothing rather than guessing.
+ *
+ * Staleness is judged on `checkInAt` — the older of the child's own clock and
+ * the server's stamp for the same row — never on the child's clock alone, and
+ * it is judged *before* the missing-context check so that a heartbeat old
+ * enough to name the gap says so whether or not it carried a context.
  */
 function describeContext(
   recent: RecentPayload,
+  serverAt: number | null,
   now: number,
   t: (key: string, options?: Record<string, unknown>) => string
 ): string | null {
   const { context, at, apps } = recent;
+  const since = checkInAt(at, serverAt);
+  if (isContextStale(since, now)) {
+    return t('family.noCheckInSince', { when: formatDateTime(since) });
+  }
   if (!context) return null;
-  if (isContextStale(at, now)) return t('family.noCheckInSince', { when: formatDateTime(at) });
 
   const appName = resolveForegroundAppName(context.foregroundPackage, apps);
   const parts: string[] = [];
@@ -36,14 +45,11 @@ function describeContext(
   if (context.batteryPercent != null) {
     parts.push(t('family.batteryPercent', { percent: context.batteryPercent }));
   }
-  parts.push(
-    context.connection === 'MOBILE'
-      ? t('family.contextOnMobile')
-      : context.connection === 'WIFI'
-        ? t('family.contextOnWifi')
-        : t('family.contextOffline')
-  );
-  return `${t('family.lastCheckIn', { span: formatSpan(now - at) })} — ${parts.join(' · ')}`;
+  parts.push(t(connectionKey(context.connection)));
+  // Clamped at zero: this parent's own clock can still sit behind the server's
+  // stamp, and `formatSpan` renders a negative span as "1 minute ago".
+  const span = formatSpan(Math.max(0, now - since));
+  return `${t('family.lastCheckIn', { span })} — ${parts.join(' · ')}`;
 }
 
 /**
@@ -70,10 +76,17 @@ export function isTodayHeartbeat(at: number, now = Date.now()): boolean {
  * ("Today so far" section) so the two screens can never disagree about what
  * "today" means for a child.
  */
-export function TodayTotals({ recent }: { recent: RecentPayload }) {
+export function TodayTotals({
+  recent,
+  serverAt,
+}: {
+  recent: RecentPayload;
+  /** `updated_at` of the row this payload came from — see `checkInAt`. */
+  serverAt: number | null;
+}) {
   const theme = useTheme();
   const { t } = useTranslation();
-  const contextText = describeContext(recent, Date.now(), t);
+  const contextText = describeContext(recent, serverAt, Date.now(), t);
 
   return (
     <View style={styles.totalsGroup}>

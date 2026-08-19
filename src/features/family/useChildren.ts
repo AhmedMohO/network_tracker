@@ -16,6 +16,12 @@ export type ChildDevice = {
   lastSeen: number;
   /** This device's newest `recent` heartbeat, or null if it has never pushed one. */
   recent: RecentPayload | null;
+  /**
+   * `updated_at` of the row `recent` came from — the server's own stamp, which
+   * `checkInAt` needs to keep a child's unverified clock from deciding whether
+   * a foreground app name is still honest. Null when there is no `recent`.
+   */
+  recentServerAt: number | null;
 };
 
 /**
@@ -51,6 +57,7 @@ function toChildDevices(snapshots: Snapshot[], ownDeviceId: string | null): Chil
     label: s.label,
     lastSeen: s.lastSeen,
     recent: newestRecent.get(s.deviceId)?.payload ?? null,
+    recentServerAt: newestRecent.get(s.deviceId)?.at ?? null,
   }));
 }
 

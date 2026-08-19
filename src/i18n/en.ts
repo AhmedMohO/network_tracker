@@ -270,8 +270,14 @@ export const en = {
     unpairDone: 'Unpaired.',
     sharingWith: 'Usage on this device is shared with {{label}}',
     bannerDetails: 'Details',
+    // The consent boundary. Derived field by field from what actually goes on
+    // the wire — `pushSnapshot`'s RPC arguments plus everything `dailyPayload`
+    // and `recentPayload` build (`features/family/sync.ts`) — and never by
+    // appending a clause to the previous version. Re-derive it the same way
+    // whenever any of those three functions changes; under-disclosure here is
+    // the dangerous direction, and a package name is not an "app name".
     whatIsShared:
-      'What is shared, once a day and a few times more often for today so far: this device’s id and label, per-app data usage totals, app names, the coverage window Android reported them over when it differs from what was asked for, and — with each of today’s more frequent updates — which app was in the foreground, this device’s battery percentage, and whether it was on mobile data, Wi-Fi, or offline.',
+      'What is shared, once a day and a few times more often for today so far: the pairing code this device joined with, this device’s id and label, and the day each set of figures covers; for every app that used data, its name, its Android package name, the id Android assigned it, and its download and upload byte totals, with everything past the 50 largest folded into a single combined total; the same figures again split into a mobile-data list and a Wi-Fi list; the coverage window Android reported them over when it differs from the one asked for; and — with each of today’s more frequent updates — the time of that check-in, the package name of the app most recently in the foreground, this device’s battery percentage, and whether it was on mobile data, Wi-Fi, or neither.',
     whatNeverLeaves:
       'What never leaves this device: your location, Wi-Fi network name, browsing content, message content, and screen contents.',
     joinTitle: 'Join family sharing?',
@@ -306,7 +312,9 @@ export const en = {
     batteryPercent: '{{percent}}% battery',
     contextOnMobile: 'on mobile data',
     contextOnWifi: 'on Wi-Fi',
-    contextOffline: 'offline',
+    // Not "offline": anything that is neither mobile data nor Wi-Fi lands here,
+    // Ethernet and Bluetooth tethering included, and those devices are online.
+    contextOffline: 'not on mobile data or Wi-Fi',
     noCheckInSince: 'No check-in since {{when}}',
     includesPartialDay: 'Includes today so far — the day is still running.',
     detailEmpty: 'No usage recorded for this child in this range.',

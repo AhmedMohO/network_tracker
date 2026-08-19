@@ -39,7 +39,9 @@ function ChildRow({ child, onPress }: { child: ChildDevice; onPress: () => void 
         <ThemedText type="small" themeColor="textSecondary">
           {child.lastSeen > 0 ? t('family.lastSeen', { when }) : when}
         </ThemedText>
-        {child.recent && isTodayHeartbeat(child.recent.at) ? <TodayTotals recent={child.recent} /> : null}
+        {child.recent && isTodayHeartbeat(child.recent.at) ? (
+          <TodayTotals recent={child.recent} serverAt={child.recentServerAt} />
+        ) : null}
       </View>
       <ChevronRight size={16} color={theme.textSecondary} style={{ opacity: 0.6 }} />
     </Pressable>

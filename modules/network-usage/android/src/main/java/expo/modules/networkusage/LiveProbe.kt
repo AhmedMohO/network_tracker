@@ -31,9 +31,23 @@ object LiveProbe {
      *
      * This reads the same PACKAGE_USAGE_STATS grant the rest of the module
      * needs, so it adds no new permission prompt.
+     *
+     * The default lookback is one heartbeat interval, because that is the only
+     * window the single caller can justify: the reading is attached to a
+     * 15-minute background check-in and rendered past tense against that
+     * check-in's own time ("was using X", never "is using X"), so an event
+     * from anywhere inside the interval the check-in covers is exactly as true
+     * as the sentence claims. The previous 60 s default was narrower than the
+     * cadence that reads it, so almost every WorkManager wakeup — scheduled
+     * when the device is idle, often screen-off under Doze — found no event at
+     * all and reported null. `lookbackMs` stays a parameter rather than a
+     * constant so this can be calibrated on a device: widen it only if the
+     * heartbeat cadence itself widens, and narrow it only if the copy that
+     * renders the result stops being pinned to the check-in time.
      */
-    fun foregroundPackage(context: Context, lookbackMs: Long = 60_000): String? {
-        val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+    fun foregroundPackage(context: Context, lookbackMs: Long = 15 * 60_000L): String? {
+        val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
+            ?: return null
         val now = System.currentTimeMillis()
         val events = usm.queryEvents(now - lookbackMs, now)
         val event = UsageEvents.Event()
@@ -49,14 +63,15 @@ object LiveProbe {
 
     /** Null rather than a guess when the device does not report a level. */
     fun batteryPercent(context: Context): Int? {
-        val bm = context.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+        val bm = context.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager ?: return null
         val level = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
         return if (level in 0..100) level else null
     }
 
     /** Transport only. Never the SSID, never the carrier — see Task 31 notes. */
     fun connection(context: Context): String {
-        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            ?: return "NONE"
         val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return "NONE"
         return when {
             caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "WIFI"

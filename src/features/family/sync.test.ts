@@ -12,6 +12,14 @@ jest.mock("@/features/usage/settings", () => ({
 // `./cache` reaches expo-sqlite/kv-store at module scope, which jest-expo does
 // not mock — same reasoning as the mocks above.
 jest.mock("./cache", () => ({ readCache: jest.fn(), mergeCache: jest.fn() }));
+// `syncFromChild` probes the device context itself, so `./sync` now imports
+// the native module for its value and not only its type. `requireNativeModule`
+// throws under jest; a stub keeps the push path exercisable, and returning
+// `null` covers the branch where the probe found nothing to report.
+jest.mock("@modules/network-usage", () => ({
+  __esModule: true,
+  default: { getDeviceContext: jest.fn(() => null) },
+}));
 // jest-expo does not populate Constants.expoConfig from app.json, so `rpc`'s
 // `!config?.url` guard would short-circuit every network-call assertion below
 // before `fetch` is ever reached. A fixed fake stands in for it.

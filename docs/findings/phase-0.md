@@ -78,3 +78,28 @@ The probe's `unsupported` flag did not catch it: that flag only fires when a raw
 - Dual-SIM split: not available (subscriberId unavailable to non-carrier apps).
 - Proceed to Phase 1: **YES** (already complete).
 - Proceed to Phase 2: **YES**, with the granularity caveat above binding on Task 11's chart.
+
+## Q6 (Phase 10, Task 31) — `foregroundPackage` lookback: NOT MEASURED
+
+The device check this task's Step 3 called for has **not been run**: there is
+no Android device or emulator attached to the session that set this value, so
+no observed `foregroundPackage` latency is recorded here and none should be
+inferred from the default below.
+
+The default was instead set from first principles, from the only caller.
+`LiveProbe.foregroundPackage`'s `lookbackMs` now defaults to **15 minutes**,
+one `USAGE_CHECK_TASK` heartbeat interval, replacing the original 60 s. The
+reasoning: the probe's only consumer is a ~15-minute WorkManager run, usually
+on an idle, screen-off device under Doze deferral, so a 60-second window is
+narrower than the cadence that reads it and returns `null` on almost every
+real wakeup. The value is rendered past tense and pinned to the check-in's own
+time ("was using X — last check-in 12 minutes ago"), so an event from anywhere
+inside the interval that check-in covers is exactly as true as the sentence
+claims. `queryUsageStats` is not an alternative: its `lastTimeUsed` ordering
+is unreliable across manufacturers, which is why `queryEvents` was chosen.
+
+**Still open.** Measure it on a device and record the observation here.
+Widen the default only if the heartbeat cadence itself widens; narrow it only
+if the copy that renders the result stops being pinned to the check-in time.
+`lookbackMs` is a parameter, not a constant, so it can be calibrated without
+touching the call site.

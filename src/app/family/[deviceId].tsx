@@ -98,13 +98,16 @@ export default function ChildUsageScreen() {
   // child's "as of" clock and Android's coverage window. Only rendered when
   // the heartbeat really is from today; a three-day-old one under a "Today so
   // far" heading is just a wrong number.
-  const recent = useMemo((): RecentPayload | null => {
-    const rows = snapshots
+  // Carries the row's `updatedAt` alongside its payload: that is the server's
+  // own stamp, and `TodayTotals` needs it so a child's unverified clock cannot
+  // decide whether naming a foreground app is still honest (`checkInAt`).
+  const recent = useMemo((): { payload: RecentPayload; serverAt: number } | null => {
+    const row = snapshots
       .filter((s) => s.kind === 'recent')
-      .sort((a, b) => b.updatedAt - a.updatedAt);
-    const payload: RecentPayload | undefined = rows[0]?.payload;
+      .sort((a, b) => b.updatedAt - a.updatedAt)[0];
+    const payload: RecentPayload | undefined = row?.payload;
     if (!payload) return null;
-    return isTodayHeartbeat(payload.at) ? payload : null;
+    return isTodayHeartbeat(payload.at) ? { payload, serverAt: row.updatedAt } : null;
   }, [snapshots]);
 
   // Same figure `backgroundCheck.ts`'s `checkChild` alerts against, so this
@@ -120,7 +123,7 @@ export default function ChildUsageScreen() {
     const configured = settings.childLimits[deviceId];
     if (!configured?.mobileLimitBytes) return null;
     const now = Date.now();
-    const when = recent?.at ?? summary.lastSeen;
+    const when = recent?.payload.at ?? summary.lastSeen;
     if (isStale(summary.lastSeen, now)) return { stale: true as const, when };
     const usedBytes = childCycleUsedBytes(snapshots, settings.cycleStartDay, now);
     const { measurement } = cycleRanges(settings.cycleStartDay, now);
@@ -220,7 +223,7 @@ export default function ChildUsageScreen() {
                   </ThemedText>
                 </View>
                 {recent ? (
-                  <TodayTotals recent={recent} />
+                  <TodayTotals recent={recent.payload} serverAt={recent.serverAt} />
                 ) : (
                   <ThemedText type="small" themeColor="textSecondary">
                     {/* A device that checked in last week has checked in —
