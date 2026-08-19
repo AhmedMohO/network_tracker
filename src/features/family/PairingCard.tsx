@@ -13,7 +13,8 @@ import { useTheme } from '@/hooks/use-theme';
 import { formatDateTime } from '@/i18n/format';
 
 import { pairLink, parsePairLink } from './pair';
-import { defaultDeviceLabel, useFamily, usePairedChildren } from './useFamily';
+import { useChildren } from './useChildren';
+import { defaultDeviceLabel, useFamily } from './useFamily';
 
 /** Matches the section header used by every other card on the settings screen. */
 function SectionHeader({ icon, title }: { icon: React.ReactNode; title: string }) {
@@ -38,7 +39,7 @@ export function PairingCard() {
   const theme = useTheme();
   const { t } = useTranslation();
   const family = useFamily();
-  const children = usePairedChildren(family.role, family.token);
+  const { children } = useChildren();
   const [showPaste, setShowPaste] = useState(false);
   const [pasteText, setPasteText] = useState('');
   const [labelDraft, setLabelDraft] = useState('');

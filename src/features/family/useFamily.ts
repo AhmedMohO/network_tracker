@@ -1,12 +1,12 @@
 import * as Device from "expo-device";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 
 import { loadSettings, saveSettings, type Settings } from "@/features/usage/settings";
 import { useUsageContext } from "@/features/usage/useUsageContext";
 import i18n from "@/i18n";
 
 import { newDeviceId, newPairToken } from "./pair";
-import { forgetPair, pullSnapshots, type Snapshot } from "./sync";
+import { forgetPair, type Snapshot } from "./sync";
 
 /**
  * `Device.deviceName` is unset on some emulators and locked-down builds, so
@@ -101,8 +101,8 @@ export function summarizeChildren(snapshots: Snapshot[]): ChildSummary[] {
  * `UsageProvider` already holds, so a change made from one screen (e.g.
  * pairing in Settings) is visible immediately on another (the banner on the
  * home tab), the same way every other settings write already propagates.
- * Makes no network call of its own — see `usePairedChildren` for the one
- * screen that needs to pull.
+ * Makes no network call of its own — see `useChildren` (features/family) for
+ * the parent-side screens that need to pull.
  */
 export function useFamily() {
   const { settings, reloadSettings } = useUsageContext();
@@ -141,34 +141,4 @@ export function useFamily() {
     unpair: () => run(() => unpair()),
     setDeviceLabel: (label: string) => run(() => saveSettings({ deviceLabel: label })),
   };
-}
-
-/**
- * Split out of `useFamily` so that mounting the hook (settings.tsx for the
- * privacy copy, `SharingBanner` for the child banner) never pulls — only
- * `PairingCard`'s parent-state child list needs this, and only once paired.
- */
-export function usePairedChildren(role: Settings["familyRole"], token: string | null): ChildSummary[] {
-  const [children, setChildren] = useState<ChildSummary[]>([]);
-
-  useEffect(() => {
-    if (role !== "parent" || !token) {
-      setChildren([]);
-      return;
-    }
-    let cancelled = false;
-    pullSnapshots(0)
-      .then((rows) => {
-        if (!cancelled) setChildren(summarizeChildren(rows));
-      })
-      .catch(() => {
-        // A failed pull just leaves the last-known list; nothing here is a
-        // trust decision, unlike a failed unpair.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [role, token]);
-
-  return children;
 }

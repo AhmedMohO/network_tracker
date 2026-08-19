@@ -12,6 +12,7 @@ import {
   Save,
   Sliders,
   Smartphone,
+  Users,
   Wifi,
 } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
@@ -325,6 +326,24 @@ export default function SettingsScreen() {
 
           {/* Family Sharing Card */}
           <PairingCard />
+
+          {/* Family list entry point — parent devices only. Not a sixth
+              native tab: there are already five. */}
+          {familyRole === 'parent' && (
+            <Card style={styles.card}>
+              <SectionHeader
+                icon={<Users size={16} color={theme.accent} />}
+                title={t('family.listTitle')}
+              />
+              <Button
+                variant="secondary"
+                icon={<Users size={16} color={theme.text} />}
+                title={t('family.viewChildren')}
+                onPress={() => router.push('/family')}
+                accessibilityLabel={t('family.viewChildren')}
+              />
+            </Card>
+          )}
 
           {/* Privacy Guarantee Card */}
           <Card style={styles.card}>
