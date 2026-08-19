@@ -139,6 +139,8 @@ describe("unpair", () => {
       lastSyncErrorAt: null,
       syncErrorNotifiedAt: null,
       backfillDoneUntil: null,
+      pendingLimitRequest: null,
+      appliedGrantRequestAt: null,
     });
   });
 

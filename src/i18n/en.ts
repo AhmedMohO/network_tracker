@@ -277,7 +277,7 @@ export const en = {
     // whenever any of those three functions changes; under-disclosure here is
     // the dangerous direction, and a package name is not an "app name".
     whatIsShared:
-      'What is shared, once a day and a few times more often for today so far: the pairing code this device joined with, this device’s id and label, and the day each set of figures covers; for every app that used data, its name, its Android package name, the id Android assigned it, and its download and upload byte totals, with everything past the 50 largest folded into a single combined total; the same figures again split into a mobile-data list and a Wi-Fi list; the coverage window Android reported them over when it differs from the one asked for; and — with each of today’s more frequent updates — the time of that check-in, the package name of the app most recently in the foreground, this device’s battery percentage, and whether it was on mobile data, Wi-Fi, or neither.',
+      'What is shared, once a day and a few times more often for today so far: the pairing code this device joined with, this device’s id and label, and the day each set of figures covers; for every app that used data, its name, its Android package name, the id Android assigned it, and its download and upload byte totals, with everything past the 50 largest folded into a single combined total; the same figures again split into a mobile-data list and a Wi-Fi list; the coverage window Android reported them over when it differs from the one asked for; and — with each of today’s more frequent updates — the time of that check-in, the package name of the app most recently in the foreground, this device’s battery percentage, and whether it was on mobile data, Wi-Fi, or neither; and, when this device asks to raise its own local data alert level, the amount it asked for and the time of the request — and, once the paired device answers, the amount granted, which is zero when declined, and the time of that answer.',
     whatNeverLeaves:
       'What never leaves this device: your location, Wi-Fi network name, browsing content, message content, and screen contents.',
     joinTitle: 'Join family sharing?',
@@ -336,6 +336,27 @@ export const en = {
     childLimitGb: 'Notify me when {{label}} passes (GB)',
     childLimitHint:
       'A notification on this device when {{label}} passes an amount — this cannot stop or pause {{label}}’s data use.',
+    // Task 33: the child asking its paired parent to raise its own local
+    // alert level, and the parent granting or declining. "Alert level", never
+    // "limit" as a verb — raising it only changes when this device warns
+    // itself, per the same no-enforcement rule as every other family string.
+    requestHeading: 'Ask for more data',
+    requestHint: 'Raises the level at which this device warns you — it does not change what {{label}} can see.',
+    requestButton: 'Ask {{label}} for {{bytes}} more',
+    requestPending: 'Waiting for {{label}} to answer your request for {{bytes}} more, sent {{when}}.',
+    requestSentToast: 'Request sent.',
+    requestFailedToast: 'Could not send the request. Check your connection and try again.',
+    requestAnswerHeading: 'Data alert request',
+    requestAnswerBody: '{{label}} is asking to raise the alert level on their own device by {{bytes}}.',
+    grantButton: 'Grant',
+    declineButton: 'Decline',
+    requestAnsweredGranted:
+      'Granted — {{label}}’s device will raise its own alert level by {{bytes}} on its next check-in.',
+    requestAnsweredDeclined: 'Declined.',
+    requestAnswerFailed: 'Could not reach the server. Check your connection and try again.',
+    childRequestTitle: '{{label}} is asking for more data',
+    childRequestBody:
+      '{{label}} wants to raise the alert level on their own device by {{bytes}}. Open Family to respond.',
     scanQrButton: 'Scan QR code',
     showQrButton: 'Show QR code',
     scanQrTitle: 'Scan pairing QR',

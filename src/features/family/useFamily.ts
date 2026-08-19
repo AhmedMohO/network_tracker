@@ -97,6 +97,13 @@ export async function unpair(): Promise<void> {
     // child role has to backfill from scratch rather than inherit a cursor
     // saying the history is already up there.
     backfillDoneUntil: null,
+    // Same reasoning: a request/grant tied to the family just left behind
+    // must not survive into the next one. Left set, `pendingLimitRequest`
+    // would point at a cursor the new (empty) server side can never answer,
+    // permanently hiding "Ask for more data" behind a request that can never
+    // be resolved.
+    pendingLimitRequest: null,
+    appliedGrantRequestAt: null,
   });
 }
 

@@ -1,5 +1,6 @@
 import {
   decideAlert,
+  decideChildRequest,
   decideQuietChild,
   isStale,
   limitAlertKey,
@@ -210,5 +211,19 @@ describe("decideQuietChild", () => {
     // Same child, same 24h-quiet situation, but lastSeen has moved forward
     // since the last notice — a fresh silence, not the one already reported.
     expect(decideQuietChild(2_000_000, 2_000_000 + DAY_MS + 1, 1_000_000)).toBe(true);
+  });
+});
+
+describe("decideChildRequest", () => {
+  it("fires for a request never notified about", () => {
+    expect(decideChildRequest(1_000, undefined)).toBe(true);
+  });
+
+  it("does not re-fire for the same request.at already notified", () => {
+    expect(decideChildRequest(1_000, 1_000)).toBe(false);
+  });
+
+  it("fires again once a new tap replaces the request with a newer at", () => {
+    expect(decideChildRequest(2_000, 1_000)).toBe(true);
   });
 });

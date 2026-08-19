@@ -35,6 +35,28 @@ export type Settings = {
   /** Per-child one-shot record for the 24-hour quiet notice; see `decideQuietChild`. */
   childQuietNotifiedAt: Record<string, number>;
   /**
+   * Child-only: the request currently awaiting the parent's answer, or null.
+   * `at` is both the value a matching `grant.requestAt` must equal to answer
+   * it, and the pull cursor `syncFromChild` uses to check on it — see
+   * `features/family/request.ts`'s `applyGrant`.
+   */
+  pendingLimitRequest: { askedBytes: number; at: number } | null;
+  /**
+   * Child-only: the `requestAt` of the last grant already applied (or seen
+   * and declined), so a lingering grant row — kept until unpair or the
+   * 90-day prune, never deleted once answered — does not raise
+   * `mobileLimitBytes` on every future sync. Null before any grant has ever
+   * been processed.
+   */
+  appliedGrantRequestAt: number | null;
+  /**
+   * Parent-only per-child one-shot record for the "asking for more data"
+   * notice — same shape and reason as `childQuietNotifiedAt` above: keyed by
+   * the child's `deviceId`, valued at the `request.at` already notified
+   * about.
+   */
+  childRequestNotifiedAt: Record<string, number>;
+  /**
    * Child-only resume cursor for `backfillFromChild`: the oldest day already
    * pushed, or `null` when the backfill has never run. A boolean "done" flag
    * would be a lie for the common case — the backfill is minutes of native
@@ -63,6 +85,9 @@ const DEFAULTS: Settings = {
   syncErrorNotifiedAt: null,
   childLimits: {},
   childQuietNotifiedAt: {},
+  pendingLimitRequest: null,
+  appliedGrantRequestAt: null,
+  childRequestNotifiedAt: {},
   backfillDoneUntil: null,
 };
 

@@ -1,5 +1,5 @@
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { AlertTriangle, BarChart3, BellRing, Clock, Gauge, Percent, Smartphone, Wifi } from 'lucide-react-native';
+import { AlertTriangle, BarChart3, BellRing, Clock, Gauge, Percent, Send, Smartphone, Wifi } from 'lucide-react-native';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FlatList, StyleSheet, View } from 'react-native';
@@ -24,6 +24,7 @@ import { summarizeChildren, useFamily } from '@/features/family/useFamily';
 import { childCycleUsedBytes } from '@/features/limits/backgroundCheck';
 import { isStale } from '@/features/limits/alerts';
 import { cycleRanges, limitStatus } from '@/features/limits/limits';
+import { pushSnapshot } from '@/features/family/sync';
 import { AppRow } from '@/features/usage/AppRow';
 import { formatBytes } from '@/features/usage/format';
 import { NetworkFilterTabs } from '@/features/usage/NetworkFilterTabs';
@@ -45,11 +46,12 @@ export default function ChildUsageScreen() {
   const deviceId = rawDeviceId ?? '';
   const { role } = useFamily();
   const { range, network, settings, reloadSettings } = useUsageContext();
-  const { snapshots } = useChildSnapshots(deviceId);
+  const { snapshots, refresh: refreshSnapshots } = useChildSnapshots(deviceId);
   const router = useRouter();
 
   const [limitGb, setLimitGb] = useState('');
   const [warnPercent, setWarnPercent] = useState('80');
+  const [answering, setAnswering] = useState(false);
 
   useEffect(() => {
     if (!settings || !deviceId) return;
@@ -76,6 +78,51 @@ export default function ChildUsageScreen() {
       toast(t('limits.saved'));
     } catch {
       toast(t('limits.saveFailed'));
+    }
+  };
+
+  // The child's newest outstanding "ask for more data" request — `null` once
+  // a `grant` row's `requestAt` matches it, since the request row itself is
+  // never deleted (it stays until the child's next tap replaces it via the
+  // same upsert, or unpair). Reading straight off `snapshots` rather than
+  // some derived "answered" flag is what lets Grant/Decline disappear the
+  // moment `refreshSnapshots` pulls the grant this screen itself just wrote.
+  const pendingRequest = useMemo(() => {
+    const requestRow = snapshots
+      .filter((s) => s.kind === 'request')
+      .sort((a, b) => b.updatedAt - a.updatedAt)[0];
+    const askedBytes = requestRow?.payload?.askedBytes;
+    const at = requestRow?.payload?.at;
+    if (typeof askedBytes !== 'number' || typeof at !== 'number') return null;
+
+    const grantRow = snapshots
+      .filter((s) => s.kind === 'grant')
+      .sort((a, b) => b.updatedAt - a.updatedAt)[0];
+    if (grantRow?.payload?.requestAt === at) return null;
+
+    return { askedBytes, at };
+  }, [snapshots]);
+
+  const answerRequest = async (grantedBytes: number) => {
+    if (!pendingRequest) return;
+    setAnswering(true);
+    try {
+      await pushSnapshot('grant', 0, {
+        grantedBytes,
+        at: Date.now(),
+        requestAt: pendingRequest.at,
+      });
+      toast(
+        t(
+          grantedBytes > 0 ? 'family.requestAnsweredGranted' : 'family.requestAnsweredDeclined',
+          { label, bytes: formatBytes(grantedBytes) }
+        )
+      );
+      refreshSnapshots();
+    } catch {
+      toast(t('family.requestAnswerFailed'));
+    } finally {
+      setAnswering(false);
     }
   };
 
@@ -276,6 +323,46 @@ export default function ChildUsageScreen() {
                 </View>
               ) : null}
 
+              {/* {{label}}'s own request to raise the alert level on their
+                  own device — answering this changes nothing here, only
+                  what {{label}}'s device warns itself about. */}
+              {pendingRequest ? (
+                <Card style={styles.limitCard}>
+                  <View style={styles.limitHeader}>
+                    <View style={[styles.limitIconBox, { backgroundColor: theme.accentMuted }]}>
+                      <Send size={16} color={theme.accent} />
+                    </View>
+                    <ThemedText type="smallBold" themeColor="textSecondary">
+                      {t('family.requestAnswerHeading')}
+                    </ThemedText>
+                  </View>
+
+                  <ThemedText type="small" themeColor="textSecondary">
+                    {t('family.requestAnswerBody', {
+                      label,
+                      bytes: formatBytes(pendingRequest.askedBytes),
+                    })}
+                  </ThemedText>
+
+                  <View style={styles.requestButtons}>
+                    <Button
+                      variant="default"
+                      title={t('family.grantButton')}
+                      onPress={() => answerRequest(pendingRequest.askedBytes)}
+                      disabled={answering}
+                      accessibilityLabel={t('family.grantButton')}
+                    />
+                    <Button
+                      variant="outline"
+                      title={t('family.declineButton')}
+                      onPress={() => answerRequest(0)}
+                      disabled={answering}
+                      accessibilityLabel={t('family.declineButton')}
+                    />
+                  </View>
+                </Card>
+              ) : null}
+
               {/* This is a notification, not a control: nothing on this
                   device can stop or pause the child's own data use. */}
               <Card style={styles.limitCard}>
@@ -435,6 +522,10 @@ const styles = StyleSheet.create({
   },
   fieldGroup: {
     gap: Spacing.one,
+  },
+  requestButtons: {
+    flexDirection: 'row',
+    gap: Spacing.two,
   },
   networkRow: {
     flexDirection: 'row',

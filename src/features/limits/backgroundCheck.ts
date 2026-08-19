@@ -16,6 +16,7 @@ import { loadSettings, saveSettings, type Settings } from "@/features/usage/sett
 
 import {
   decideAlert,
+  decideChildRequest,
   decideQuietChild,
   isStale,
   limitAlertKey,
@@ -211,8 +212,9 @@ async function checkChild(
   settings: Settings,
   now: number,
   todaySpikeKey: string
-): Promise<{ posted: boolean; quietNotifiedAt?: number }> {
+): Promise<{ posted: boolean; quietNotifiedAt?: number; requestNotifiedAt?: number }> {
   let posted = false;
+  let requestNotifiedAt: number | undefined;
 
   const limit = settings.childLimits[child.deviceId];
   if (limit?.mobileLimitBytes && !isStale(child.lastSeen, now)) {
@@ -271,6 +273,33 @@ async function checkChild(
     }
   }
 
+  // A child's outstanding "ask for more data" request, notified once per
+  // `request.at` — same one-shot pattern as the quiet-child notice below,
+  // and for the same reason (`decideChildRequest`'s own doc comment in
+  // `alerts.ts` has the full story on why `decideAlert`'s array does not
+  // fit this either). The newest `request` row wins, matching the "one
+  // outstanding request per device" upsert the whole feature relies on.
+  const requestRow = snapshots
+    .filter((s) => s.kind === "request")
+    .sort((a, b) => b.updatedAt - a.updatedAt)[0];
+  const askedBytes = requestRow?.payload?.askedBytes;
+  const requestAt = requestRow?.payload?.at;
+  if (
+    typeof askedBytes === "number" &&
+    typeof requestAt === "number" &&
+    decideChildRequest(requestAt, settings.childRequestNotifiedAt[child.deviceId])
+  ) {
+    await notify(
+      i18n.t("family.childRequestTitle", { label: child.label }),
+      i18n.t("family.childRequestBody", {
+        label: child.label,
+        bytes: formatBytes(askedBytes),
+      })
+    );
+    posted = true;
+    requestNotifiedAt = requestAt;
+  }
+
   // Independent of any limit: an honest observation ("no check-in since
   // yesterday"), not an accusation, and it never fires on the ordinary
   // overnight Doze gap because the threshold is a full 24 hours.
@@ -286,10 +315,10 @@ async function checkChild(
       })
     );
     posted = true;
-    return { posted, quietNotifiedAt: child.lastSeen };
+    return { posted, quietNotifiedAt: child.lastSeen, requestNotifiedAt };
   }
 
-  return { posted };
+  return { posted, requestNotifiedAt };
 }
 
 /**
@@ -309,6 +338,7 @@ async function checkChildren(now: number, todaySpikeKey: string): Promise<"poste
   const children = summarizeChildren(cached);
   let posted = false;
   let quietPatch: Record<string, number> | null = null;
+  let requestPatch: Record<string, number> | null = null;
 
   for (const child of children) {
     const snapshots = cached.filter((r) => r.deviceId === child.deviceId);
@@ -317,10 +347,19 @@ async function checkChildren(now: number, todaySpikeKey: string): Promise<"poste
     if (result.quietNotifiedAt !== undefined) {
       quietPatch = { ...(quietPatch ?? settings.childQuietNotifiedAt), [child.deviceId]: result.quietNotifiedAt };
     }
+    if (result.requestNotifiedAt !== undefined) {
+      requestPatch = {
+        ...(requestPatch ?? settings.childRequestNotifiedAt),
+        [child.deviceId]: result.requestNotifiedAt,
+      };
+    }
   }
 
   if (quietPatch) {
     await saveSettings({ childQuietNotifiedAt: quietPatch });
+  }
+  if (requestPatch) {
+    await saveSettings({ childRequestNotifiedAt: requestPatch });
   }
 
   return posted ? "posted" : "quiet";

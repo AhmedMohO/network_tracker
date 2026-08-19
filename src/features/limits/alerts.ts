@@ -111,3 +111,19 @@ export function decideQuietChild(
 ): boolean {
   return now - lastSeen > QUIET_MS && notifiedAt !== lastSeen;
 }
+
+/**
+ * Should a "this child is asking for more data" notice fire, and what
+ * `request.at` should be remembered as already notified? One-shot per `at`,
+ * the same pattern as `decideQuietChild` immediately above and for the same
+ * reason: `decideAlert`'s array prunes every key in one pass against a
+ * single billing-cycle `cycleStart` shared by every mobile/Wi-Fi key already
+ * in it, and a request's own timestamp is not a cycle — letting it into that
+ * array would have it pruned out again by the very next unrelated limit
+ * check in the same run. A fresh request (a new `at`, from the upsert a
+ * second tap performs) is a new value and notifies again; the same
+ * still-unanswered request is only ever reported once.
+ */
+export function decideChildRequest(at: number, notifiedAt: number | undefined): boolean {
+  return notifiedAt !== at;
+}

@@ -19,6 +19,7 @@ import { Button } from '@/components/ui/button';
 import { BottomTabInset, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { toCsv, toJson } from '@/features/export/csv';
 import { shareExport } from '@/features/export/share';
+import { RequestCard } from '@/features/family/RequestCard';
 import { SharingBanner } from '@/features/family/SharingBanner';
 import { LimitCard } from '@/features/limits/LimitCard';
 import { useLimitStatus } from '@/features/limits/useLimitStatus';
@@ -122,6 +123,7 @@ export default function Dashboard() {
                 {network !== 'ALL' && limitStatus ? (
                   <LimitCard status={limitStatus.status} coverage={limitStatus.coverage} />
                 ) : null}
+                <RequestCard />
                 <TotalsCard totals={data.totals} coverage={data.coverage} hidden={hidden} />
                 <UsageChartCard />
                 <View style={styles.headingRow}>

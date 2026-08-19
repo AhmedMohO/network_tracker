@@ -114,7 +114,9 @@ export function useChildren(): { children: ChildDevice[]; refresh: () => void; l
  * summarized `ChildDevice` — for the per-child detail screen's range-based
  * chart and app list. Same cache-first-then-pull posture as `useChildren`.
  */
-export function useChildSnapshots(deviceId: string): { snapshots: Snapshot[]; loading: boolean } {
+export function useChildSnapshots(
+  deviceId: string
+): { snapshots: Snapshot[]; loading: boolean; refresh: () => void } {
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -145,5 +147,9 @@ export function useChildSnapshots(deviceId: string): { snapshots: Snapshot[]; lo
     }, [load])
   );
 
-  return { snapshots, loading };
+  // Exposed so the child detail screen can pull immediately after answering
+  // a request — without it, a just-pushed `grant` row would not reflect in
+  // `snapshots` until the next focus or the 15-minute background pull, and
+  // the Grant/Decline buttons would stay visible in the meantime.
+  return { snapshots, loading, refresh: load };
 }

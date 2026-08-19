@@ -227,6 +227,79 @@ describe("syncFromChild", () => {
     await syncFromChild(1_700_000_000_000);
     expect(pushedKinds()).toEqual(expect.arrayContaining(["daily", "recent"]));
   });
+
+  it("does not pull when there is no outstanding limit-increase request", async () => {
+    (readArchive as jest.Mock).mockResolvedValue([]);
+    await syncFromChild(1_700_000_000_000);
+    const urls = (globalThis.fetch as jest.Mock).mock.calls.map(([url]: any[]) => String(url));
+    expect(urls.some((u) => u.includes("family_pull"))).toBe(false);
+  });
+
+  it("applies a matching grant and clears the pending request", async () => {
+    (loadSettings as jest.Mock).mockResolvedValue({
+      familyRole: "child",
+      pairToken: "t".repeat(32),
+      deviceId: "d".repeat(32),
+      deviceLabel: "Child",
+      lastSyncErrorAt: null,
+      pendingLimitRequest: { askedBytes: 2 * 1024 ** 3, at: 1_000 },
+      appliedGrantRequestAt: null,
+      mobileLimitBytes: 5 * 1024 ** 3,
+    });
+    (readArchive as jest.Mock).mockResolvedValue([]);
+    (globalThis as any).fetch = jest.fn((url: string) => {
+      if (String(url).includes("family_pull")) {
+        return Promise.resolve({
+          ok: true,
+          text: async () =>
+            JSON.stringify([
+              {
+                device_id: "d".repeat(32),
+                device_label: "Child",
+                kind: "grant",
+                day: 0,
+                payload: { grantedBytes: 2 * 1024 ** 3, at: 2_000, requestAt: 1_000 },
+                updated_at: "2026-08-19T00:00:00.000+00:00",
+              },
+            ]),
+        });
+      }
+      return Promise.resolve(okResponse());
+    });
+
+    await syncFromChild(1_700_000_000_000);
+
+    expect(saveSettings).toHaveBeenCalledWith({
+      pendingLimitRequest: null,
+      appliedGrantRequestAt: 1_000,
+      mobileLimitBytes: 7 * 1024 ** 3,
+    });
+  });
+
+  it("does not re-raise the limit on a later sync against the same (never-deleted) grant row", async () => {
+    (loadSettings as jest.Mock).mockResolvedValue({
+      familyRole: "child",
+      pairToken: "t".repeat(32),
+      deviceId: "d".repeat(32),
+      deviceLabel: "Child",
+      lastSyncErrorAt: null,
+      // Already applied on an earlier sync, and the request row itself
+      // (never deleted server-side) is still there — but the pending
+      // request was already cleared, so this sync does not even pull.
+      pendingLimitRequest: null,
+      appliedGrantRequestAt: 1_000,
+      mobileLimitBytes: 7 * 1024 ** 3,
+    });
+    (readArchive as jest.Mock).mockResolvedValue([]);
+
+    await syncFromChild(1_700_000_000_000);
+
+    const urls = (globalThis.fetch as jest.Mock).mock.calls.map(([url]: any[]) => String(url));
+    expect(urls.some((u) => u.includes("family_pull"))).toBe(false);
+    expect(saveSettings).not.toHaveBeenCalledWith(
+      expect.objectContaining({ mobileLimitBytes: expect.anything() })
+    );
+  });
 });
 
 describe("pullFromParent", () => {

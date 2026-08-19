@@ -9,6 +9,7 @@ import { presetRange } from "@/features/usage/range";
 import { loadSettings, saveSettings } from "@/features/usage/settings";
 
 import { mergeCache, readCache } from "./cache";
+import { applyGrant, type GrantPayload } from "./request";
 
 export type SnapshotKind = "daily" | "recent" | "request" | "grant";
 
@@ -38,6 +39,17 @@ export type Snapshot = {
 /** More than this and the payload stops being a few KB. */
 const MAX_APPS = 50;
 const DAY = 86_400_000;
+
+/**
+ * Safety margin subtracted from `pendingLimitRequest.at` before using it as
+ * the pull cursor for an answered grant. `at` is the *child's own* clock, not
+ * verified by anything (same caveat `checkInAt` in `features/family/context.ts`
+ * documents at length) — a clock running fast would set a cursor after the
+ * grant's real server timestamp and silently miss it forever. An hour is far
+ * more than any believable clock drift while still keeping the pull to a
+ * handful of rows, not the family's whole history.
+ */
+const GRANT_LOOKBACK_MS = 60 * 60 * 1000;
 
 const config = (Constants.expoConfig?.extra as any)?.family as
   | { url: string; anonKey: string }
@@ -288,6 +300,38 @@ export async function syncFromChild(now: number) {
         { mobileApps: mobile.apps, wifiApps: wifi.apps }
       )
     );
+
+    // Task 33: check whether the parent has answered an outstanding "ask for
+    // more data" request. Gated on `pendingLimitRequest` so a device with
+    // nothing outstanding makes no extra call, and `since` is the request's
+    // own timestamp — the grant can only have been written after it — so this
+    // pulls a handful of rows, not the family's whole history. Kept inside
+    // this same `syncRun` call so a failed pull marks the run failed like any
+    // other network step here.
+    if (s.pendingLimitRequest) {
+      const rows = await pullSnapshots(s.pendingLimitRequest.at - GRANT_LOOKBACK_MS);
+      const grantRow = rows.find((r) => r.kind === "grant" && r.deviceId === s.deviceId);
+      const grant: GrantPayload | undefined =
+        grantRow &&
+        typeof grantRow.payload?.grantedBytes === "number" &&
+        typeof grantRow.payload?.requestAt === "number"
+          ? grantRow.payload
+          : undefined;
+
+      if (grant) {
+        const outcome = applyGrant(
+          grant,
+          s.pendingLimitRequest.at,
+          s.appliedGrantRequestAt,
+          s.mobileLimitBytes
+        );
+        await saveSettings({
+          ...(outcome.clearPending ? { pendingLimitRequest: null } : {}),
+          appliedGrantRequestAt: outcome.appliedRequestAt,
+          ...(outcome.apply ? { mobileLimitBytes: outcome.newLimitBytes } : {}),
+        });
+      }
+    }
   });
 }
 
