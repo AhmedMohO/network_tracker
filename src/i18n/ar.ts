@@ -328,6 +328,8 @@ export const ar: typeof en = {
     requestCancelButton: 'إلغاء الطلب',
     requestSentToast: 'تم إرسال الطلب.',
     requestFailedToast: 'تعذّر إرسال الطلب. تحقق من اتصالك وحاول مرة أخرى.',
+    requestCancelOfflineToast:
+      'تم إلغاء الطلب على هذا الجهاز. قد يظل ظاهرًا لولي الأمر حتى يتم التبليغ التالي.',
     requestAnswerHeading: 'طلب تنبيه بيانات',
     requestAnswerBody: 'يطلب {{label}} رفع مستوى التنبيه على جهازه بمقدار {{bytes}}.',
     grantButton: 'الموافقة',

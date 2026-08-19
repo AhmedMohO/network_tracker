@@ -347,6 +347,8 @@ export const en = {
     requestCancelButton: 'Cancel request',
     requestSentToast: 'Request sent.',
     requestFailedToast: 'Could not send the request. Check your connection and try again.',
+    requestCancelOfflineToast:
+      'Request cancelled on this device. Your parent may still see it until this device checks in again.',
     requestAnswerHeading: 'Data alert request',
     requestAnswerBody: '{{label}} is asking to raise the alert level on their own device by {{bytes}}.',
     grantButton: 'Grant',

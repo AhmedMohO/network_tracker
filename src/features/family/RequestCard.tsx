@@ -87,6 +87,14 @@ export function RequestCard() {
       await pushSnapshot("request", 0, { askedBytes: 0, at: Date.now() });
       await saveSettings({ pendingLimitRequest: null });
       reloadSettings();
+    } catch {
+      // The way out must not depend on the network. Clear locally anyway so
+      // the child is never stuck behind a failed push, and say plainly that
+      // the parent may still see the ask until this device next reaches the
+      // server — the outstanding row is only cleared by the push above.
+      await saveSettings({ pendingLimitRequest: null });
+      reloadSettings();
+      toast(t('family.requestCancelOfflineToast'));
     } finally {
       setBusy(false);
     }
