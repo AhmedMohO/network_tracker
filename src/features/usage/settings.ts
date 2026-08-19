@@ -10,6 +10,11 @@ export type Settings = {
   showSystemApps: boolean;
   /** Alert keys already fired and still live; see `features/limits/alerts`. */
   alertedKeys: string[];
+  /** null until this install joins a pair. See `features/family/pair`. */
+  familyRole: "parent" | "child" | null;
+  pairToken: string | null;
+  deviceId: string | null;
+  deviceLabel: string | null;
 };
 
 const KEY = "settings.v1";
@@ -22,6 +27,10 @@ const DEFAULTS: Settings = {
   wifiWarnAtPercent: 80,
   showSystemApps: false,
   alertedKeys: [],
+  familyRole: null,
+  pairToken: null,
+  deviceId: null,
+  deviceLabel: null,
 };
 
 export async function loadSettings(): Promise<Settings> {
