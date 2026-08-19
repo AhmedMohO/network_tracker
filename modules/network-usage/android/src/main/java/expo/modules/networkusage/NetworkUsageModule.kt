@@ -54,6 +54,14 @@ class NetworkUsageModule : Module() {
 
         Function("getDeviceCounters") { LiveProbe.counters() }
 
+        Function("getDeviceContext") {
+            mapOf(
+                "foregroundPackage" to LiveProbe.foregroundPackage(context),
+                "batteryPercent" to LiveProbe.batteryPercent(context),
+                "connection" to LiveProbe.connection(context)
+            )
+        }
+
         Function("canInstallPackages") { ApkInstaller.canInstall(context) }
 
         Function("openInstallPermissionSettings") {
