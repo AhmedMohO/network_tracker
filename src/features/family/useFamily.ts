@@ -166,17 +166,17 @@ export function useFamily() {
         await becomeParent(label);
         // Warm the cache immediately so the Family tab has data if a child
         // has already paired and pushed.
-        try { await refreshCache(); } catch { /* best-effort */ }
+        try { await refreshCache(); } catch (e) { console.warn('[family] refreshCache after becomeParent failed:', e); }
       }),
     joinAsChild: (t: string, label: string) =>
       run(async () => {
         await joinAsChild(t, label);
         // Push this child's data immediately so the parent sees it without
         // waiting for the 15-minute background task.
-        try { await syncFromChild(Date.now()); } catch { /* best-effort */ }
+        try { await syncFromChild(Date.now()); } catch (e) { console.warn('[family] syncFromChild after joinAsChild failed:', e); }
         // Backfill historical days in the background — non-blocking so the
         // UI stays responsive.
-        backfillFromChild(Date.now()).catch(() => {});
+        backfillFromChild(Date.now()).catch((e) => { console.warn('[family] backfillFromChild after joinAsChild failed:', e); });
       }),
     unpair: () => run(() => unpair()),
     setDeviceLabel: (label: string) => run(() => saveSettings({ deviceLabel: label })),

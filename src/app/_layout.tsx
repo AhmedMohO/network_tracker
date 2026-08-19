@@ -60,8 +60,8 @@ export default function RootLayout() {
       // re-run it every few seconds.
       if (now - lastPushAt < FOREGROUND_SYNC_INTERVAL) return;
       lastPushAt = now;
-      syncFromChild(now).catch(() => {});
-      backfillFromChild(now).catch(() => {});
+      syncFromChild(now).catch((e) => { console.warn('[family] foreground syncFromChild failed:', e); });
+      backfillFromChild(now).catch((e) => { console.warn('[family] foreground backfillFromChild failed:', e); });
     };
     push();
     const sub = AppState.addEventListener('change', (state) => {
@@ -112,7 +112,7 @@ export default function RootLayout() {
                 // rather than leaving them staring at a dismissed dialog on
                 // a still-unpaired device.
                 joinAsChild(pairing.token, pairing.label)
-                  .then(() => syncFromChild(Date.now()).catch(() => {}))
+                  .then(() => syncFromChild(Date.now()).catch((e) => { console.warn('[family] deep-link syncFromChild failed:', e); }))
                   // No backfill here: `reloadAppAsync` below tears the JS
                   // context down, and starting a minutes-long loop on the
                   // line before that only ever got one or two days pushed.
@@ -130,8 +130,8 @@ export default function RootLayout() {
           ]
         );
       })
-      .catch(() => {
-        // Nothing actionable: if settings can't even be read, the join
+      .catch((e) => {
+        console.warn('[family] deep-link settings load failed:', e);
         // prompt simply doesn't appear for this link.
       });
   }, [url]);

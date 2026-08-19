@@ -384,8 +384,8 @@ export async function runUsageCheck(now: number) {
     // push nothing, every push path carries the same context, and a parent or
     // unpaired device never runs it at all.
     await syncFromChild(now);
-  } catch {
-    // See above.
+  } catch (e) {
+    console.warn('[family] background syncFromChild failed:', e);
   }
 
   // Same posture again, mirrored for the parent side: a failed pull must
@@ -394,8 +394,8 @@ export async function runUsageCheck(now: number) {
   // paired parent.
   try {
     await pullFromParent(now);
-  } catch {
-    // See above.
+  } catch (e) {
+    console.warn('[family] background pullFromParent failed:', e);
   }
 
   // Reuses the same "today" spike-day string `checkNetwork` computes for

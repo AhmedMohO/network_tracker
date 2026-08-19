@@ -127,8 +127,8 @@ export function extractNetworkTotals(
   }
   if (Array.isArray(payload?.mobileApps) && Array.isArray(payload?.wifiApps)) {
     return {
-      mobile: listTotal(payload.mobileApps, payload.mobileOtherBytes),
-      wifi: listTotal(payload.wifiApps, payload.wifiOtherBytes),
+      mobile: listTotal(payload.mobileApps, payload?.mobileOtherBytes),
+      wifi: listTotal(payload.wifiApps, payload?.wifiOtherBytes),
     };
   }
   return null;

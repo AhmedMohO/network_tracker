@@ -51,7 +51,11 @@ async function rpc(name: string, body: Record<string, unknown>): Promise<any> {
     headers: { apikey: config.anonKey, "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`${name}: ${res.status}`);
+  if (!res.ok) {
+    const errBody = await res.text().catch(() => '');
+    console.warn(`[family] rpc ${name} failed: ${res.status}`, errBody);
+    throw new Error(`${name}: ${res.status}`);
+  }
   const text = await res.text();
   return text ? JSON.parse(text) : null;
 }
@@ -248,9 +252,8 @@ export async function syncFromChild(now: number) {
   let context: DeviceContext | null = null;
   try {
     context = NetworkUsage.getDeviceContext();
-  } catch {
-    // The context is optional; the byte totals are not. `recentPayload` sends
-    // `context: null` rather than inventing one.
+  } catch (e) {
+    console.warn('[family] getDeviceContext failed (non-fatal):', e);
   }
 
   await syncRun(async () => {
@@ -369,8 +372,8 @@ export async function backfillFromChild(now: number): Promise<void> {
           totals: day.totals,
         })
       );
-    } catch {
-      // Best-effort per day: skip failures silently.
+    } catch (e) {
+      console.warn(`[family] backfill day ${dayStart} failed:`, e);
     }
     // Stamped after every day, not once at the end: a run killed halfway
     // must not lose the days it did push.
