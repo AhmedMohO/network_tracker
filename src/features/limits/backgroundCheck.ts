@@ -289,7 +289,10 @@ async function checkChild(
   const askedBytes = requestRow?.payload?.askedBytes;
   const requestAt = requestRow?.payload?.at;
   const requestNotice = decideRequestNotice(
-    typeof askedBytes === "number" && typeof requestAt === "number"
+    // `askedBytes: 0` is how a cancelled request is written (`RequestCard`'s
+    // `cancelRequest`, review Finding I-3 item a) — not a real ask, so it
+    // must not notify the parent about one the child has already abandoned.
+    typeof askedBytes === "number" && askedBytes > 0 && typeof requestAt === "number"
       ? { askedBytes, at: requestAt }
       : null,
     typeof grantRow?.payload?.requestAt === "number"

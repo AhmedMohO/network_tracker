@@ -112,10 +112,26 @@ export type ChildSummary = { deviceId: string; label: string; lastSeen: number }
 /**
  * One row per device that has ever pushed under this token, keeping only its
  * most recent snapshot. Pure so it is testable without the network.
+ *
+ * Review Finding N-1: `grant` rows are skipped here — they are the one
+ * `SnapshotKind` a device writes onto *another* device's row (`pushSnapshot`'s
+ * `target` override, review Finding C-1), so a parent answering a request
+ * stamps `updated_at = now()` under the child's own `deviceId` without the
+ * child having done anything. Counting it as that child's newest row would
+ * report "last seen" for a check-in that never happened, un-stale a child
+ * that hasn't reported, and mute the gone-quiet notice for 24 hours after a
+ * grant — exactly the "stale data never becomes a live signal" guarantee
+ * this whole feature exists to keep. `request` rows are kept: unlike `grant`,
+ * a device only ever pushes a `request` under its *own* id, so it is a real
+ * check-in in every sense `daily`/`recent` are. The rule to carry forward for
+ * the next `SnapshotKind` is "rows the child did not write itself", not
+ * "grant is a special case" — if a future kind ever writes under another
+ * device's id the same way `grant` does, it belongs in this same skip.
  */
 export function summarizeChildren(snapshots: Snapshot[]): ChildSummary[] {
   const byDevice = new Map<string, ChildSummary>();
   for (const snap of snapshots) {
+    if (snap.kind === "grant") continue;
     const existing = byDevice.get(snap.deviceId);
     if (!existing || snap.updatedAt > existing.lastSeen) {
       byDevice.set(snap.deviceId, {

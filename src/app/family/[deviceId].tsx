@@ -109,7 +109,9 @@ export default function ChildUsageScreen() {
       .sort((a, b) => b.updatedAt - a.updatedAt)[0];
     const askedBytes = requestRow?.payload?.askedBytes;
     const at = requestRow?.payload?.at;
-    if (typeof askedBytes !== 'number' || typeof at !== 'number') return null;
+    // `askedBytes: 0` is how a cancelled request is written (RequestCard's
+    // `cancelRequest`, review Finding I-3 item a) — not a real ask.
+    if (typeof askedBytes !== 'number' || askedBytes <= 0 || typeof at !== 'number') return null;
 
     const grantRow = snapshots
       .filter((s) => s.kind === 'grant')

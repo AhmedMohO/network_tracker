@@ -175,4 +175,30 @@ describe("summarizeChildren", () => {
   it("returns an empty list rather than throwing on no snapshots", () => {
     expect(summarizeChildren([])).toEqual([]);
   });
+
+  it("does not let a grant row (the parent's answer, written under the child's own deviceId) move lastSeen (review Finding N-1)", () => {
+    const rows = summarizeChildren([
+      { deviceId: "d1", deviceLabel: "Kid A", kind: "recent", day: 0, payload: {}, updatedAt: 200 },
+      // The parent's grant lands *after* the child's last real check-in and
+      // carries the parent's own cached label — must not win either field.
+      { deviceId: "d1", deviceLabel: "Dad's phone", kind: "grant", day: 0, payload: {}, updatedAt: 9_999 },
+    ]);
+    expect(rows).toEqual([{ deviceId: "d1", label: "Kid A", lastSeen: 200 }]);
+  });
+
+  it("still counts a request row as a real check-in — only grant is skipped", () => {
+    const rows = summarizeChildren([
+      { deviceId: "d1", deviceLabel: "Kid A", kind: "recent", day: 0, payload: {}, updatedAt: 200 },
+      { deviceId: "d1", deviceLabel: "Kid A", kind: "request", day: 0, payload: {}, updatedAt: 300 },
+    ]);
+    expect(rows).toEqual([{ deviceId: "d1", label: "Kid A", lastSeen: 300 }]);
+  });
+
+  it("a device with only a grant row (never itself pushed anything) does not appear at all", () => {
+    expect(
+      summarizeChildren([
+        { deviceId: "d1", deviceLabel: "Dad's phone", kind: "grant", day: 0, payload: {}, updatedAt: 100 },
+      ])
+    ).toEqual([]);
+  });
 });

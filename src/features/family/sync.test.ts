@@ -320,7 +320,7 @@ describe("syncFromChild", () => {
     });
   });
 
-  it("clears an expired pending request without pulling (review Finding I-3)", async () => {
+  it("clears an expired pending request once one last pull finds no grant (review Finding I-3, checked post-pull per item c)", async () => {
     const now = 1_700_000_000_000;
     const requestAt = now - 4 * 24 * 60 * 60 * 1000; // 4 days ago, past the 3-day TTL
     (loadSettings as jest.Mock).mockResolvedValue({
@@ -334,12 +334,61 @@ describe("syncFromChild", () => {
       mobileLimitBytes: 5 * 1024 ** 3,
     });
     (readArchive as jest.Mock).mockResolvedValue([]);
+    // Default `okResponse` mock (empty body) stands in for "no grant found" —
+    // this is the case that used to be skipped entirely; now it still pulls
+    // once (so a grant landing on this exact cycle would not be dropped),
+    // finds nothing, and only then gives up.
 
     await syncFromChild(now);
 
     const urls = (globalThis.fetch as jest.Mock).mock.calls.map(([url]: any[]) => String(url));
-    expect(urls.some((u) => u.includes("family_pull"))).toBe(false);
+    expect(urls.some((u) => u.includes("family_pull"))).toBe(true);
     expect(saveSettings).toHaveBeenCalledWith({ pendingLimitRequest: null });
+  });
+
+  it("applies a grant found on the exact cycle a request expires, instead of dropping it (review Finding I-3, item c)", async () => {
+    const now = 1_700_000_000_000;
+    const requestAt = now - 4 * 24 * 60 * 60 * 1000; // 4 days ago, past the 3-day TTL
+    (loadSettings as jest.Mock).mockResolvedValue({
+      familyRole: "child",
+      pairToken: "t".repeat(32),
+      deviceId: "d".repeat(32),
+      deviceLabel: "Child",
+      lastSyncErrorAt: null,
+      pendingLimitRequest: { askedBytes: 2 * 1024 ** 3, at: requestAt },
+      appliedGrantRequestAt: null,
+      mobileLimitBytes: 5 * 1024 ** 3,
+    });
+    (readArchive as jest.Mock).mockResolvedValue([]);
+    (globalThis as any).fetch = jest.fn((url: string) => {
+      if (String(url).includes("family_pull")) {
+        return Promise.resolve({
+          ok: true,
+          text: async () =>
+            JSON.stringify([
+              {
+                device_id: "d".repeat(32),
+                device_label: "Child",
+                kind: "grant",
+                day: 0,
+                payload: { grantedBytes: 2 * 1024 ** 3, at: now - 1_000, requestAt },
+                updated_at: "2026-08-19T00:00:00.000+00:00",
+              },
+            ]),
+        });
+      }
+      return Promise.resolve(okResponse());
+    });
+
+    await syncFromChild(now);
+
+    // Applied, not silently dropped for being "too late" — the grant is a
+    // real answer that happened to arrive on the expiring cycle.
+    expect(saveSettings).toHaveBeenCalledWith({
+      pendingLimitRequest: null,
+      appliedGrantRequestAt: requestAt,
+      mobileLimitBytes: 7 * 1024 ** 3,
+    });
   });
 
   it("picks the newest grant row when more than one is returned for this device (review Finding M-6)", async () => {

@@ -326,51 +326,72 @@ export async function syncFromChild(now: number) {
     // `syncRun` call so a failed pull marks the run failed like any other
     // network step here.
     if (s.pendingLimitRequest) {
-      if (isRequestExpired(s.pendingLimitRequest.at, now)) {
+      // ponytail: `family_pull` (docs/family-schema.sql) has no per-device or
+      // per-kind filter, so every call here downloads every family member's
+      // rows updated since the cursor below — every sibling's `recent`
+      // payload (up to 50 apps, names, package names) included, on this
+      // device's own connection, for as long as a request stays outstanding.
+      // Bounded by `REQUEST_TTL_MS`, not eliminated — and the bound is worse
+      // than "a handful": the cursor below is fixed at the *request's* own
+      // timestamp and does not advance between calls, so this is not a
+      // sliding ~`GRANT_LOOKBACK_MS` window — every 15-minute cycle re-pulls
+      // the *entire* span since the request was made, larger call over call,
+      // for up to `REQUEST_TTL_MS` / 15 min ≈ 288 calls before this gives up
+      // (review Finding I-4; corrected from an earlier, wrong "handful of
+      // pulls" claim — the disposition to accept this without a migration is
+      // unchanged, only the estimate was). A real fix needs a narrower RPC
+      // (filtered by device/kind) or a cursor that advances between calls —
+      // either is more than a one-line change — raise it if this ever bites
+      // a real metered plan.
+      const rows = await pullSnapshots(s.pendingLimitRequest.at - GRANT_LOOKBACK_MS);
+      const grantRow = rows
+        .filter((r) => r.kind === "grant" && r.deviceId === s.deviceId)
+        // Newest first — matches `[deviceId].tsx` and `backgroundCheck.ts`'s
+        // identical tie-break (review Finding M-6). Harmless while the PK
+        // guarantees one grant row per child, but it is the correct
+        // tie-break if that ever stops being true.
+        .sort((a, b) => b.updatedAt - a.updatedAt)[0];
+      // Known edge case (review Finding I-3, item b), not fixed: if this
+      // device cancelled a request and then re-asked within
+      // `GRANT_LOOKBACK_MS`, a grant answering the *cancelled* request can
+      // still be pulled in here and applied — `applyGrant` only checks
+      // `requestAt` against what has already been applied, not against
+      // whether the request it answers is the one currently pending. The
+      // parent really did grant a real ask the child made, so the limit
+      // rising is not "wrong" so much as surprising to a child who thought
+      // cancelling ended the story. Narrow window (within one
+      // `GRANT_LOOKBACK_MS` of a cancel-then-re-ask) and low stakes (the
+      // limit only ever rises, never falls, from an amount the child did
+      // ask for at some point) — left as documented behaviour, not fixed.
+      const grant: GrantPayload | undefined =
+        grantRow &&
+        typeof grantRow.payload?.grantedBytes === "number" &&
+        typeof grantRow.payload?.requestAt === "number"
+          ? grantRow.payload
+          : undefined;
+
+      if (grant) {
+        const outcome = applyGrant(
+          grant,
+          s.pendingLimitRequest.at,
+          s.appliedGrantRequestAt,
+          s.mobileLimitBytes
+        );
+        await saveSettings({
+          ...(outcome.clearPending ? { pendingLimitRequest: null } : {}),
+          appliedGrantRequestAt: outcome.appliedRequestAt,
+          ...(outcome.apply ? { mobileLimitBytes: outcome.newLimitBytes } : {}),
+        });
+      } else if (isRequestExpired(s.pendingLimitRequest.at, now)) {
         // Review Finding I-3: an unanswered request cannot wait forever —
         // clear it so the child's card gets its "Ask for more data" button
-        // back, and so this block stops pulling on every future sync.
+        // back, and so this block stops pulling on every future sync. Checked
+        // *after* the pull above (review Finding I-3, item c) rather than
+        // before, so a grant that lands in the same cycle a request finally
+        // expires is still applied instead of silently dropped — this costs
+        // at most one extra pull over the request's whole lifetime, not one
+        // per cycle, since `pendingLimitRequest` is cleared here either way.
         await saveSettings({ pendingLimitRequest: null });
-      } else {
-        // ponytail: `family_pull` (docs/family-schema.sql) has no per-device
-        // or per-kind filter, so this downloads every family member's rows
-        // updated since the cursor below — every sibling's `recent` payload
-        // (up to 50 apps, names, package names) included, on this device's
-        // own connection, for as long as a request stays outstanding.
-        // Bounded, not eliminated: `since` narrows it to ~GRANT_LOOKBACK_MS
-        // per call and `REQUEST_TTL_MS` bounds how many cycles this can
-        // repeat for (review Finding I-4) — a handful of pulls over at most
-        // a few days, not the family's whole history forever. A real fix
-        // needs a narrower RPC (e.g. filtered by device/kind), which is a
-        // migration — raise it if this ever bites a real metered plan.
-        const rows = await pullSnapshots(s.pendingLimitRequest.at - GRANT_LOOKBACK_MS);
-        const grantRow = rows
-          .filter((r) => r.kind === "grant" && r.deviceId === s.deviceId)
-          // Newest first — matches `[deviceId].tsx` and `backgroundCheck.ts`'s
-          // identical tie-break (review Finding M-6). Harmless while the PK
-          // guarantees one grant row per child, but it is the correct
-          // tie-break if that ever stops being true.
-          .sort((a, b) => b.updatedAt - a.updatedAt)[0];
-        const grant: GrantPayload | undefined =
-          grantRow &&
-          typeof grantRow.payload?.grantedBytes === "number" &&
-          typeof grantRow.payload?.requestAt === "number"
-            ? grantRow.payload
-            : undefined;
-
-        if (grant) {
-          const outcome = applyGrant(
-            grant,
-            s.pendingLimitRequest.at,
-            s.appliedGrantRequestAt,
-            s.mobileLimitBytes
-          );
-          await saveSettings({
-            ...(outcome.clearPending ? { pendingLimitRequest: null } : {}),
-            appliedGrantRequestAt: outcome.appliedRequestAt,
-            ...(outcome.apply ? { mobileLimitBytes: outcome.newLimitBytes } : {}),
-          });
-        }
       }
     }
   });

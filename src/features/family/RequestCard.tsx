@@ -68,14 +68,23 @@ export function RequestCard() {
     }
   };
 
-  // Review Finding I-3: a way out that doesn't wait for the (multi-day) TTL
-  // `syncFromChild` enforces on its own — no network call needed, since the
-  // server row is simply superseded the next time this device asks again (or
-  // left as an unread answer for one it no longer cares about, the same as
-  // any other request past its TTL).
+  // Review Finding I-3, item a (Phase 11 fix wave 2): a way out that doesn't
+  // wait for the (multi-day) TTL `syncFromChild` enforces on its own.
+  // Pushes `{ askedBytes: 0, at }` — the same `request` kind, upserted over
+  // the outstanding row exactly like a real ask, but a zero the parent side
+  // now treats as "nothing outstanding" (`[deviceId].tsx`'s `pendingRequest`,
+  // `backgroundCheck.ts`'s request block) — mirroring how a `grant` already
+  // uses `grantedBytes: 0` for a decline rather than a fifth `SnapshotKind`.
+  // A purely local clear (the original version of this fix) left the
+  // server's `request` row looking exactly like a real, still-outstanding
+  // ask: the parent kept an actionable Grant/Decline card, and the
+  // background check kept notifying, for a request this device had already
+  // abandoned — a real, user-visible confusion the review named, not just a
+  // theoretical one.
   const cancelRequest = async () => {
     setBusy(true);
     try {
+      await pushSnapshot("request", 0, { askedBytes: 0, at: Date.now() });
       await saveSettings({ pendingLimitRequest: null });
       reloadSettings();
     } finally {
