@@ -57,6 +57,10 @@
       "router": {},
       "eas": {
         "projectId": "dfff9ccc-34af-46da-bf48-88bf34995a5d"
+      },
+      "family": {
+        "url": "https://YOUR-PROJECT.supabase.co",
+        "anonKey": "YOUR-ANON-KEY"
       }
     }
   }

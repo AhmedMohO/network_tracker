@@ -41,6 +41,10 @@ This command will move the starter code to the **app-example** directory and cre
 - If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
 - Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
 
+### Family tracking setup
+
+To enable family tracking (parent-child device sync), you need a Supabase project. The app's `app.json` includes placeholder values for the Supabase URL and anon key. The **anon key is a public client credential and is safe to commit** — it grants nothing without a valid pair token. However, the **service-role key must never enter this repository**. Before family sync features will work, apply `docs/family-schema.sql` in the Supabase SQL editor and schedule the `family_prune()` function to run daily.
+
 ## Learn more
 
 To learn more about developing your project with Expo, look at the following resources:
