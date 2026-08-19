@@ -15,9 +15,9 @@ export type Settings = {
   pairToken: string | null;
   deviceId: string | null;
   deviceLabel: string | null;
-  /** Set by `features/family/sync`'s `rpc` on every successful call. */
+  /** Set by `features/family/sync`'s `syncRun` when a whole sync run succeeds. */
   lastSyncOkAt: number | null;
-  /** Set on the first failure of a run of failures; cleared on the next success. */
+  /** Set on the first failure of a run of failures; cleared once a full run succeeds. */
   lastSyncErrorAt: number | null;
   /** The `lastSyncErrorAt` value already notified about; see `backgroundCheck`. */
   syncErrorNotifiedAt: number | null;

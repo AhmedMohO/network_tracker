@@ -48,7 +48,7 @@ All constraints from the previous two plans still apply. Additionally:
 
 Phases 1–7 could say *"nothing leaves the device."* After this plan that is false, and the app must say so where the user can see it. This is a hard requirement of Task 28, not a nice-to-have.
 
-**What leaves the child's device:** per-day, per-app, per-network byte totals; app display names and package names; today's running totals; at heartbeat time, the foreground package name, battery percent, and connection type (`MOBILE`/`WIFI`/`NONE` — the *type*, never the SSID or the carrier).
+**What leaves the child's device:** per-day, per-app byte totals; app display names and package names; today's running totals, plus the coverage window Android actually reported them over when it differs from the one requested; the device's own id and the label it was paired with; at heartbeat time, the foreground package name, battery percent, and connection type (`MOBILE`/`WIFI`/`NONE` — the *type*, never the SSID or the carrier).
 
 **What never leaves:** anything not in that list. In particular no location, no SSID, no browsing content, no message content, no screen contents.
 
@@ -427,7 +427,8 @@ git commit -m "feat: family sync schema with token-gated RPCs"
 - Produces:
   - `type Snapshot = { deviceId; deviceLabel; kind; day; payload; updatedAt }`
   - `type DeviceContext = { foregroundPackage: string | null; batteryPercent: number | null; connection: 'MOBILE' | 'WIFI' | 'NONE' }`
-  - `dailyPayload(apps)`, `recentPayload(apps, totals, context, at)` — pure, tested
+  - `dailyPayload(apps)`, `recentPayload(apps, totals, context, at, coverage)` — pure, tested
+  - `syncRun(fn)` — stamps `lastSyncOkAt`/`lastSyncErrorAt` for a whole run of `rpc` calls, not any one call inside it
   - `pushSnapshot(kind, day, payload)` — no-ops when unpaired
   - `pullSnapshots(since?)`, `forgetPair(token)`
   - `syncFromChild(now, context?)` — the whole child-side push
@@ -533,29 +534,34 @@ const config = (Constants.expoConfig?.extra as any)?.family as
   | { url: string; anonKey: string }
   | undefined;
 
-/**
- * Every call in and out of the backend goes through here, which is why the
- * success/failure stamps live here rather than in a health module: one place
- * sees every push and every pull.
- *
- * These stamps are not telemetry. A Supabase free project **pauses after one
- * week of inactivity**, and every caller of this function swallows its errors
- * so a failed sync cannot cost the local result. Without a recorded failure
- * time, a paused project is indistinguishable from a quiet family: the parent
- * sees stale numbers forever and nothing ever says why.
- */
+/** The transport for one RPC call. No stamping here — see `syncRun`. */
 async function rpc(name: string, body: Record<string, unknown>): Promise<any> {
   if (!config?.url) throw new Error("family sync is not configured");
+  const res = await fetch(`${config.url}/rest/v1/rpc/${name}`, {
+    method: "POST",
+    headers: { apikey: config.anonKey, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`${name}: ${res.status}`);
+  const text = await res.text();
+  return text ? JSON.parse(text) : null;
+}
+
+/**
+ * Stamps a whole sync *run* — one or more `rpc` calls treated as a unit —
+ * rather than any single call inside it. `syncFromChild` makes two pushes per
+ * run; stamping per-call let one call's success paper over the other's
+ * failure, so `lastSyncErrorAt` never aged past one background interval and
+ * the two-day sync-broken notice could never fire. A run now counts as
+ * successful only if every call inside `fn` does.
+ *
+ * Exported so a future parent-side pull (Phase 9) wraps itself in the same
+ * function instead of re-deriving this.
+ */
+export async function syncRun(fn: () => Promise<void>): Promise<void> {
   try {
-    const res = await fetch(`${config.url}/rest/v1/rpc/${name}`, {
-      method: "POST",
-      headers: { apikey: config.anonKey, "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) throw new Error(`${name}: ${res.status}`);
-    const text = await res.text();
+    await fn();
     await saveSettings({ lastSyncOkAt: Date.now(), lastSyncErrorAt: null });
-    return text ? JSON.parse(text) : null;
   } catch (e) {
     // Only the *first* failure of a run of failures is stamped, so the age of
     // this value answers "how long has sync been broken" rather than "when did
@@ -587,9 +593,10 @@ export function recentPayload(
   apps: AppUsage[],
   totals: { mobile: number; wifi: number },
   context: DeviceContext | null,
-  at: number
+  at: number,
+  coverage: { start: number; end: number } | null
 ) {
-  return { ...dailyPayload(apps), totals, context, at };
+  return { ...dailyPayload(apps), totals, context, at, coverage };
 }
 
 /** No-ops when unpaired. Every caller relies on that; do not add a throw. */
@@ -606,6 +613,19 @@ export async function pushSnapshot(kind: SnapshotKind, day: number, payload: unk
   });
 }
 
+/**
+ * PostgREST renders a `timestamptz` with however many fractional-second
+ * digits Postgres kept after trimming trailing zeros — six on a fresh write,
+ * fewer once it happens to end in zero, none on an exact second. The
+ * ECMAScript Date Time String Format specifies exactly three; more is
+ * implementation-defined, and Hermes is not V8. Truncate before `Date.parse`
+ * so every row parses the same way regardless of how many digits Postgres
+ * happened to keep.
+ */
+export function parseTimestamptz(iso: string): number {
+  return Date.parse(iso.replace(/(\.\d{3})\d+/, "$1"));
+}
+
 export async function pullSnapshots(since = 0): Promise<Snapshot[]> {
   const s = await loadSettings();
   if (!s.pairToken) return [];
@@ -619,7 +639,7 @@ export async function pullSnapshots(since = 0): Promise<Snapshot[]> {
     kind: r.kind,
     day: r.day,
     payload: r.payload,
-    updatedAt: Date.parse(r.updated_at),
+    updatedAt: parseTimestamptz(r.updated_at),
   }));
 }
 
@@ -639,27 +659,34 @@ export async function syncFromChild(now: number, context: DeviceContext | null =
   const s = await loadSettings();
   if (s.familyRole !== "child" || !s.pairToken) return;
 
-  const yesterday = presetRange("yesterday", now).start;
-  await pushSnapshot(
-    "daily",
-    yesterday,
-    dailyPayload(await readArchive(yesterday, yesterday + DAY, "ALL"))
-  );
+  await syncRun(async () => {
+    // An empty archive means no data for that day, not zero data — the
+    // realistic cause is Usage Access having been revoked, and a pushed
+    // zero would read as a real quiet day rather than the gap it is. A day
+    // that genuinely saw zero traffic across every UID still has rows, so
+    // this only skips the case that would otherwise fabricate a figure.
+    const yesterday = presetRange("yesterday", now).start;
+    const archive = await readArchive(yesterday, yesterday + DAY, "ALL");
+    if (archive.length > 0) {
+      await pushSnapshot("daily", yesterday, dailyPayload(archive));
+    }
 
-  const today = presetRange("today", now);
-  const mobile = await fetchUsage(today, "MOBILE");
-  const wifi = await fetchUsage(today, "WIFI");
-  const all = await fetchUsage(today, "ALL");
-  await pushSnapshot(
-    "recent",
-    0,
-    recentPayload(
-      all.apps,
-      { mobile: mobile.totals.total, wifi: wifi.totals.total },
-      context,
-      now
-    )
-  );
+    const today = presetRange("today", now);
+    const mobile = await fetchUsage(today, "MOBILE");
+    const wifi = await fetchUsage(today, "WIFI");
+    const all = await fetchUsage(today, "ALL");
+    await pushSnapshot(
+      "recent",
+      0,
+      recentPayload(
+        all.apps,
+        { mobile: mobile.totals.total, wifi: wifi.totals.total },
+        context,
+        now,
+        all.coverage
+      )
+    );
+  });
 }
 ```
 
