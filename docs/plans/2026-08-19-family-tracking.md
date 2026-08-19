@@ -431,7 +431,7 @@ git commit -m "feat: family sync schema with token-gated RPCs"
   - `pushSnapshot(kind, day, payload)` — no-ops when unpaired
   - `pullSnapshots(since?)`, `forgetPair(token)`
   - `syncFromChild(now, context?)` — the whole child-side push
-  - Settings additions: `lastSyncOkAt: number | null`, `lastSyncErrorAt: number | null`
+  - Settings additions: `lastSyncOkAt: number | null`, `lastSyncErrorAt: number | null`, `syncErrorNotifiedAt: number | null`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -684,20 +684,28 @@ In `src/features/limits/backgroundCheck.ts`, inside `runUsageCheck`, immediately
 
 - [ ] **Step 6: Notify when sync has been broken for two days**
 
-Still inside `runUsageCheck`, and reusing `alertOnce` so it fires once rather than every 15 minutes:
+Still inside `runUsageCheck`. It must fire **once per failure run** — and re-arm if sync recovers and later breaks again.
+
+**Do not reuse `alertOnce` for this.** An earlier draft of this plan did, and it was wrong: `decideAlert` prunes every key whose first segment is not `mobile` or `wifi` (`NETWORKS` in `alerts.ts`), so a `sync-broken:` key is dropped from `alertedKeys` on every call, never counts as already-fired, and re-notifies every 15 minutes. Verified against `alerts.ts` — do not re-derive this, and do not "fix" it by prefixing the key with a network name, which would corrupt the limit/spike pruning instead.
+
+Use a dedicated one-shot field on `Settings`, `syncErrorNotifiedAt: number | null`, holding the `lastSyncErrorAt` value already reported:
 
 ```ts
-  const { lastSyncErrorAt } = await loadSettings();
-  if (lastSyncErrorAt && now - lastSyncErrorAt > 2 * DAY) {
-    await alertOnce(
-      `sync-broken:${lastSyncErrorAt}`,   // keyed by the failure run, so a
-      cycleStart,                          // recovery-then-refail re-notifies
-      spikeKey,
+  const { lastSyncErrorAt, syncErrorNotifiedAt } = await loadSettings();
+  if (
+    lastSyncErrorAt &&
+    now - lastSyncErrorAt > 2 * DAY &&
+    syncErrorNotifiedAt !== lastSyncErrorAt
+  ) {
+    await notify(
       i18n.t("family.syncBrokenTitle"),
-      i18n.t("family.syncBrokenBody")
+      i18n.t("family.syncBrokenBody", { date: formatDay(lastSyncErrorAt) })
     );
+    await saveSettings({ syncErrorNotifiedAt: lastSyncErrorAt });
   }
 ```
+
+Comparing against the failure-run timestamp is what re-arms it: a recovery clears `lastSyncErrorAt`, so the next failure gets a new value that no longer matches `syncErrorNotifiedAt`.
 
 Two days, not two hours: a phone in Doze over a weekend, a router reboot, and a flight all produce multi-hour gaps that are not faults. Two days of total failure is not one of those, and one week is when Supabase pauses the project — this has to fire before that, not after.
 
