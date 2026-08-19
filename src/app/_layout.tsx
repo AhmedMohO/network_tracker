@@ -58,25 +58,42 @@ export default function RootLayout() {
     if (!url) return;
     const pairing = parsePairLink(url);
     if (!pairing) return;
-    loadSettings().then((s) => {
-      // Already paired with this exact link: no prompt, not even a no-op one.
-      if (s.pairToken === pairing.token) return;
-      // Never pair silently: a link can arrive from anyone, and the whole point
-      // of this feature is that the person being monitored knows about it.
-      Alert.alert(
-        i18n.t('family.joinTitle'),
-        i18n.t('family.joinBody', { label: pairing.label }),
-        [
-          { text: i18n.t('common.cancel'), style: 'cancel' },
-          {
-            text: i18n.t('family.join'),
-            onPress: () => {
-              joinAsChild(pairing.token, pairing.label).then(() => reloadAppAsync());
+    loadSettings()
+      .then((s) => {
+        // Already paired with this exact link: no prompt, not even a no-op one.
+        if (s.pairToken === pairing.token) return;
+        // Never pair silently: a link can arrive from anyone, and the whole point
+        // of this feature is that the person being monitored knows about it.
+        Alert.alert(
+          i18n.t('family.joinTitle'),
+          i18n.t('family.joinBody', { label: pairing.label }),
+          [
+            { text: i18n.t('common.cancel'), style: 'cancel' },
+            {
+              text: i18n.t('family.join'),
+              onPress: () => {
+                // `joinAsChild` throws (rather than switching) when this
+                // device is already paired with a *different* token — that
+                // refusal, and any other join failure, must reach the user
+                // rather than leaving them staring at a dismissed dialog on
+                // a still-unpaired device.
+                joinAsChild(pairing.token, pairing.label)
+                  .then(() => reloadAppAsync())
+                  .catch((e) => {
+                    Alert.alert(
+                      i18n.t('family.joinFailedTitle'),
+                      e instanceof Error ? e.message : i18n.t('family.joinFailedBody')
+                    );
+                  });
+              },
             },
-          },
-        ]
-      );
-    });
+          ]
+        );
+      })
+      .catch(() => {
+        // Nothing actionable: if settings can't even be read, the join
+        // prompt simply doesn't appear for this link.
+      });
   }, [url]);
 
   return (

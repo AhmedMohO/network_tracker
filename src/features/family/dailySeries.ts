@@ -19,55 +19,59 @@ export type DailySeries = {
   daysInRange: number;
 };
 
-/**
- * Local midnights covering `[start, end)`, the same day-start convention
- * `features/usage/range.ts`'s (unexported) `midnight` uses and that a child's
- * `daily` snapshot is keyed by. `setDate` rather than `+= DAY` so a DST
- * transition shifts the wall-clock hour, not which calendar day this lands on.
- */
-function daySlots(start: number, end: number): number[] {
-  const days: number[] = [];
-  const cursor = new Date(start);
-  cursor.setHours(0, 0, 0, 0);
-  while (cursor.getTime() < end) {
-    days.push(cursor.getTime());
-    cursor.setDate(cursor.getDate() + 1);
-  }
-  return days;
+/** Start of the local calendar day containing `ts`. Used only to decide
+ * whether the still-in-progress day (from this parent device's own clock)
+ * falls inside `[start, end)` — never to look up a row, which would
+ * reintroduce the cross-timezone mismatch this module used to have. */
+function startOfDay(ts: number): number {
+  const d = new Date(ts);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
 }
 
 /**
  * Rebuilds one child's daily usage over `[start, end)` from its cached
- * `daily` snapshots. A day with no `daily` row is a gap, not a zero-usage
- * day — the child may simply have been offline — so it contributes no bin
- * and no bytes; `missingDays` is how the caller says so instead of silently
- * under-reporting. `otherAppsLabel` is forwarded to `fromPayload` — see its
- * own doc comment for why this module does not import `@/i18n` itself.
+ * `daily` snapshots. A `daily` row's `day` is the *child's own* day key
+ * (set by `syncFromChild` from the child's clock) — so rows are selected by
+ * a plain `day >= start && day < end` range check, never by matching against
+ * locally-generated calendar slots, which would miss every row whenever the
+ * parent and child sit in different time zones.
+ *
+ * A day with no `daily` row is a gap, not a zero-usage day — the child may
+ * simply have been offline — so it contributes no bin and no bytes;
+ * `missingDays` is how the caller says so instead of silently
+ * under-reporting. The one exception is the day still in progress: a child
+ * never pushes a `daily` row for today (only a `recent` one), so counting
+ * that day as missing would flag the feature's own design as an outage —
+ * `now` (defaulted to the real clock, overridable for tests) is used only to
+ * exclude that one day from the count. `otherAppsLabel` is forwarded to
+ * `fromPayload` — see its own doc comment for why this module does not
+ * import `@/i18n` itself.
  */
 export function buildDailySeries(
   snapshots: Snapshot[],
   start: number,
   end: number,
-  otherAppsLabel?: string
+  otherAppsLabel?: string,
+  now: number = Date.now()
 ): DailySeries {
   const byDay = new Map<number, Snapshot>();
   for (const row of snapshots) {
     if (row.kind !== "daily") continue;
+    if (row.day < start || row.day >= end) continue;
     const existing = byDay.get(row.day);
     if (!existing || row.updatedAt > existing.updatedAt) byDay.set(row.day, row);
   }
 
-  const slots = daySlots(start, end);
+  const days = Array.from(byDay.keys()).sort((a, b) => a - b);
   const bins: SeriesBin[] = [];
   const perDayApps: AppUsage[][] = [];
   let download = 0;
   let upload = 0;
   let total = 0;
 
-  for (const day of slots) {
-    const row = byDay.get(day);
-    if (!row) continue; // gap: Android's day-of-week midnight, no data for it
-
+  for (const day of days) {
+    const row = byDay.get(day)!;
     const apps = fromPayload(row.payload, otherAppsLabel);
     perDayApps.push(apps);
     const dayDownload = apps.reduce((s, a) => s + a.download, 0);
@@ -85,12 +89,17 @@ export function buildDailySeries(
     bins.push({ start: day, end: day + DAY, rxBytes: dayDownload, txBytes: dayUpload });
   }
 
+  const daysInRange = Math.max(0, Math.round((end - start) / DAY));
+  const today = startOfDay(now);
+  const todayInRange = today < end && today + DAY > start;
+  const missingDays = Math.max(0, daysInRange - byDay.size - (todayInRange ? 1 : 0));
+
   return {
     apps: mergeApps(perDayApps),
     bins,
     totals: { download, upload, total },
-    missingDays: slots.length - bins.length,
-    daysInRange: slots.length,
+    missingDays,
+    daysInRange,
   };
 }
 

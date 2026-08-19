@@ -340,22 +340,40 @@ export async function runUsageCheck(now: number) {
   const settings = await loadSettings();
   // Sequentially, not in parallel: both checks read-modify-write `alertedKeys`,
   // and the native queries underneath are serialised anyway.
-  const mobile = await checkNetwork(
-    "MOBILE",
-    settings.mobileLimitBytes,
-    settings.mobileWarnAtPercent,
-    settings.cycleStartDay,
-    now,
-    settings.alertedKeys
-  );
-  const wifi = await checkNetwork(
-    "WIFI",
-    settings.wifiLimitBytes,
-    settings.wifiWarnAtPercent,
-    settings.cycleStartDay,
-    now,
-    settings.alertedKeys
-  );
+  //
+  // Each wrapped in its own try/catch, same swallow-and-continue posture as
+  // `snapshotDay`/`syncFromChild`/`pullFromParent` below: `checkNetwork` calls
+  // `fetchUsage`, which rejects when Usage Access is not granted on *this*
+  // device. A parent who paired only to watch a child may never have granted
+  // it themselves — that must not cost the child pull and its alerts, which
+  // are this run's whole point.
+  let mobile: "posted" | "quiet" = "quiet";
+  try {
+    mobile = await checkNetwork(
+      "MOBILE",
+      settings.mobileLimitBytes,
+      settings.mobileWarnAtPercent,
+      settings.cycleStartDay,
+      now,
+      settings.alertedKeys
+    );
+  } catch {
+    // Nothing to tell the user: this device's own mobile check failed, but
+    // the child pull below must still run.
+  }
+  let wifi: "posted" | "quiet" = "quiet";
+  try {
+    wifi = await checkNetwork(
+      "WIFI",
+      settings.wifiLimitBytes,
+      settings.wifiWarnAtPercent,
+      settings.cycleStartDay,
+      now,
+      settings.alertedKeys
+    );
+  } catch {
+    // See above.
+  }
   // Yesterday, not today: a complete day is the only one worth storing, and
   // `INSERT OR REPLACE` makes a repeated run harmless. A failure here must not
   // cost the alerts their result — the day is re-snapshotted on the next run.
@@ -403,8 +421,13 @@ export async function runUsageCheck(now: number) {
   // *which* failure run was already reported, so a recovery (which clears
   // `lastSyncErrorAt`) and a later re-failure naturally get a new value and
   // notify again.
-  const { lastSyncErrorAt, syncErrorNotifiedAt } = await loadSettings();
+  const { lastSyncErrorAt, syncErrorNotifiedAt, pairToken } = await loadSettings();
+  // `unpair()` clears `lastSyncErrorAt` along with `pairToken`, so this guard
+  // is normally redundant — it stays as the explicit guarantee that a
+  // now-unpaired device (no family left to sync with) can never post "Family
+  // sharing has stopped" even if the two writes ever raced.
   if (
+    pairToken &&
     lastSyncErrorAt &&
     now - lastSyncErrorAt > 2 * DAY &&
     syncErrorNotifiedAt !== lastSyncErrorAt

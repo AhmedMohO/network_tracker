@@ -48,7 +48,7 @@ All constraints from the previous two plans still apply. Additionally:
 
 Phases 1–7 could say *"nothing leaves the device."* After this plan that is false, and the app must say so where the user can see it. This is a hard requirement of Task 28, not a nice-to-have.
 
-**What leaves the child's device:** per-day, per-app byte totals; app display names and package names; today's running totals, plus the coverage window Android actually reported them over when it differs from the one requested; the device's own id and the label it was paired with; at heartbeat time, the foreground package name, battery percent, and connection type (`MOBILE`/`WIFI`/`NONE` — the *type*, never the SSID or the carrier).
+**What leaves the child's device:** per-day, per-app byte totals; app display names and package names; today's running totals, plus the coverage window Android actually reported them over when it differs from the one requested; the device's own id and the label it was paired with. **As of Phase 10 (Task 31) only:** at heartbeat time, also the foreground package name, battery percent, and connection type (`MOBILE`/`WIFI`/`NONE` — the *type*, never the SSID or the carrier). Phase 9 pushes `context: null` — the on-device disclosure copy (`family.whatIsShared`) must list only what the running build actually transmits, and gets the three heartbeat fields added back when Task 31 wires them up.
 
 **What never leaves:** anything not in that list. In particular no location, no SSID, no browsing content, no message content, no screen contents.
 

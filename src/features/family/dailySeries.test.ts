@@ -1,8 +1,9 @@
 import { buildDailySeries } from "./dailySeries";
 import type { Snapshot } from "./sync";
 
-// Local midnights, so `daySlots` (which walks local calendar days) lines up
-// with the `day` values below regardless of the machine's time zone.
+// Local midnights, fixed well in the past so none of these tests accidentally
+// land on the machine's real "today" (which would trip the today-exclusion
+// rule under test further down).
 const day0 = new Date(2024, 0, 1).getTime();
 const DAY = 86_400_000;
 const day1 = day0 + DAY;
@@ -121,4 +122,48 @@ describe("buildDailySeries", () => {
     );
     expect(result.apps.find((a) => a.uid === -100)?.name).toBe("Autres applis");
   });
+
+  // I-6: a `daily` row's `day` is the *child's own* day key. Selecting rows
+  // by `day >= start && day < end` must not require that key to line up with
+  // a calendar slot generated from the parent's own local midnight — that
+  // was the cross-timezone bug (every row from a child in a different time
+  // zone missed every lookup and rendered as a gap).
+  it("selects a row by its own day key within [start, end), not by a locally-generated calendar slot", () => {
+    const offsetDay = rangeStart + 3 * 60 * 60 * 1000; // 3h in: not a local midnight
+    const result = buildDailySeries(
+      [dailySnap(offsetDay, payload([{ uid: 1, name: "A", pkg: "a", dl: 100, ul: 0 }]))],
+      rangeStart,
+      rangeEnd
+    );
+    expect(result.bins).toHaveLength(1);
+    expect(result.bins[0].start).toBe(offsetDay);
+    expect(result.missingDays).toBe(2);
+  });
+
+  it("excludes a row whose day falls outside [start, end)", () => {
+    const result = buildDailySeries(
+      [dailySnap(rangeEnd + DAY, payload([{ uid: 1, name: "A", pkg: "a", dl: 100, ul: 0 }]))],
+      rangeStart,
+      rangeEnd
+    );
+    expect(result.bins).toHaveLength(0);
+    expect(result.missingDays).toBe(3);
+  });
+
+  // C-1: a child never pushes a `daily` row for the day still in progress
+  // (only a `recent` one) — counting that day as missing would flag the
+  // feature's own design as an outage.
+  it("does not count the day still in progress (per `now`) as missing", () => {
+    const now = day1 + 5 * 60 * 60 * 1000; // partway through day1
+    const result = buildDailySeries([], rangeStart, rangeEnd, undefined, now);
+    // day0 and day2 are genuinely missing; day1 ("today", per `now`) is not.
+    expect(result.missingDays).toBe(2);
+  });
+
+  it("counts every day as missing when `now` falls outside the range entirely", () => {
+    const now = rangeEnd + 10 * DAY;
+    const result = buildDailySeries([], rangeStart, rangeEnd, undefined, now);
+    expect(result.missingDays).toBe(3);
+  });
+
 });

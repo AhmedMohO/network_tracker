@@ -66,7 +66,11 @@ export function PairingCard() {
   };
 
   const startParent = async () => {
-    await family.becomeParent(defaultDeviceLabel());
+    try {
+      await family.becomeParent(defaultDeviceLabel());
+    } catch {
+      // `useFamily`'s `run` already stamped `family.error`, rendered below.
+    }
   };
 
   const joinFromText = async (raw: string) => {
@@ -75,9 +79,15 @@ export function PairingCard() {
       toast(t('family.pasteLinkInvalid'));
       return;
     }
-    await family.joinAsChild(pairing.token, pairing.label);
-    toast(t('family.joinedToast', { label: pairing.label }));
-    setPasteText('');
+    try {
+      await family.joinAsChild(pairing.token, pairing.label);
+      toast(t('family.joinedToast', { label: pairing.label }));
+      setPasteText('');
+    } catch {
+      // `useFamily`'s `run` already stamped `family.error`, rendered below —
+      // in particular this is how "already paired with a different family"
+      // (`joinAsChild`'s guard) reaches the user.
+    }
   };
 
   const sendLink = async () => {
@@ -92,13 +102,23 @@ export function PairingCard() {
   const saveLabel = async () => {
     const label = labelDraft.trim();
     if (!label) return;
-    await family.setDeviceLabel(label);
-    toast(t('family.labelSaved'));
+    try {
+      await family.setDeviceLabel(label);
+      toast(t('family.labelSaved'));
+    } catch {
+      // `useFamily`'s `run` already stamped `family.error`, rendered below.
+    }
   };
 
   return (
     <Card style={styles.card}>
       <SectionHeader icon={<Users size={16} color={theme.accent} />} title={t('family.title')} />
+
+      {family.error ? (
+        <ThemedText type="small" themeColor="destructive" accessibilityRole="alert">
+          {family.error}
+        </ThemedText>
+      ) : null}
 
       {family.role === null && (
         <View style={styles.gap}>
@@ -110,6 +130,7 @@ export function PairingCard() {
             icon={<UserPlus size={16} color={theme.primaryForeground} />}
             title={t('family.parentButton')}
             onPress={startParent}
+            disabled={family.busy}
             accessibilityLabel={t('family.parentButton')}
           />
           <Button
@@ -136,6 +157,7 @@ export function PairingCard() {
                 variant="outline"
                 title={t('family.pasteLinkButton')}
                 onPress={() => joinFromText(pasteText)}
+                disabled={family.busy}
                 accessibilityLabel={t('family.pasteLinkButton')}
               />
             </View>
@@ -160,6 +182,7 @@ export function PairingCard() {
               variant="outline"
               title={t('family.saveLabel')}
               onPress={saveLabel}
+              disabled={family.busy}
               accessibilityLabel={t('family.saveLabel')}
             />
           </View>
@@ -209,6 +232,7 @@ export function PairingCard() {
                 await doUnpair();
               }
             }}
+            disabled={family.busy}
             accessibilityLabel={t('family.unpairAll')}
           />
         </View>
@@ -242,6 +266,7 @@ export function PairingCard() {
                 await doUnpair();
               }
             }}
+            disabled={family.busy}
             accessibilityLabel={t('family.unpairMeButton')}
           />
         </View>

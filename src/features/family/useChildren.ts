@@ -69,19 +69,28 @@ export function useChildren(): { children: ChildDevice[]; refresh: () => void; l
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
-    const s = await loadSettings();
-    if (s.familyRole !== "parent" || !s.pairToken) {
-      setChildren([]);
+    try {
+      const s = await loadSettings();
+      if (s.familyRole !== "parent" || !s.pairToken) {
+        setChildren([]);
+        setLoading(false);
+        return;
+      }
+
+      const cached = await readCache();
+      setChildren(toChildDevices(cached, s.deviceId));
       setLoading(false);
-      return;
+
+      const merged = await refreshCache();
+      setChildren(toChildDevices(merged, s.deviceId));
+    } catch {
+      // A cache read failure is not worth crashing the screen over — whatever
+      // was already rendered (possibly nothing) stays as the last known
+      // state. Also what keeps this an always-resolving promise: `load()` is
+      // called bare inside `useFocusEffect` below, which neither awaits nor
+      // catches it.
+      setLoading(false);
     }
-
-    const cached = await readCache();
-    setChildren(toChildDevices(cached, s.deviceId));
-    setLoading(false);
-
-    const merged = await refreshCache();
-    setChildren(toChildDevices(merged, s.deviceId));
   }, []);
 
   useFocusEffect(
@@ -103,19 +112,24 @@ export function useChildSnapshots(deviceId: string): { snapshots: Snapshot[]; lo
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
-    const s = await loadSettings();
-    if (s.familyRole !== "parent" || !s.pairToken) {
-      setSnapshots([]);
+    try {
+      const s = await loadSettings();
+      if (s.familyRole !== "parent" || !s.pairToken) {
+        setSnapshots([]);
+        setLoading(false);
+        return;
+      }
+
+      const cached = await readCache();
+      setSnapshots(cached.filter((r) => r.deviceId === deviceId));
       setLoading(false);
-      return;
+
+      const merged = await refreshCache();
+      setSnapshots(merged.filter((r) => r.deviceId === deviceId));
+    } catch {
+      // See `useChildren`'s `load` above: same failure posture, same reason.
+      setLoading(false);
     }
-
-    const cached = await readCache();
-    setSnapshots(cached.filter((r) => r.deviceId === deviceId));
-    setLoading(false);
-
-    const merged = await refreshCache();
-    setSnapshots(merged.filter((r) => r.deviceId === deviceId));
   }, [deviceId]);
 
   useFocusEffect(

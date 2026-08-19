@@ -89,6 +89,30 @@ describe("joinAsChild", () => {
     await joinAsChild("b".repeat(32), "Mum's phone");
     expect(saveSettings).toHaveBeenCalledWith(expect.objectContaining({ deviceLabel: "My phone" }));
   });
+
+  it("refuses a different token when already paired as a child, rather than switching families", async () => {
+    const oldToken = "a".repeat(32);
+    const newToken = "b".repeat(32);
+    asMock(loadSettings).mockResolvedValue({
+      familyRole: "child",
+      pairToken: oldToken,
+      deviceId: "existing-device",
+    });
+    await expect(joinAsChild(newToken, "New parent")).rejects.toThrow();
+    expect(saveSettings).not.toHaveBeenCalled();
+  });
+
+  it("refuses a child link when this device is itself a parent, rather than demoting it", async () => {
+    const parentToken = "c".repeat(32);
+    const childToken = "d".repeat(32);
+    asMock(loadSettings).mockResolvedValue({
+      familyRole: "parent",
+      pairToken: parentToken,
+      deviceId: "parent-device",
+    });
+    await expect(joinAsChild(childToken, "Sibling's phone")).rejects.toThrow();
+    expect(saveSettings).not.toHaveBeenCalled();
+  });
 });
 
 describe("unpair", () => {
@@ -111,6 +135,9 @@ describe("unpair", () => {
       deviceId: null,
       deviceLabel: null,
       pairedLabel: null,
+      lastSyncOkAt: null,
+      lastSyncErrorAt: null,
+      syncErrorNotifiedAt: null,
     });
   });
 

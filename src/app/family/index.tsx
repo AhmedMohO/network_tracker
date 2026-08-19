@@ -1,5 +1,5 @@
 import { Stack, useRouter } from 'expo-router';
-import { AlertCircle, ChevronRight, Smartphone, Users, Wifi } from 'lucide-react-native';
+import { AlertCircle, ChevronRight, Users } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -9,55 +9,13 @@ import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { BottomTabInset, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
+import { TodayTotals } from '@/features/family/TodayTotals';
 import type { ChildDevice } from '@/features/family/useChildren';
 import { useChildren } from '@/features/family/useChildren';
 import { useFamily } from '@/features/family/useFamily';
-import { formatBytes } from '@/features/usage/format';
 import { useUsageContext } from '@/features/usage/useUsageContext';
 import { useTheme } from '@/hooks/use-theme';
 import { formatDateTime, formatDay } from '@/i18n/format';
-
-/**
- * The two different totals a `recent` payload can be missing: the child has
- * never pushed one, versus it pushed one without today's Mobile/Wi-Fi split.
- * Neither is worth inventing zeros for.
- */
-function TodayTotals({ recent }: { recent: NonNullable<ChildDevice['recent']> }) {
-  const theme = useTheme();
-  const { t } = useTranslation();
-
-  return (
-    <View style={styles.totalsGroup}>
-      <View style={styles.totalsRow}>
-        <View style={styles.totalChip}>
-          <Smartphone size={12} color={theme.textSecondary} />
-          <ThemedText type="small" themeColor="textSecondary">
-            {formatBytes(recent.totals.mobile)}
-          </ThemedText>
-        </View>
-        <View style={styles.totalChip}>
-          <Wifi size={12} color={theme.textSecondary} />
-          <ThemedText type="small" themeColor="textSecondary">
-            {formatBytes(recent.totals.wifi)}
-          </ThemedText>
-        </View>
-      </View>
-      <ThemedText type="small" themeColor="textSecondary">
-        {t('family.asOf', { when: formatDateTime(recent.at) })}
-      </ThemedText>
-      {/* Android reported a different window than requested: without this
-          caption the figures above would carry precision they do not have. */}
-      {recent.coverage ? (
-        <ThemedText type="small" themeColor="textSecondary">
-          {t('chart.coverage', {
-            from: formatDateTime(recent.coverage.start),
-            to: formatDateTime(recent.coverage.end),
-          })}
-        </ThemedText>
-      ) : null}
-    </View>
-  );
-}
 
 function ChildRow({ child, onPress }: { child: ChildDevice; onPress: () => void }) {
   const theme = useTheme();
@@ -210,9 +168,6 @@ const styles = StyleSheet.create({
   },
   rowBody: { flex: 1, gap: 4 },
   rowLabel: { fontWeight: '600', fontSize: 15 },
-  totalsGroup: { gap: 2, marginTop: 2 },
-  totalsRow: { flexDirection: 'row', gap: Spacing.two },
-  totalChip: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   empty: {
     padding: Spacing.five,
     alignItems: 'center',

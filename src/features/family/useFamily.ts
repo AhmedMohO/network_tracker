@@ -43,10 +43,18 @@ export async function becomeParent(label: string): Promise<Settings> {
  * Idempotent for the exact same link: a second tap of a link this device is
  * already paired with must not mint a second device id or re-run the join.
  * Checked here, not just in the UI, so every caller gets the guarantee.
+ *
+ * A *different* token is refused outright rather than switched to: silently
+ * abandoning the old token strands its rows with no client left holding it
+ * to call `family_forget`, and if this device was itself a parent, silently
+ * demotes it to a child while its own children keep pushing to a token no
+ * device reads anymore. The guard lives here, not in each caller, so the
+ * deep-link handler and the settings paste field both inherit it.
  */
 export async function joinAsChild(token: string, parentLabel: string): Promise<Settings> {
   const s = await loadSettings();
   if (s.pairToken === token) return s;
+  if (s.pairToken) throw new Error(i18n.t("family.alreadyPairedError"));
   return saveSettings({
     familyRole: "child",
     pairToken: token,
@@ -72,6 +80,13 @@ export async function unpair(): Promise<void> {
     deviceId: null,
     deviceLabel: null,
     pairedLabel: null,
+    // These three describe the *sync run's* health, not this device's own
+    // usage — leaving them set would let a stale "Family sharing has
+    // stopped" banner or notification fire on a device with no family left
+    // to sync with.
+    lastSyncOkAt: null,
+    lastSyncErrorAt: null,
+    syncErrorNotifiedAt: null,
   });
 }
 

@@ -1,5 +1,5 @@
 import { Stack, useLocalSearchParams } from 'expo-router';
-import { AlertTriangle, BarChart3, BellRing, Gauge, Percent } from 'lucide-react-native';
+import { AlertTriangle, BarChart3, BellRing, Clock, Gauge, Percent } from 'lucide-react-native';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FlatList, StyleSheet, View } from 'react-native';
@@ -13,7 +13,8 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { BottomTabInset, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { buildDailySeries } from '@/features/family/dailySeries';
-import { useChildSnapshots } from '@/features/family/useChildren';
+import { TodayTotals } from '@/features/family/TodayTotals';
+import { useChildSnapshots, type RecentPayload } from '@/features/family/useChildren';
 import { summarizeChildren, useFamily } from '@/features/family/useFamily';
 // `childCycleUsedBytes` is `backgroundCheck.ts`'s own child-cycle math, reused
 // here so the number this card shows can never drift from the number that
@@ -21,9 +22,10 @@ import { summarizeChildren, useFamily } from '@/features/family/useFamily';
 // no new native dependency: `_layout.tsx` already loads this module at app
 // start to register the background task.
 import { childCycleUsedBytes } from '@/features/limits/backgroundCheck';
+import { isStale } from '@/features/limits/alerts';
 import { cycleRanges, limitStatus } from '@/features/limits/limits';
-import { LimitCard } from '@/features/limits/LimitCard';
 import { AppRow } from '@/features/usage/AppRow';
+import { formatBytes } from '@/features/usage/format';
 import { RangePicker } from '@/features/usage/RangePicker';
 import { saveSettings } from '@/features/usage/settings';
 import { TotalsCard } from '@/features/usage/TotalsCard';
@@ -53,19 +55,6 @@ export default function ChildUsageScreen() {
     setLimitGb(existing?.mobileLimitBytes ? String(existing.mobileLimitBytes / GB) : '');
     setWarnPercent(existing ? String(existing.warnAtPercent) : '80');
   }, [settings, deviceId]);
-
-  // Same figure `backgroundCheck.ts`'s `checkChild` alerts against, so this
-  // card and the notification never disagree — and same honesty rule: never
-  // computed against data older than a stale cycle would silently misstate.
-  const limitView = useMemo(() => {
-    if (!settings || !deviceId) return null;
-    const configured = settings.childLimits[deviceId];
-    if (!configured?.mobileLimitBytes) return null;
-    const now = Date.now();
-    const usedBytes = childCycleUsedBytes(snapshots, settings.cycleStartDay, now);
-    const { measurement } = cycleRanges(settings.cycleStartDay, now);
-    return limitStatus(usedBytes, configured.mobileLimitBytes, measurement, now, configured.warnAtPercent);
-  }, [settings, deviceId, snapshots]);
 
   const saveLimit = async () => {
     if (!deviceId) return;
@@ -99,6 +88,44 @@ export default function ChildUsageScreen() {
     () => buildDailySeries(snapshots, range.start, range.end, t('family.otherApps')),
     [snapshots, range.start, range.end, t]
   );
+
+  // Today never gets a `daily` row (`syncFromChild` only pushes one for
+  // yesterday and earlier), so the ranged chart above can never show it. This
+  // is the child's own newest `recent` heartbeat instead — a partial day, not
+  // a completed one, so it is never merged into `series`.
+  const recent = useMemo((): RecentPayload | null => {
+    const rows = snapshots
+      .filter((s) => s.kind === 'recent')
+      .sort((a, b) => b.updatedAt - a.updatedAt);
+    return rows[0]?.payload ?? null;
+  }, [snapshots]);
+
+  // Same figure `backgroundCheck.ts`'s `checkChild` alerts against, so this
+  // card and the notification never disagree — and the same staleness rule:
+  // data older than 3 hours says nothing about the present, so it is not
+  // projected forward into a confident figure at all (`isStale`, shared with
+  // the notification path) — `stale: true` carries only the "as of" time, no
+  // usage number. `when` is the child's own clock — the newest `recent`
+  // heartbeat if there is one, else the last time anything was seen from
+  // this device — never this device's delivery time.
+  const limitView = useMemo(() => {
+    if (!settings || !deviceId || !summary) return null;
+    const configured = settings.childLimits[deviceId];
+    if (!configured?.mobileLimitBytes) return null;
+    const now = Date.now();
+    const when = recent?.at ?? summary.lastSeen;
+    if (isStale(summary.lastSeen, now)) return { stale: true as const, when };
+    const usedBytes = childCycleUsedBytes(snapshots, settings.cycleStartDay, now);
+    const { measurement } = cycleRanges(settings.cycleStartDay, now);
+    const status = limitStatus(
+      usedBytes,
+      configured.mobileLimitBytes,
+      measurement,
+      now,
+      configured.warnAtPercent
+    );
+    return { stale: false as const, status, when };
+  }, [settings, deviceId, snapshots, summary, recent]);
 
   const label = summary?.label ?? deviceId ?? '';
   const lastSeenLine =
@@ -138,6 +165,25 @@ export default function ChildUsageScreen() {
           ListHeaderComponent={
             <View style={styles.header}>
               <TotalsCard totals={series.totals} />
+
+              {/* Distinct from the ranged chart below: a partial, in-progress
+                  day is a different measurement from a completed one, so it
+                  is never stacked into the same total. */}
+              <View style={styles.chartCard}>
+                <View style={styles.chartHeader}>
+                  <Clock size={16} color={theme.accent} />
+                  <ThemedText type="smallBold" themeColor="textSecondary">
+                    {t('family.todaySoFar')}
+                  </ThemedText>
+                </View>
+                {recent ? (
+                  <TodayTotals recent={recent} />
+                ) : (
+                  <ThemedText type="small" themeColor="textSecondary">
+                    {t('family.neverCheckedIn')}
+                  </ThemedText>
+                )}
+              </View>
 
               {series.bins.length > 0 ? (
                 <View style={styles.chartCard}>
@@ -188,7 +234,40 @@ export default function ChildUsageScreen() {
                   {t('family.childLimitHint', { label })}
                 </ThemedText>
 
-                {limitView ? <LimitCard status={limitView} /> : null}
+                {/* Not `LimitCard`: its copy is written in the second person
+                    for the reader's own device ("you will use", "your
+                    limit"). This is someone else's data, so it gets its own
+                    third-person strings, naming the child, with the "as of"
+                    time always visible — and when the data is stale, no
+                    figure is shown at all rather than one projected forward
+                    from a check-in over 3 hours old. */}
+                {limitView?.stale ? (
+                  <ThemedText type="small" themeColor="textSecondary">
+                    {t('family.childLimitStale', { label, when: formatDateTime(limitView.when) })}
+                  </ThemedText>
+                ) : limitView ? (
+                  <ThemedText type="small" themeColor="textSecondary">
+                    {limitView.status.state === 'over'
+                      ? t('family.childOverBody', {
+                          label,
+                          used: formatBytes(limitView.status.usedBytes),
+                          limit: formatBytes(limitView.status.limitBytes),
+                          when: formatDateTime(limitView.when),
+                        })
+                      : limitView.status.state === 'warn'
+                        ? t('family.childWarnBody', {
+                            label,
+                            percent: Math.round(limitView.status.usedPercent),
+                            when: formatDateTime(limitView.when),
+                          })
+                        : t('family.childLimitOkBody', {
+                            label,
+                            used: formatBytes(limitView.status.usedBytes),
+                            limit: formatBytes(limitView.status.limitBytes),
+                            when: formatDateTime(limitView.when),
+                          })}
+                  </ThemedText>
+                ) : null}
 
                 <View style={styles.fieldGroup}>
                   <ThemedText type="small" themeColor="textSecondary">
