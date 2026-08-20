@@ -22,6 +22,13 @@ import type { SeriesBin } from '@modules/network-usage';
 
 const DAY = 86_400_000;
 
+/** Start of the local calendar day containing `ts`. */
+function startOfDay(ts: number): number {
+  const d = new Date(ts);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
 /**
  * Detail screen for a single app on a child device. Shows the app's daily
  * download/upload across the selected range from the cached `daily` snapshots.
@@ -43,21 +50,65 @@ export default function ChildAppDetailScreen() {
   const { range } = useUsageContext();
   const { snapshots } = useChildSnapshots(deviceId);
 
-  const appData = useMemo(() => {
+  // Discover app name from ALL snapshots regardless of range, so the title
+  // never falls back to "UID …" just because the current range has no data.
+  const appIdentity = useMemo(() => {
     let appName = '';
     let packageName: string | null = null;
+    for (const row of snapshots) {
+      if (row.kind !== 'daily' && row.kind !== 'recent') continue;
+      const apps = row.payload?.apps as
+        | { uid: number; name: string; pkg: string | null }[]
+        | undefined;
+      if (!Array.isArray(apps)) continue;
+      const match = apps.find((a) => a.uid === uid);
+      if (match) {
+        if (!appName && match.name) appName = match.name;
+        if (!packageName && match.pkg) packageName = match.pkg;
+        if (appName && packageName) break;
+      }
+    }
+    return { appName, packageName };
+  }, [snapshots, uid]);
+
+  const appData = useMemo(() => {
     let download = 0;
     let upload = 0;
     const bins: SeriesBin[] = [];
 
-    // Find the best row per day, same logic as buildDailySeries.
+    // Snap range to calendar-day boundaries before comparing with row.day
+    // (a midnight key). Without this, ranges that start mid-day (last24h,
+    // custom) drop every row whose midnight falls before the window opens.
+    // This mirrors buildDailySeries's own day-snapping logic.
+    const dayStart = startOfDay(range.start);
+    const dayEnd = range.end > range.start ? startOfDay(range.end - 1) + DAY : dayStart;
+
+    // Find the best `daily` row per day, same logic as buildDailySeries.
     const byDay = new Map<number, any>();
     for (const row of snapshots) {
       if (row.kind !== 'daily') continue;
-      if (row.day < range.start || row.day >= range.end) continue;
+      if (row.day < dayStart || row.day >= dayEnd) continue;
       const existing = byDay.get(row.day);
       if (!existing || row.updatedAt > existing.updatedAt) {
         byDay.set(row.day, row);
+      }
+    }
+
+    // Fold in the newest `recent` heartbeat for today's partial data — same
+    // logic as buildDailySeries. Without this, any range that includes today
+    // (today, last24h, last7d, …) shows 0B for the current day because
+    // `syncFromChild` only pushes a `daily` row for *yesterday*, not today.
+    const newestRecent = snapshots
+      .filter((r) => r.kind === 'recent')
+      .sort((a, b) => b.updatedAt - a.updatedAt)[0];
+    if (newestRecent) {
+      const at =
+        typeof newestRecent.payload?.at === 'number'
+          ? newestRecent.payload.at
+          : newestRecent.updatedAt;
+      const recentDay = startOfDay(at);
+      if (recentDay >= dayStart && recentDay < dayEnd && !byDay.has(recentDay)) {
+        byDay.set(recentDay, newestRecent);
       }
     }
 
@@ -72,17 +123,14 @@ export default function ChildAppDetailScreen() {
       const match = apps.find((a) => a.uid === uid);
       if (!match) continue;
 
-      if (!appName) appName = match.name;
-      if (!packageName && match.pkg) packageName = match.pkg;
-
       download += match.dl;
       upload += match.ul;
       bins.push({ start: day, end: day + DAY, rxBytes: match.dl, txBytes: match.ul });
     }
 
     const total = download + upload;
-    return { appName, packageName, download, upload, total, bins };
-  }, [snapshots, range.start, range.end, uid]);
+    return { appName: appIdentity.appName, packageName: appIdentity.packageName, download, upload, total, bins };
+  }, [snapshots, range.start, range.end, uid, appIdentity]);
 
   if (role !== 'parent') {
     return (

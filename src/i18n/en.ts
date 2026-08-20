@@ -277,7 +277,7 @@ export const en = {
     // whenever any of those three functions changes; under-disclosure here is
     // the dangerous direction, and a package name is not an "app name".
     whatIsShared:
-      'What is shared, once a day and a few times more often for today so far: the pairing code this device joined with, this device’s id and label, and the day each set of figures covers; for every app that used data, its name, its Android package name, the id Android assigned it, and its download and upload byte totals, with everything past the 50 largest folded into a single combined total; the same figures again split into a mobile-data list and a Wi-Fi list; the coverage window Android reported them over when it differs from the one asked for; and — with each of today’s more frequent updates — the time of that check-in, the package name of the app most recently in the foreground, this device’s battery percentage, and whether it was on mobile data, Wi-Fi, or neither; and, when this device asks to raise its own local data alert level, the amount it asked for and the time of the request — and, once the paired device answers, the amount granted, which is zero when declined, and the time of that answer.',
+      'Device details and daily app data usage broken down by Wi-Fi and mobile data (top 50 apps).\nPeriodic status check-ins (battery level, active foreground app, network type) and data limit increase requests.',
     whatNeverLeaves:
       'What never leaves this device: your location, Wi-Fi network name, browsing content, message content, and screen contents.',
     joinTitle: 'Join family sharing?',
