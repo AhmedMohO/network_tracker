@@ -45,3 +45,7 @@ modules/*/android/build/
 
 # subagent-driven-development scratch
 .superpowers/
+
+# EAS local credentials (debug keystore, matches v1.0.0 release signature)
+credentials.json
+credentials/
