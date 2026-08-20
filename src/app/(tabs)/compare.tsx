@@ -123,6 +123,7 @@ export default function Compare() {
                     type="title"
                     numberOfLines={1}
                     adjustsFontSizeToFit
+                    minimumFontScale={0.7}
                     style={styles.currentTotalText}>
                     {formatBytes(currentTotal)}
                   </ThemedText>
@@ -192,11 +193,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: Spacing.two,
   },
   summaryTitleGroup: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.two,
+    flexShrink: 1,
   },
   iconBox: {
     width: 28,
@@ -225,6 +229,7 @@ const styles = StyleSheet.create({
   headingGroup: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
     gap: Spacing.two,
     paddingTop: Spacing.one,
   },

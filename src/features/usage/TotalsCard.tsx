@@ -38,10 +38,19 @@ function MetricChip({
         <Icon size={14} color={iconColor} strokeWidth={2.5} />
       </View>
       <View style={styles.metricTexts}>
-        <ThemedText type="small" themeColor="textSecondary" numberOfLines={1} style={styles.metricLabel}>
+        <ThemedText
+          type="small"
+          themeColor="textSecondary"
+          numberOfLines={1}
+          style={styles.metricLabel}>
           {label}
         </ThemedText>
-        <ThemedText type="default" numberOfLines={1} style={styles.metricValue}>
+        <ThemedText
+          type="default"
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.75}
+          style={styles.metricValue}>
           {formatBytes(bytes)}
         </ThemedText>
       </View>
@@ -83,6 +92,7 @@ export function TotalsCard({
         type="title"
         numberOfLines={1}
         adjustsFontSizeToFit
+        minimumFontScale={0.7}
         style={styles.totalValue}>
         {formatBytes(totals.total)}
       </ThemedText>
@@ -130,6 +140,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: Spacing.two,
   },
   titleGroup: {
     flexDirection: 'row',
@@ -158,10 +170,12 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    padding: Spacing.two + 2,
+    paddingVertical: Spacing.one + 2,
+    paddingHorizontal: Spacing.two,
     borderRadius: Radius.lg,
     borderWidth: 1,
-    gap: Spacing.two,
+    gap: Spacing.one + 2,
+    minWidth: 0,
   },
   metricIconBox: {
     width: 28,
@@ -169,9 +183,12 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md,
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
   },
   metricTexts: {
     flex: 1,
+    minWidth: 0,
+    justifyContent: 'center',
   },
   metricLabel: {
     fontSize: 12,

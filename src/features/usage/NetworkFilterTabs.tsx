@@ -16,7 +16,7 @@ const OPTIONS: { id: NetworkFilter; key: string; icon: React.ComponentType<{ siz
   { id: 'ALL', key: 'network.all', icon: Globe },
 ];
 
-export function NetworkFilterTabs() {
+export function NetworkFilterTabs({ style }: { style?: any }) {
   const theme = useTheme();
   const { t } = useTranslation();
   const { network, setNetwork } = useUsageContext();
@@ -26,6 +26,7 @@ export function NetworkFilterTabs() {
       style={[
         styles.container,
         { backgroundColor: theme.card, borderColor: theme.border },
+        style,
       ]}
       accessibilityRole="tablist">
       {OPTIONS.map((o) => {
@@ -48,10 +49,14 @@ export function NetworkFilterTabs() {
                 opacity: pressed ? 0.85 : 1,
               },
             ]}>
-            <Icon size={15} color={iconColor} />
+            <Icon size={14} color={iconColor} />
             <ThemedText
               type={selected ? 'smallBold' : 'small'}
-              themeColor={selected ? 'primaryForeground' : 'textSecondary'}>
+              themeColor={selected ? 'primaryForeground' : 'textSecondary'}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.8}
+              style={styles.tabText}>
               {label}
             </ThemedText>
           </Pressable>
@@ -67,17 +72,22 @@ const styles = StyleSheet.create({
     borderRadius: Radius.full,
     padding: 3,
     borderWidth: 1,
-    alignSelf: 'flex-start',
+    alignSelf: 'stretch',
     gap: 2,
   },
   tab: {
+    flex: 1,
+    minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: Spacing.one,
     paddingVertical: Spacing.one + 2,
-    paddingHorizontal: Spacing.three,
+    paddingHorizontal: Spacing.one + 2,
     borderRadius: Radius.full,
-    minHeight: 44,
+    minHeight: 40,
+  },
+  tabText: {
+    flexShrink: 1,
   },
 });

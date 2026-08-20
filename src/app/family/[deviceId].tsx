@@ -226,7 +226,9 @@ export default function ChildUsageScreen() {
         </ThemedText>
 
         <RangePicker />
-        <NetworkFilterTabs />
+        <View style={styles.controls}>
+          <NetworkFilterTabs />
+        </View>
 
         <FlatList
           data={series.apps}
@@ -493,6 +495,7 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   pad: { padding: Spacing.four },
+  controls: { paddingHorizontal: Spacing.three },
   lastSeen: { paddingHorizontal: Spacing.three },
   grow: { flex: 1 },
   header: { gap: Spacing.three, paddingBottom: Spacing.two },
@@ -502,7 +505,12 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
   },
   chartCard: { gap: Spacing.three },
-  chartHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  chartHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: Spacing.two,
+  },
   chartEmpty: {
     borderWidth: 1,
     borderRadius: Radius.lg,
@@ -524,6 +532,7 @@ const styles = StyleSheet.create({
   limitHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
     gap: Spacing.two,
   },
   limitIconBox: {

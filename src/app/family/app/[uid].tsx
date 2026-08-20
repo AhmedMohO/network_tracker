@@ -182,6 +182,7 @@ export default function ChildAppDetailScreen() {
               type="title"
               numberOfLines={1}
               adjustsFontSizeToFit
+              minimumFontScale={0.7}
               style={styles.totalValue}>
               {formatBytes(appData.total)}
             </ThemedText>
@@ -195,10 +196,19 @@ export default function ChildAppDetailScreen() {
                   <ArrowDown size={14} color={theme.accent} strokeWidth={2.5} />
                 </View>
                 <View style={styles.metricTexts}>
-                  <ThemedText type="small" themeColor="textSecondary" style={styles.metricLabel}>
+                  <ThemedText
+                    type="small"
+                    themeColor="textSecondary"
+                    numberOfLines={1}
+                    style={styles.metricLabel}>
                     {t('totals.download')}
                   </ThemedText>
-                  <ThemedText type="default" style={styles.metricValue}>
+                  <ThemedText
+                    type="default"
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.75}
+                    style={styles.metricValue}>
                     {formatBytes(appData.download)}
                   </ThemedText>
                 </View>
@@ -212,10 +222,19 @@ export default function ChildAppDetailScreen() {
                   <ArrowUp size={14} color={theme.accentAlt} strokeWidth={2.5} />
                 </View>
                 <View style={styles.metricTexts}>
-                  <ThemedText type="small" themeColor="textSecondary" style={styles.metricLabel}>
+                  <ThemedText
+                    type="small"
+                    themeColor="textSecondary"
+                    numberOfLines={1}
+                    style={styles.metricLabel}>
                     {t('totals.upload')}
                   </ThemedText>
-                  <ThemedText type="default" style={styles.metricValue}>
+                  <ThemedText
+                    type="default"
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.75}
+                    style={styles.metricValue}>
                     {formatBytes(appData.upload)}
                   </ThemedText>
                 </View>
@@ -295,10 +314,12 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    padding: Spacing.two + 2,
+    paddingVertical: Spacing.one + 2,
+    paddingHorizontal: Spacing.two,
     borderRadius: Radius.lg,
     borderWidth: 1,
-    gap: Spacing.two,
+    gap: Spacing.one + 2,
+    minWidth: 0,
   },
   metricIconBox: {
     width: 28,
@@ -306,8 +327,13 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md,
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
   },
-  metricTexts: { flex: 1 },
+  metricTexts: {
+    flex: 1,
+    minWidth: 0,
+    justifyContent: 'center',
+  },
   metricLabel: { fontSize: 12 },
   metricValue: {
     fontSize: 15,
@@ -315,7 +341,12 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   chartCard: { gap: Spacing.three },
-  chartHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  chartHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: Spacing.two,
+  },
   emptyChart: {
     borderWidth: 1,
     borderRadius: Radius.lg,

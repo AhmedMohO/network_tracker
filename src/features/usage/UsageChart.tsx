@@ -93,16 +93,16 @@ export function UsageChart({ bins, height = 140 }: { bins: SeriesBin[]; height?:
       <View style={[styles.readout, { backgroundColor: theme.backgroundSelected, borderColor: theme.border }]}>
         {selected === null ? (
           <View style={styles.hintRow}>
-            <Sparkles size={12} color={theme.accent} />
-            <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+            <Sparkles size={12} color={theme.accent} style={styles.hintIcon} />
+            <ThemedText type="small" themeColor="textSecondary" style={styles.hintText}>
               {t('chart.tapHint')}
             </ThemedText>
           </View>
         ) : (
           <View style={styles.activeReadoutRow}>
             <View style={styles.activeReadoutTime}>
-              <Clock size={12} color={theme.accent} />
-              <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+              <Clock size={12} color={theme.accent} style={styles.hintIcon} />
+              <ThemedText type="small" themeColor="textSecondary" numberOfLines={1} style={{ flex: 1 }}>
                 {binLabel(bins[selected])}
               </ThemedText>
             </View>
@@ -256,12 +256,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    flexWrap: 'wrap',
     gap: Spacing.two,
   },
   titleGroup: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.two,
+    flexShrink: 1,
   },
   headerIconBox: {
     width: 28,
@@ -276,28 +278,40 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md,
     borderWidth: 1,
     paddingHorizontal: Spacing.two + 2,
+    paddingVertical: Spacing.half + 2,
     justifyContent: 'center',
   },
   hintRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.one,
+    gap: Spacing.one + 2,
+    flex: 1,
+  },
+  hintIcon: {
+    flexShrink: 0,
+  },
+  hintText: {
+    flex: 1,
+    lineHeight: 16,
   },
   activeReadoutRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: Spacing.two,
+    flex: 1,
   },
   activeReadoutTime: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.one,
+    gap: Spacing.one + 2,
     flex: 1,
+    minWidth: 0,
   },
   readoutValue: {
     fontVariant: ['tabular-nums'],
     textAlign: TextEnd,
+    flexShrink: 0,
   },
   axis: {
     flexDirection: 'row',

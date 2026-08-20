@@ -74,7 +74,12 @@ export function LimitCard({
       </View>
 
       <View style={styles.headline}>
-        <ThemedText type="title" numberOfLines={1} adjustsFontSizeToFit style={styles.usedAmount}>
+        <ThemedText
+          type="title"
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.75}
+          style={styles.usedAmount}>
           {usedBytes}
         </ThemedText>
         <ThemedText type="default" themeColor="textSecondary" style={styles.limitAmount}>
@@ -147,11 +152,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: Spacing.two,
   },
   titleGroup: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.two,
+    flexShrink: 1,
   },
   iconBox: {
     width: 28,
@@ -163,6 +171,7 @@ const styles = StyleSheet.create({
   headline: {
     flexDirection: 'row',
     alignItems: 'baseline',
+    flexWrap: 'wrap',
     gap: Spacing.two,
   },
   usedAmount: {
@@ -185,6 +194,7 @@ const styles = StyleSheet.create({
   projectionRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
     gap: Spacing.one + 2,
   },
   projectionText: {

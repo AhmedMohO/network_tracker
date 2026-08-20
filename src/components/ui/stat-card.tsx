@@ -52,7 +52,12 @@ export function StatCard({
         <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
           {title}
         </ThemedText>
-        <ThemedText type="default" style={styles.value} numberOfLines={1}>
+        <ThemedText
+          type="default"
+          style={styles.value}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.75}>
           {value}
         </ThemedText>
         {subtitle ? (
@@ -68,7 +73,7 @@ export function StatCard({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    minWidth: 140,
+    minWidth: 0,
     borderRadius: Radius.xl,
     borderWidth: 1,
     padding: Spacing.three,
@@ -78,6 +83,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: Spacing.one,
   },
   iconWrapper: {
     width: 36,

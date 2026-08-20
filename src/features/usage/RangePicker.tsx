@@ -166,12 +166,11 @@ export function RangePicker() {
 
       {/* The active window in words with calendar icon */}
       <View style={styles.summaryContainer}>
-        <Calendar size={13} color={theme.textSecondary} />
+        <Calendar size={13} color={theme.textSecondary} style={styles.summaryIcon} />
         <ThemedText
           type="small"
           themeColor="textSecondary"
-          style={styles.summary}
-          numberOfLines={1}>
+          style={styles.summary}>
           {formatDateTime(range.start)} – {formatDateTime(range.end)}
         </ThemedText>
       </View>
@@ -285,12 +284,16 @@ const styles = StyleSheet.create({
   summaryContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.one,
+    gap: Spacing.one + 2,
     paddingHorizontal: Spacing.three,
     paddingTop: Spacing.one,
   },
+  summaryIcon: {
+    flexShrink: 0,
+  },
   summary: {
     flex: 1,
+    lineHeight: 18,
   },
   backdrop: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.55)' },
   sheet: {

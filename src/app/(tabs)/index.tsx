@@ -70,7 +70,7 @@ export default function Dashboard() {
       <SafeAreaView edges={['top']} style={styles.safeArea}>
         <SharingBanner />
         <View style={styles.topBar}>
-          <NetworkFilterTabs />
+          <NetworkFilterTabs style={{ flex: 1 }} />
           {__DEV__ && (
             <Button
               size="sm"
