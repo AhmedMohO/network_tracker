@@ -19,6 +19,8 @@ import { Button } from '@/components/ui/button';
 import { BottomTabInset, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { toCsv, toJson } from '@/features/export/csv';
 import { shareExport } from '@/features/export/share';
+import { RequestCard } from '@/features/family/RequestCard';
+import { SharingBanner } from '@/features/family/SharingBanner';
 import { LimitCard } from '@/features/limits/LimitCard';
 import { useLimitStatus } from '@/features/limits/useLimitStatus';
 import { partitionApps } from '@/features/usage/aggregate';
@@ -66,18 +68,21 @@ export default function Dashboard() {
   return (
     <ThemedView style={styles.screen}>
       <SafeAreaView edges={['top']} style={styles.safeArea}>
+        <SharingBanner />
         <View style={styles.topBar}>
           <NetworkFilterTabs />
-          <Button
-            size="sm"
-            variant="outline"
-            icon={<Share2 size={14} color={theme.text} />}
-            title={t('export.action')}
-            onPress={exportUsage}
-            disabled={!data}
-            accessibilityLabel={t('export.action')}
-            accessibilityHint={t('export.hint')}
-          />
+          {__DEV__ && (
+            <Button
+              size="sm"
+              variant="outline"
+              icon={<Share2 size={14} color={theme.text} />}
+              title={t('export.action')}
+              onPress={exportUsage}
+              disabled={!data}
+              accessibilityLabel={t('export.action')}
+              accessibilityHint={t('export.hint')}
+            />
+          )}
         </View>
 
         <RangePicker />
@@ -118,6 +123,13 @@ export default function Dashboard() {
                 {network !== 'ALL' && limitStatus ? (
                   <LimitCard status={limitStatus.status} coverage={limitStatus.coverage} />
                 ) : null}
+                {/* Gated on role here, not only inside `RequestCard` itself
+                    (review Finding M-9): `RequestCard` calls `useLimitStatus`
+                    unconditionally (Rules of Hooks), so mounting it at all
+                    only for a child device is what actually stops a
+                    parent/unpaired install from running that native query
+                    every 15 minutes for a component that renders null. */}
+                {settings?.familyRole === 'child' ? <RequestCard /> : null}
                 <TotalsCard totals={data.totals} coverage={data.coverage} hidden={hidden} />
                 <UsageChartCard />
                 <View style={styles.headingRow}>

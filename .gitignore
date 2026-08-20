@@ -42,3 +42,6 @@ graphify-out/
 /ios
 /android
 modules/*/android/build/
+
+# subagent-driven-development scratch
+.superpowers/

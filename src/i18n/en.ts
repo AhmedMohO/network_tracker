@@ -181,7 +181,12 @@ export const en = {
       'Lists Android’s own services and hotspot traffic alongside your apps. Off by default.',
     saveFailed: 'Could not save that setting.',
     privacyTitle: 'Privacy',
-    privacyBody: 'Every number here is read from Android on this device. Nothing is uploaded.',
+    privacyBodyUnpaired:
+      'Every number here is read from Android on this device. Nothing is uploaded — this device is not paired with a family member.',
+    privacyBodyParent:
+      'Every number here is read from Android on this device. Because this device is paired as a parent, it also downloads what each paired child device shares — see the Family sharing section above for what that is.',
+    privacyBodyChild:
+      'Every number here is read from Android on this device. Because this device is paired as a child, some of it is also shared with a parent device — see the Family sharing section above for exactly what that is.',
   },
   limits: {
     title: 'Data limits',
@@ -226,5 +231,140 @@ export const en = {
       spikeBody: '{{bytes}} today, well above your recent average.',
     },
     channelName: 'Usage alerts',
+  },
+  family: {
+    syncBrokenTitle: 'Family sharing has stopped',
+    syncBrokenBody:
+      "Usage sharing hasn't reached the family server since {{date}}. Open the app on a paired device, or check the project isn't paused.",
+    title: 'Family sharing',
+    defaultDeviceLabel: 'This device',
+    intro: 'Pair this device with another family member to share usage between them.',
+    parentButton: 'This is a parent device',
+    childButton: 'This is a child device',
+    pasteLinkLabel: 'Or paste a pairing link',
+    pasteLinkPlaceholder: 'nettrack://pair?…',
+    pasteLinkButton: 'Join',
+    pasteLinkInvalid: 'That does not look like a pairing link.',
+    alreadyPairedError: 'This device is already paired. Unpair first, then use the new link.',
+    joinedToast: 'Paired with {{label}}.',
+    deviceLabelLabel: "This device's label",
+    deviceLabelPlaceholder: 'e.g. Dad’s phone',
+    saveLabel: 'Save label',
+    labelSaved: 'Label saved.',
+    sendLink: 'Send pairing link',
+    sendLinkHint: 'Opens the share sheet with a link the other device can tap',
+    shareFailed: 'Could not open the share sheet.',
+    childrenHeading: 'Paired children',
+    noChildren: 'No child devices yet. Send the pairing link to add one.',
+    lastSeen: 'Last seen {{when}}',
+    unpairAll: 'Unpair everyone',
+    unpairAllConfirmTitle: 'Unpair everyone?',
+    unpairAllConfirmBody:
+      'This permanently deletes every child’s shared usage history from the server. It cannot be undone, and every paired device will need a new link.',
+    unpairMeButton: 'Stop sharing and delete my data',
+    unpairMeConfirmTitle: 'Stop sharing?',
+    unpairMeConfirmBody:
+      'This permanently deletes this whole family’s shared usage history from the server — every paired device’s, not just this one’s. It cannot be undone.',
+    unpairFailedTitle: 'Could not unpair',
+    unpairFailed: 'Could not reach the server, so nothing was deleted. Check your connection and try again.',
+    unpairDone: 'Unpaired.',
+    sharingWith: 'Usage on this device is shared with {{label}}',
+    bannerDetails: 'Details',
+    // The consent boundary. Derived field by field from what actually goes on
+    // the wire — `pushSnapshot`'s RPC arguments plus everything `dailyPayload`
+    // and `recentPayload` build (`features/family/sync.ts`) — and never by
+    // appending a clause to the previous version. Re-derive it the same way
+    // whenever any of those three functions changes; under-disclosure here is
+    // the dangerous direction, and a package name is not an "app name".
+    whatIsShared:
+      'Device details and daily app data usage broken down by Wi-Fi and mobile data (top 50 apps).\nPeriodic status check-ins (battery level, active foreground app, network type) and data limit increase requests.',
+    whatNeverLeaves:
+      'What never leaves this device: your location, Wi-Fi network name, browsing content, message content, and screen contents.',
+    joinTitle: 'Join family sharing?',
+    joinBody:
+      '{{label}} wants to pair with this device. Once joined, this device’s usage will be shared with them — see Settings for exactly what that includes.',
+    join: 'Join',
+    joinFailedTitle: 'Could not join',
+    joinFailedBody: 'Something went wrong. Try again.',
+    otherApps: 'Other apps',
+    listTitle: 'Family',
+    viewChildren: 'View children’s usage',
+    parentOnly: 'This screen is only available on a parent device.',
+    emptyChildrenTitle: 'No child devices have checked in yet',
+    emptyChildrenAction: 'Pair a child device from Settings',
+    neverCheckedIn: 'No check-ins yet',
+    todaySoFar: 'Today so far',
+    asOf: 'As of {{when}}',
+    missingDays: '{{count}} days in this range are missing — the device may have been offline.',
+    missingDays_one: '{{count}} day in this range is missing — the device may have been offline.',
+    missingDays_other: '{{count}} days in this range are missing — the device may have been offline.',
+    splitMissingDays: 'Mobile/Wi-Fi split covers all but {{count}} days in this range.',
+    splitMissingDays_one: 'Mobile/Wi-Fi split covers all but {{count}} day in this range.',
+    splitMissingDays_other: 'Mobile/Wi-Fi split covers all but {{count}} days in this range.',
+    noCheckInToday: 'No check-in from this device today yet.',
+    // The device-context probe (Task 32), attached to the heartbeat. Past
+    // tense always — "is currently using" is forbidden, since the reading is
+    // already up to 15 minutes old by the time it arrives. `noCheckInSince`
+    // replaces the whole line, app name included, once it is more than 45
+    // minutes old — see `isContextStale`.
+    lastCheckIn: 'Last check-in {{span}} ago',
+    wasUsingApp: 'was using {{app}}',
+    batteryPercent: '{{percent}}% battery',
+    contextOnMobile: 'on mobile data',
+    contextOnWifi: 'on Wi-Fi',
+    // Not "offline": anything that is neither mobile data nor Wi-Fi lands here,
+    // Ethernet and Bluetooth tethering included, and those devices are online.
+    contextOffline: 'not on mobile data or Wi-Fi',
+    noCheckInSince: 'No check-in since {{when}}',
+    includesPartialDay: 'Includes today so far — the day is still running.',
+    detailEmpty: 'No usage recorded for this child in this range.',
+    childRowHint: 'Opens this child’s usage',
+    childRowA11y: '{{label}}, {{when}}',
+    // Notifications about a child's usage, checked on the same 15-minute
+    // background schedule as this device's own alerts — so every string below
+    // names the child's own check-in time, never "now", and never implies
+    // this device can stop the child's traffic.
+    childOverTitle: '{{label}} passed a data limit',
+    childOverBody: '{{label}} had used {{used}} of {{limit}}, as of {{when}}.',
+    childWarnTitle: '{{label}} is nearing a data limit',
+    childWarnBody: '{{label}} had used {{percent}}% of the limit, as of {{when}}.',
+    childLimitOkBody: '{{label}} had used {{used}} of {{limit}}, as of {{when}}.',
+    childLimitStale: 'No recent check-in from {{label}} to check this against — last seen {{when}}.',
+    childQuietTitle: '{{label}} has not checked in',
+    childQuietBody: 'No usage update from {{label}} since {{when}}.',
+    childLimitHeading: 'Notify me about this device',
+    childLimitGb: 'Notify me when {{label}} passes (GB)',
+    childLimitHint:
+      'A notification on this device when {{label}} passes an amount — this cannot stop or pause {{label}}’s data use.',
+    // Task 33: the child asking its paired parent to raise its own local
+    // alert level, and the parent granting or declining. "Alert level", never
+    // "limit" as a verb — raising it only changes when this device warns
+    // itself, per the same no-enforcement rule as every other family string.
+    requestHeading: 'Ask for more data',
+    requestHint: 'Raises the level at which this device warns you — it does not change what {{label}} can see.',
+    requestButton: 'Ask {{label}} for {{bytes}} more',
+    requestPending: 'Waiting for {{label}} to answer your request for {{bytes}} more, sent {{when}}.',
+    requestCancelButton: 'Cancel request',
+    requestSentToast: 'Request sent.',
+    requestFailedToast: 'Could not send the request. Check your connection and try again.',
+    requestCancelOfflineToast:
+      'Request cancelled on this device. Your parent may still see it until this device checks in again.',
+    requestAnswerHeading: 'Data alert request',
+    requestAnswerBody: '{{label}} is asking to raise the alert level on their own device by {{bytes}}.',
+    grantButton: 'Grant',
+    declineButton: 'Decline',
+    requestAnsweredGranted:
+      'Granted — {{label}}’s device will raise its own alert level by {{bytes}} on its next check-in.',
+    requestAnsweredDeclined: 'Declined.',
+    requestAnswerFailed: 'Could not reach the server. Check your connection and try again.',
+    childRequestTitle: '{{label}} is asking for more data',
+    childRequestBody:
+      '{{label}} wants to raise the alert level on their own device by {{bytes}}. Open Family to respond.',
+    scanQrButton: 'Scan QR code',
+    showQrButton: 'Show QR code',
+    scanQrTitle: 'Scan pairing QR',
+    scanQrHint: 'Point the camera at the QR code on the parent device.',
+    cameraPermissionNeeded: 'Camera access is needed to scan a QR code.',
+    cameraPermissionButton: 'Allow camera',
   },
 };

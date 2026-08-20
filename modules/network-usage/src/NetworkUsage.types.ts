@@ -74,6 +74,11 @@ export type NetworkUsageModule = {
     totalRx: number;
     totalTx: number;
   };
+  getDeviceContext(): {
+    foregroundPackage: string | null;
+    batteryPercent: number | null;
+    connection: "MOBILE" | "WIFI" | "NONE";
+  };
   /** False when "install unknown apps" is off for this app (Android 8+). */
   canInstallPackages(): boolean;
   openInstallPermissionSettings(): void;

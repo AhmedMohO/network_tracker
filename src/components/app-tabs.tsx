@@ -46,13 +46,15 @@ export default function AppTabs() {
         />
       </NativeTabs.Trigger>
 
-      <NativeTabs.Trigger name="probe">
-        <NativeTabs.Trigger.Label>{t('tabs.probe')}</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon
-          src={require('@/assets/images/tabIcons/probe.png')}
-          renderingMode="template"
-        />
-      </NativeTabs.Trigger>
+      {__DEV__ && (
+        <NativeTabs.Trigger name="probe">
+          <NativeTabs.Trigger.Label>{t('tabs.probe')}</NativeTabs.Trigger.Label>
+          <NativeTabs.Trigger.Icon
+            src={require('@/assets/images/tabIcons/probe.png')}
+            renderingMode="template"
+          />
+        </NativeTabs.Trigger>
+      )}
     </NativeTabs>
   );
 }

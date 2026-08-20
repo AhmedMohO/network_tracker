@@ -12,6 +12,7 @@ import {
   Save,
   Sliders,
   Smartphone,
+  Users,
   Wifi,
 } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
@@ -26,6 +27,8 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { BottomTabInset, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
+import { PairingCard } from '@/features/family/PairingCard';
+import { useFamily } from '@/features/family/useFamily';
 import { LimitCard } from '@/features/limits/LimitCard';
 import type { LimitNetwork } from '@/features/limits/limits';
 import { useLimitStatus } from '@/features/limits/useLimitStatus';
@@ -66,6 +69,7 @@ export default function SettingsScreen() {
   const theme = useTheme();
   const { t, i18n } = useTranslation();
   const { settings, reloadSettings } = useUsageContext();
+  const { role: familyRole } = useFamily();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<LimitNetwork>('MOBILE');
   const isWifi = activeTab === 'WIFI';
@@ -320,6 +324,27 @@ export default function SettingsScreen() {
             />
           </Card>
 
+          {/* Family Sharing Card */}
+          <PairingCard />
+
+          {/* Family list entry point — parent devices only. Not a sixth
+              native tab: there are already five. */}
+          {familyRole === 'parent' && (
+            <Card style={styles.card}>
+              <SectionHeader
+                icon={<Users size={16} color={theme.accent} />}
+                title={t('family.listTitle')}
+              />
+              <Button
+                variant="secondary"
+                icon={<Users size={16} color={theme.text} />}
+                title={t('family.viewChildren')}
+                onPress={() => router.push('/family')}
+                accessibilityLabel={t('family.viewChildren')}
+              />
+            </Card>
+          )}
+
           {/* Privacy Guarantee Card */}
           <Card style={styles.card}>
             <SectionHeader
@@ -327,7 +352,13 @@ export default function SettingsScreen() {
               title={t('settings.privacyTitle')}
             />
             <ThemedText type="small" themeColor="textSecondary">
-              {t('settings.privacyBody')}
+              {t(
+                familyRole === 'parent'
+                  ? 'settings.privacyBodyParent'
+                  : familyRole === 'child'
+                    ? 'settings.privacyBodyChild'
+                    : 'settings.privacyBodyUnpaired'
+              )}
             </ThemedText>
           </Card>
         </ScrollView>

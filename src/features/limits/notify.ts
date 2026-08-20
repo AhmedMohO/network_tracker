@@ -32,6 +32,13 @@ export async function ensureNotificationSetup(): Promise<boolean> {
 }
 
 export async function notify(title: string, body: string): Promise<void> {
+  // The background task now runs whether or not notifications were granted —
+  // it is also the sync path (see `_layout.tsx`). Scheduling on a denied
+  // permission rejects, and this is the one function every alert path routes
+  // through, so the guard lives here rather than in each of its six callers.
+  const { granted } = await Notifications.getPermissionsAsync();
+  if (!granted) return;
+
   await Notifications.scheduleNotificationAsync({
     content: { title, body },
     // deliver immediately — a channel-only trigger carries no schedule, it

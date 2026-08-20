@@ -1,4 +1,12 @@
-import { decideAlert, limitAlertKey, spikeAlertKey } from "./alerts";
+import {
+  decideAlert,
+  decideChildRequest,
+  decideQuietChild,
+  decideRequestNotice,
+  isStale,
+  limitAlertKey,
+  spikeAlertKey,
+} from "./alerts";
 
 const CYCLE = new Date(2026, 7, 1).getTime();
 const NEXT_CYCLE = new Date(2026, 8, 1).getTime();
@@ -130,5 +138,142 @@ describe("decideAlert", () => {
     const next = decideAlert(legacy, warn(10 * GB), CYCLE, TODAY);
     expect(next.fire).toBe(true);
     expect(next.alertedKeys).toEqual([warn(10 * GB)]);
+  });
+
+  it("two devices crossing the same limit threshold in the same cycle each notify once", () => {
+    const keyA = limitAlertKey("over", CYCLE, 10 * GB, 80, "MOBILE", "deviceA");
+    const keyB = limitAlertKey("over", CYCLE, 10 * GB, 80, "MOBILE", "deviceB");
+    expect(keyA).not.toBe(keyB);
+
+    let stored = fire([], keyA);
+    stored = fire(stored, keyB);
+    expect(stored).toEqual([keyA, keyB]);
+
+    // Neither device's key fires a second time...
+    expect(decideAlert(stored, keyA, CYCLE, TODAY).fire).toBe(false);
+    expect(decideAlert(stored, keyB, CYCLE, TODAY).fire).toBe(false);
+    // ...and neither drops the other's.
+    expect(decideAlert(stored, keyA, CYCLE, TODAY).alertedKeys).toEqual(stored);
+  });
+
+  it("two devices crossing the same spike threshold on the same day each notify once", () => {
+    const keyA = spikeAlertKey(DAY_18, "MOBILE", "deviceA");
+    const keyB = spikeAlertKey(DAY_18, "MOBILE", "deviceB");
+    expect(keyA).not.toBe(keyB);
+
+    let stored = fire([], keyA, CYCLE, keyA);
+    stored = fire(stored, keyB, CYCLE, keyB);
+    expect(stored).toEqual([keyA, keyB]);
+    expect(decideAlert(stored, keyA, CYCLE, keyA).fire).toBe(false);
+    expect(decideAlert(stored, keyB, CYCLE, keyB).fire).toBe(false);
+  });
+
+  it("a device's own (unsuffixed) key stays byte-for-byte what it always was", () => {
+    expect(over(10 * GB)).toBe(`mobile:over:${CYCLE}:${10 * GB}`);
+    expect(warn(10 * GB, 80)).toBe(`mobile:warn:${CYCLE}:${10 * GB}:80`);
+    expect(TODAY).toBe(`mobile:spike:${new Date(DAY_18).toISOString().slice(0, 10)}`);
+  });
+});
+
+describe("isStale", () => {
+  const HOUR = 3_600_000;
+
+  it("is not stale exactly at the 3-hour boundary or under it", () => {
+    expect(isStale(1_000_000 - 3 * HOUR, 1_000_000)).toBe(false);
+    expect(isStale(1_000_000 - HOUR, 1_000_000)).toBe(false);
+  });
+
+  it("is stale just past 3 hours", () => {
+    expect(isStale(1_000_000 - 3 * HOUR - 1, 1_000_000)).toBe(true);
+  });
+
+  it("treats fresh (recent) data as not stale", () => {
+    expect(isStale(1_000_000, 1_000_000)).toBe(false);
+  });
+});
+
+describe("decideQuietChild", () => {
+  const HOUR = 3_600_000;
+  const DAY_MS = 24 * HOUR;
+
+  it("does not fire before 24 hours of silence", () => {
+    expect(decideQuietChild(1_000_000, 1_000_000 + DAY_MS - 1, undefined)).toBe(false);
+  });
+
+  it("fires once past 24 hours of silence", () => {
+    expect(decideQuietChild(1_000_000, 1_000_000 + DAY_MS + 1, undefined)).toBe(true);
+  });
+
+  it("does not re-fire for the same lastSeen value already notified", () => {
+    expect(decideQuietChild(1_000_000, 1_000_000 + DAY_MS + 1, 1_000_000)).toBe(false);
+  });
+
+  it("fires again once the child resumes and goes quiet with a newer lastSeen", () => {
+    // Same child, same 24h-quiet situation, but lastSeen has moved forward
+    // since the last notice — a fresh silence, not the one already reported.
+    expect(decideQuietChild(2_000_000, 2_000_000 + DAY_MS + 1, 1_000_000)).toBe(true);
+  });
+});
+
+describe("decideChildRequest", () => {
+  it("fires for a request never notified about", () => {
+    expect(decideChildRequest(1_000, undefined)).toBe(true);
+  });
+
+  it("does not re-fire for the same request.at already notified", () => {
+    expect(decideChildRequest(1_000, 1_000)).toBe(false);
+  });
+
+  it("fires again once a new tap replaces the request with a newer at", () => {
+    expect(decideChildRequest(2_000, 1_000)).toBe(true);
+  });
+});
+
+// Review Finding M-8: `decideChildRequest` alone is a one-expression
+// identity check; the real new behaviour in `checkChild` — including the
+// M-7 fix — is `decideRequestNotice` below. These drive that behaviour
+// directly, with plain objects standing in for what `checkChild` derives
+// from the newest `request`/`grant` snapshot rows.
+describe("decideRequestNotice", () => {
+  it("does not fire when there is no outstanding request at all", () => {
+    expect(decideRequestNotice(null, null, undefined)).toEqual({ fire: false });
+  });
+
+  it("fires for a new request never notified about, with no grant yet", () => {
+    expect(decideRequestNotice({ askedBytes: 2_000, at: 100 }, null, undefined)).toEqual({
+      fire: true,
+      askedBytes: 2_000,
+      notifiedAt: 100,
+    });
+  });
+
+  it("does not re-fire for the same request already notified", () => {
+    expect(decideRequestNotice({ askedBytes: 2_000, at: 100 }, null, 100)).toEqual({
+      fire: false,
+    });
+  });
+
+  it("does not fire when a grant already answers this exact request (review Finding M-7)", () => {
+    // This is the scenario the review named: parent grants immediately, the
+    // background check runs 15 minutes later and must not notify about a
+    // request it can see was already answered.
+    expect(
+      decideRequestNotice({ askedBytes: 2_000, at: 100 }, { requestAt: 100 }, undefined)
+    ).toEqual({ fire: false });
+  });
+
+  it("still fires when a grant exists but answers a different, superseded request", () => {
+    // The lingering grant row (never deleted — same ponytail note as
+    // `applyGrant`) answers an *older* request; the child has since asked
+    // again (`at: 200`), and the parent has not yet answered that one.
+    expect(
+      decideRequestNotice({ askedBytes: 2_000, at: 200 }, { requestAt: 100 }, undefined)
+    ).toEqual({ fire: true, askedBytes: 2_000, notifiedAt: 200 });
+  });
+
+  it("fires again for a fresh request even though an older one was already answered and notified", () => {
+    expect(
+      decideRequestNotice({ askedBytes: 3_000, at: 300 }, { requestAt: 100 }, 100)
+    ).toEqual({ fire: true, askedBytes: 3_000, notifiedAt: 300 });
   });
 });
