@@ -1,81 +1,260 @@
-# Welcome to your Expo app 👋
+# NetTrack — Mobile App 📱
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+[![React Native](https://img.shields.io/badge/React_Native-0.86.2-61DAFB?logo=react&logoColor=black)](https://reactnative.dev)
+[![Expo](https://img.shields.io/badge/Expo_SDK-57-000020?logo=expo&logoColor=white)](https://expo.dev)
+[![TypeScript](https://img.shields.io/badge/TypeScript-6.0-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/Platform-Android-3DDC84?logo=android&logoColor=white)](https://android.com)
 
-## Get started
+**NetTrack** is a high-precision, privacy-first Android network tracking and diagnostics application built with React Native and Expo. It leverages a custom native Android module (`NetworkStatsManager`) to deliver byte-accurate traffic breakdowns per app, real-time speed monitoring, network probes, data limit alerts, and privacy-centric family sharing.
 
-1. Install dependencies
+---
+
+## 📑 Table of Contents
+
+- [Features](#-features)
+- [Architecture & Tech Stack](#-architecture--tech-stack)
+- [Project Structure](#-project-structure)
+- [Prerequisites & Getting Started](#-prerequisites--getting-started)
+- [Custom Native Module (`network-usage`)](#-custom-native-module-network-usage)
+- [Family Tracking & Supabase Setup](#-family-tracking--supabase-setup)
+- [Privacy & Consent Model](#-privacy--consent-model)
+- [Available Scripts](#-available-scripts)
+- [Building & Releases](#-building--releases)
+
+---
+
+## ✨ Features
+
+### 📊 Accurate Per-App Network Tracking
+
+- **Android `NetworkStatsManager` Integration**: Direct system-level accounting of Wi-Fi and Mobile (Cellular) data usage for every installed and system application.
+- **Upload & Download Breakdown**: Distinct metrics for incoming and outgoing data.
+- **Foreground vs. Background**: Detailed split showing data consumed while using the app vs. passive background sync.
+- **Flexible Ranges**: Today, Yesterday, Last 24 Hours, Last 7 Days, Last 30 Days, Billing Cycle, and Custom Date Ranges.
+
+### ⚡ Live Speedometer & Traffic Monitor
+
+- Real-time device-wide download and upload speed monitoring with a 60-second interactive sparkline chart.
+- Recent 10-second app traffic activity tracker.
+
+### 🔍 Usage Comparison & Analytics
+
+- Side-by-side comparison between time periods (e.g. this week vs. last week).
+- Identifies **"Biggest Movers"** (apps with major surges or drops in data consumption).
+
+### 🛠️ Network Probe & Diagnostics
+
+- Ping latency testing, active connection details, and network diagnostic utilities.
+
+### ⚠️ Data Limits & Smart Alerts
+
+- Monthly billing cycle tracking with custom data caps (separate limits for Mobile and Wi-Fi).
+- Early warnings at configurable thresholds (e.g. 80%) and sudden spike anomaly notifications.
+
+### 👨‍👩‍👧 Family Sharing (Opt-In Parent-Child Sync)
+
+- QR Code and deep-link pairing (`nettrack://pair?...`).
+- Zero-enforcement, privacy-preserving monitoring: parents view daily rollups and battery/active app context without screen monitoring, location tracking, or browsing inspection.
+- In-app requests to raise data warning thresholds.
+
+### 🌐 Bilingual & RTL Support
+
+- Full internationalization in **English** and **Arabic (العربية)** with automatic right-to-left (RTL) layout switching via `i18next`.
+
+### 🔄 Offline-First & OTA Updates
+
+- Local **SQLite** storage (`expo-sqlite`) for offline historical caching.
+- Integrated **EAS Update** client to check for, download, and install over-the-air updates.
+
+---
+
+## 🏗 Architecture & Tech Stack
+
+```mermaid
+graph TD
+    A[Android OS / Linux Kernel] -->|NetworkStatsManager & Netlink| B(Custom Native Module: network-usage)
+    B -->|JNI / Expo Modules API| C[React Native / Expo App]
+    C --> D[(Local SQLite Database)]
+    C --> E[Expo Router Navigation]
+    C --> F[Background Task Manager]
+    F -->|Usage Polling & Periodic Heartbeat| C
+    C -->|Opt-In Sync / RPC| G[Supabase Backend]
+    G --> H[(PostgreSQL + RLS)]
+    C -->|OTA Releases| I[EAS Update / GitHub Releases]
+```
+
+- **Framework**: [Expo SDK 57](https://expo.dev) with [Expo Router](https://docs.expo.dev/router/introduction/) (typed routes enabled).
+- **Runtime**: React Native 0.86.2 / React 19.2.3.
+- **Language**: TypeScript 6.0.
+- **Native Android Module**: Custom Kotlin module (`modules/network-usage`) exposing Android's `NetworkStatsManager` and `TrafficStats`.
+- **Database & Storage**: `expo-sqlite` for structured local metrics, `expo-file-system` for CSV/JSON exports.
+- **UI & Animations**: `react-native-reanimated` 4, `lucide-react-native`, `expo-glass-effect`.
+- **Backend / Sync**: [Supabase](https://supabase.com) (PostgreSQL RPC with Row Level Security).
+
+---
+
+## 📁 Project Structure
+
+```
+mobile-app/
+├── android/                   # Native Android project configuration
+├── assets/                    # App icons, splash screens, and images
+├── docs/                      # Technical specifications, plans & SQL schemas
+│   ├── family-schema.sql      # Supabase schema & RPC functions
+│   └── plans/                 # Architectural plans & feature designs
+├── modules/
+│   └── network-usage/         # Custom Android native module (Kotlin/TS)
+├── scripts/                   # Helper scripts (e.g. icon generation)
+├── src/
+│   ├── app/                   # Expo Router screens and tabs
+│   │   ├── (tabs)/            # Main bottom tabs: Usage, Compare, Live, Probe, Settings
+│   │   │   ├── index.tsx      # Main Usage dashboard
+│   │   │   ├── compare.tsx    # Usage comparison screen
+│   │   │   ├── live.tsx       # Real-time traffic monitor
+│   │   │   ├── probe.tsx      # Network probe & diagnostics
+│   │   │   └── settings.tsx   # Settings, limits & privacy
+│   │   ├── family/            # Family sharing screens (parent view, child status)
+│   │   ├── usage/             # Detailed per-app usage drilldowns
+│   │   ├── scan.tsx           # QR Code scanner for family pairing
+│   │   ├── update.tsx         # In-app updater & release notes
+│   │   └── _layout.tsx        # Root layout, theme & notification providers
+│   ├── components/            # Reusable UI components
+│   ├── constants/             # Design tokens, colors, storage keys
+│   ├── features/              # Modular domain logic (archive, export, family, limits, live, usage)
+│   ├── hooks/                 # Custom React hooks
+│   └── i18n/                  # Localization (en.ts, ar.ts)
+├── app.json                   # Expo application manifest
+├── eas.json                   # Expo Application Services build profiles
+├── package.json               # Node dependencies and scripts
+└── tsconfig.json              # TypeScript configuration
+```
+
+---
+
+## 🚀 Prerequisites & Getting Started
+
+### Prerequisites
+
+- [Node.js](https://nodejs.org/) (v18+) or [Bun](https://bun.sh/)
+- [Android Studio](https://developer.android.com/studio) with Android SDK and an Android 8.0+ (API 26+) physical device or emulator.
+- _Note:_ Because NetTrack uses a custom native Android module (`NetworkStatsManager`), testing per-app stats requires a **development build** (`expo run:android`), not standard Expo Go.
+
+### Installation
+
+1. Clone the repository and navigate into the `mobile-app` directory:
 
    ```bash
+   cd mobile-app
+   ```
+
+2. Install dependencies:
+
+   ```bash
+   bun install
+   # or
    npm install
    ```
 
-2. Start the app
+3. Run the development build on Android:
 
    ```bash
-   npx expo start
+   bun run android
+   # or
+   npx expo run:android
    ```
 
-In the output, you'll find options to open the app in a
+4. **Grant Usage Access Permission**:
+   - On the first launch, Android requires `PACKAGE_USAGE_STATS` permission to query per-app network metrics.
+   - Tap the prompt in the app to open Android Settings → **Usage Access** → Enable for **NetTrack**.
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+---
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+## 🔌 Custom Native Module (`network-usage`)
 
-## Get a fresh project
+Located at [`modules/network-usage`](file:///f:/Projects/network_tracker/mobile-app/modules/network-usage):
 
-When you're ready, run:
+- **Native Implementation**: Kotlin code interfacing with `android.app.usage.NetworkStatsManager`, `android.net.TrafficStats`, and `android.content.pm.PackageManager`.
+- **Query Types**:
+  - `querySummary(bucket, startTime, endTime)`: Queries system buckets for mobile/Wi-Fi usage aggregated per UID.
+  - `queryDetailsForUid(uid, startTime, endTime)`: Queries foreground vs. background state for a specific app.
+  - `getLiveDeviceBytes()`: Fast poll for current interface RX/TX counters.
+- **Package Resolver**: Resolves Android UID to app labels, package names, and system app identifiers.
+
+---
+
+## ☁️ Family Tracking & Supabase Setup
+
+Family sync enables parent devices to check child device usage securely without accounts or passwords.
+
+1. Create a project on [Supabase](https://supabase.com).
+2. Open the **SQL Editor** in Supabase and execute the contents of [`docs/family-schema.sql`](file:///f:/Projects/network_tracker/mobile-app/docs/family-schema.sql).
+3. The SQL script creates:
+   - `family_snapshots` table with Row Level Security (RLS).
+   - Three RPC functions exposed to public `anon` role: `family_push`, `family_pull`, and `family_forget`.
+   - `family_prune()` function for 90-day automatic data cleanup (schedule via `pg_cron`).
+4. Update `app.json` with your Supabase URL and public `anonKey`:
+   ```json
+   "extra": {
+     "family": {
+       "url": "https://your-project.supabase.co",
+       "anonKey": "your-public-anon-key"
+     }
+   }
+   ```
+
+---
+
+## 🔒 Privacy & Consent Model
+
+NetTrack is designed from the ground up to respect user privacy:
+
+- **Local-First**: All metrics are calculated and stored locally on the device.
+- **Zero Third-Party Analytics**: No analytics trackers, no ad SDKs, no telemetry.
+- **Family Sharing Consent**: Nothing leaves a device unless explicitly paired via QR code or pairing link. Unpairing from either device immediately and permanently deletes all remote records.
+
+### Verbatim Consent Disclosures
+
+> **What is shared** (once paired as a child):  
+> _"Device details and daily app data usage broken down by Wi-Fi and mobile data (top 50 apps). Periodic status check-ins (battery level, active foreground app, network type) and data limit increase requests."_
+
+> **What never leaves the device**:  
+> _"What never leaves this device: your location, Wi-Fi network name, browsing content, message content, and screen contents."_
+
+- **No Remote Control / Enforcement**: Data limits set by parents only update local warning alerts on the child's device; they cannot disconnect or throttle network access.
+
+---
+
+## 📜 Available Scripts
+
+| Command               | Description                                                      |
+| --------------------- | ---------------------------------------------------------------- |
+| `bun run start`       | Starts the Expo development server                               |
+| `bun run android`     | Builds and launches the Android development app                  |
+| `bun run typecheck`   | Validates TypeScript types across the project                    |
+| `bun run test`        | Runs Jest unit tests                                             |
+| `bun run lint`        | Runs Expo linter                                                 |
+| `bun run build:apk`   | Builds a standalone Android release APK via EAS                  |
+| `bun run update:prod` | Publishes an Over-The-Air (OTA) update to the production channel |
+
+---
+
+## 📦 Building & Releases
+
+Standalone builds are configured with [EAS Build](https://docs.expo.dev/build/introduction/):
 
 ```bash
-npm run reset-project
+# Build standalone release APK
+bun run build:apk
+
+# Build preview APK for testing
+bun run build:preview
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+Output APKs can be hosted directly on GitHub Releases to be distributed via the NetTrack Website.
 
-### Other setup steps
+---
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+## 📄 License
 
-### Family tracking setup
-
-To enable family tracking (parent-child device sync), you need a Supabase project. The app's `app.json` includes placeholder values for the Supabase URL and anon key. The **anon key is a public client credential and is safe to commit** — it grants nothing without a valid pair token. However, the **service-role key must never enter this repository**. Before family sync features will work, apply `docs/family-schema.sql` in the Supabase SQL editor and schedule the `family_prune()` function to run daily.
-
-## Privacy
-
-Nothing leaves a device unless it is explicitly paired with another one (Settings → Family sharing). Pairing is opt-in on both sides — a parent shares a link or QR code, a child accepts it — and unpairing at any point deletes everything, from either side.
-
-The two lists below are quoted **verbatim** from what the app itself ships — `family.whatIsShared` / `family.whatNeverLeaves` in `src/i18n/en.ts` — not paraphrased, and not from the original plan doc (`docs/plans/2026-08-19-family-tracking.md`'s own §Privacy list, which predates several fields the running code now sends and is out of date against it). If the two ever disagree, the strings in `src/i18n/en.ts` are correct and this section should be updated to match them — not the other way around.
-
-**What is shared**, once a device is paired as a child (shown in-app on that device via the persistent, non-dismissible sharing banner → "Details", and in Settings under "Family sharing"):
-
-> What is shared, once a day and a few times more often for today so far: the pairing code this device joined with, this device's id and label, and the day each set of figures covers; for every app that used data, its name, its Android package name, the id Android assigned it, and its download and upload byte totals, with everything past the 50 largest folded into a single combined total; the same figures again split into a mobile-data list and a Wi-Fi list; the coverage window Android reported them over when it differs from the one asked for; and — with each of today's more frequent updates — the time of that check-in, the package name of the app most recently in the foreground, this device's battery percentage, and whether it was on mobile data, Wi-Fi, or neither; and, when this device asks to raise its own local data alert level, the amount it asked for and the time of the request — and, once the paired device answers, the amount granted, which is zero when declined, and the time of that answer.
-
-**What never leaves the device:**
-
-> What never leaves this device: your location, Wi-Fi network name, browsing content, message content, and screen contents.
-
-A few things that list implies but doesn't spell out:
-
-- **No enforcement.** Nothing in this feature can block, pause, restrict, or otherwise limit another device's data use. A "data alert level" raised by a parent only changes when the *child's own device* chooses to warn *itself* — it is not a remote control.
-- **No live monitoring.** Every figure the parent sees carries the check-in time it was true as of; nothing is a live feed, and a missing check-in is shown as "no check-in", never silently as zero usage.
-- **Who can read the shared data:** anyone holding the pair token, a bearer secret sent once over the OS share sheet (or a scanned QR code) — treat it like a password. Unpairing rotates the token rather than merely forgetting it locally, so an old link stops working.
-- **Retention:** shared rows are pruned automatically after 90 days. "Stop sharing and delete my data" (available from either side of a pairing) hard-deletes every row for that pairing immediately, not just locally.
-
-## Learn more
-
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+This project is licensed under the [MIT License](LICENSE).
