@@ -2,7 +2,7 @@
   "expo": {
     "name": "NetTrack",
     "slug": "nettrack",
-    "version": "1.1.0",
+    "version": "1.1.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "nettrack",
@@ -19,7 +19,7 @@
       },
       "predictiveBackGestureEnabled": false,
       "package": "com.anonymous.network_tracker",
-      "versionCode": 3
+      "versionCode": 4
     },
     "web": {
       "output": "static",

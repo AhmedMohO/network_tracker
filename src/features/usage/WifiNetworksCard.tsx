@@ -72,9 +72,15 @@ function NetworkRow({
 /**
  * Wi-Fi usage broken out by the network it happened on.
  *
- * Renders nothing when there is only one row to show: a "breakdown" of one
- * network repeats the totals card immediately above it and tells the user
- * nothing they cannot already see.
+ * Renders nothing when the only row would be the unattributed bucket — a card
+ * whose single line reads "Unrecorded network" repeats the totals card above
+ * it and tells the user nothing they cannot already see.
+ *
+ * One *named* network does render, even though it is also a single row:
+ * "all of it on Ahmed Moh" is an answer to the question this card asks, and
+ * hiding it is indistinguishable from the feature being broken — which is
+ * exactly how the empty-log bug in `WifiWatchService.onStartCommand` stayed
+ * invisible.
  */
 export function WifiNetworksCard({
   networks,
@@ -88,7 +94,8 @@ export function WifiNetworksCard({
   const { t } = useTranslation();
 
   const used = networks.filter((n) => n.totals.total > 0);
-  if (used.length < 2) return null;
+  if (used.length === 0) return null;
+  if (used.length === 1 && used[0].ssid === null) return null;
 
   const grandTotal = used.reduce((sum, n) => sum + n.totals.total, 0);
 

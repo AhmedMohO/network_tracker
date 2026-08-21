@@ -120,43 +120,73 @@ class WifiWatchService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        // Only the notification here — Android wants one within five seconds
+        // of `startForegroundService`. Whether to watch is decided in
+        // `onStartCommand`, which runs on this start *and* every later one.
         startForegroundNotice()
-        // Only when the user actually asked for per-network tracking. The
-        // service now has a second reason to exist (`SyncKeepAlive` needs the
-        // `active` standby bucket it buys), and a keep-alive user who never
-        // opted into the location-gated Wi-Fi watch must not have a log of
-        // which networks they joined written behind their back.
-        if (WifiSessions.isEnabled(this)) register()
     }
 
-    // START_STICKY so a low-memory kill is followed by a restart rather than a
-    // silent hole in the log; onCreate re-registers and re-records on restart.
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
+    /**
+     * Reconciles what the service is doing with the two switches, on every
+     * start rather than only on the first.
+     *
+     * This has to be here and not in `onCreate`, because `start()` on an
+     * already-running service delivers `onStartCommand` alone — `onCreate` runs
+     * once per instance. `runFirstTimeSetup` switches keep-alive on *before*
+     * asking for location (no dialog, so it cannot be lost behind one), which
+     * starts the service while the Wi-Fi watch is still off; the grant that
+     * follows then found a live service and registered nothing. The log stayed
+     * empty for the life of the process, every byte landed in the unattributed
+     * bucket, and the per-network card hid itself for having only one slice.
+     * Toggling the switch could not fix it either, since keep-alive kept the
+     * service up across the off/on.
+     *
+     * START_STICKY so a low-memory kill is followed by a restart rather than a
+     * silent hole in the log; the restart re-runs this and re-registers.
+     */
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // A keep-alive user who never opted into the location-gated Wi-Fi watch
+        // must not have a log of which networks they joined written behind
+        // their back — hence the switch, checked every time, in both
+        // directions.
+        if (WifiSessions.isEnabled(this)) register() else unregister()
+        // Re-posted because the title names whichever switch the service is
+        // running for, and that is exactly what may have just changed.
+        startForegroundNotice()
+        return START_STICKY
+    }
 
     override fun onDestroy() {
-        val watching = callback != null
-        callback?.let { cb -> runCatching { connectivity?.unregisterNetworkCallback(cb) } }
-        callback = null
-        // Nothing to close when the watch was never running this time round —
-        // a keep-alive-only service would otherwise append a spurious "no
-        // Wi-Fi" transition to a log it never contributed to.
-        if (!watching) {
-            super.onDestroy()
-            return
-        }
-        // Closes the open session explicitly. Without this the last network
-        // recorded would appear to run until the log's next entry, which on a
-        // device where the user turned the watch off could be days later.
-        //
-        // ponytail: covers a graceful stop only — a process killed outright
-        // never runs this, and that session stays open until the next
-        // transition. Upgrade path if it bites: a periodic liveness stamp that
-        // the reader clamps open sessions to.
-        WifiSessions.record(this, null, System.currentTimeMillis())
+        unregister()
         super.onDestroy()
     }
 
+    /**
+     * Stops watching and closes the open session, or does nothing at all when
+     * the watch was not running.
+     *
+     * The `callback == null` check is what keeps a keep-alive-only service from
+     * appending a spurious "no Wi-Fi" transition to a log it never contributed
+     * to. Closing the session matters because otherwise the last network
+     * recorded appears to run until the log's next entry, which on a device
+     * where the user turned the watch off could be days later.
+     *
+     * ponytail: covers a graceful stop only — a process killed outright never
+     * runs this, and that session stays open until the next transition.
+     * Upgrade path if it bites: a periodic liveness stamp that the reader
+     * clamps open sessions to.
+     */
+    private fun unregister() {
+        val cb = callback ?: return
+        runCatching { connectivity?.unregisterNetworkCallback(cb) }
+        callback = null
+        WifiSessions.record(this, null, System.currentTimeMillis())
+    }
+
     private fun register() {
+        // Idempotent: `onStartCommand` runs on every `start()`, and registering
+        // a second callback would double every transition it records.
+        if (callback != null) return
         val cm = connectivity ?: return
         // Any Wi-Fi network, not just the default one: NetworkStatsManager
         // attributes bytes by transport, so Wi-Fi traffic counts as Wi-Fi even
