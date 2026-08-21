@@ -62,6 +62,52 @@ class NetworkUsageModule : Module() {
             )
         }
 
+        AsyncFunction("getWifiNetworkUsage") { q: WifiUsageQuery ->
+            StatsReader(context).appUsageByWifiNetwork(q)
+        }
+
+        Function("isWifiWatchEnabled") { WifiSessions.isEnabled(context) }
+
+        /**
+         * Enabling is the user's decision, taken in Settings, so the permission
+         * prompt happens on the JS side before this is called. Starting the
+         * service without `ACCESS_FINE_LOCATION` is not an error worth throwing
+         * over — the watch runs and records `null` for every network until the
+         * grant arrives, which is exactly what it should do if the user later
+         * revokes it.
+         */
+        Function("setWifiWatchEnabled") { enabled: Boolean ->
+            WifiSessions.setEnabled(context, enabled)
+            // `sync`, not `start`/`stop`: keep-alive may also need the service.
+            WifiWatchService.sync(context)
+        }
+
+        Function("isSyncKeepAliveEnabled") { SyncKeepAlive.isEnabled(context) }
+
+        /**
+         * The reliable-sync switch. Arms (or cancels) the alarm that runs the
+         * background check on time, and brings the foreground service up or
+         * down with it — the alarm is deferred by App Standby without it.
+         */
+        Function("setSyncKeepAliveEnabled") { enabled: Boolean ->
+            SyncKeepAlive.setEnabled(context, enabled)
+            WifiWatchService.sync(context)
+        }
+
+        Function("isIgnoringBatteryOptimizations") {
+            SyncKeepAlive.isIgnoringBatteryOptimizations(context)
+        }
+
+        Function("requestIgnoreBatteryOptimizations") {
+            SyncKeepAlive.requestIgnoreBatteryOptimizations(context)
+        }
+
+        /** The names seen so far, newest first — for the settings screen. */
+        Function("getKnownWifiNetworks") { WifiSessions.knownNetworks(context) }
+
+        /** Forgets every recorded transition. The usage itself is untouched. */
+        Function("clearWifiSessions") { WifiSessions.clear(context) }
+
         Function("canInstallPackages") { ApkInstaller.canInstall(context) }
 
         Function("openInstallPermissionSettings") {

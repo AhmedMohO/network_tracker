@@ -2,7 +2,7 @@
   "expo": {
     "name": "NetTrack",
     "slug": "nettrack",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "nettrack",
@@ -19,7 +19,7 @@
       },
       "predictiveBackGestureEnabled": false,
       "package": "com.anonymous.network_tracker",
-      "versionCode": 2
+      "versionCode": 3
     },
     "web": {
       "output": "static",
@@ -39,7 +39,13 @@
       "@react-native-community/datetimepicker",
       "expo-localization",
       "expo-background-task",
-      "expo-notifications",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/notification-icon.png",
+          "color": "#0284C7"
+        }
+      ],
       "expo-sharing",
       [
         "expo-camera",

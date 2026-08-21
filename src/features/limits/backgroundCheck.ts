@@ -1,4 +1,5 @@
 import * as BackgroundTask from "expo-background-task";
+import * as Notifications from "expo-notifications";
 import * as TaskManager from "expo-task-manager";
 import { Platform } from "react-native";
 
@@ -31,6 +32,14 @@ import {
 import { notify } from "./notify";
 
 export const USAGE_CHECK_TASK = "usage-threshold-check";
+
+/**
+ * The same work, reached by a server push instead of by Android's scheduler.
+ * Separate task name because `expo-notifications` owns this registration and
+ * hands it a notification payload, but the body is deliberately identical —
+ * there is one definition of "check usage now" and three ways to trigger it.
+ */
+export const PUSH_SYNC_TASK = "family-push-sync";
 
 const DAY = 86_400_000;
 const HISTORY_DAYS = 14;
@@ -505,6 +514,17 @@ if (Platform.OS === "android") {
       return BackgroundTask.BackgroundTaskResult.Failed;
     }
   });
+
+  // Woken by `family_ping_stale`'s data-only push. The payload is not read:
+  // it carries no instructions, it is only a knock on the door, and treating
+  // it as data would make a spoofed push able to steer this device.
+  TaskManager.defineTask(PUSH_SYNC_TASK, async () => {
+    try {
+      await runUsageCheck(Date.now());
+    } catch (e) {
+      console.warn("[family] push-triggered check failed:", e);
+    }
+  });
 }
 
 export async function registerBackgroundCheck() {
@@ -512,9 +532,23 @@ export async function registerBackgroundCheck() {
   // throws there. A single guard here holds even if a caller forgets Platform.OS.
   if (Platform.OS !== "android") return;
 
+  // Before the early return below: this one has to be re-asserted on every
+  // launch, and gating it on the *other* task's registration would mean a
+  // device that registered before this feature existed never picks it up.
+  // Idempotent — re-registering the same task name replaces the handler.
+  try {
+    await Notifications.registerTaskAsync(PUSH_SYNC_TASK);
+  } catch (e) {
+    console.warn("[family] push task registration failed:", e);
+  }
+
   const registered = await TaskManager.isTaskRegisteredAsync(USAGE_CHECK_TASK);
   if (registered) return;
-  // 15 minutes is Android's floor; asking for less does not make it faster.
+  // 15 minutes is the floor Android accepts, and it remains a request rather
+  // than a promise — `SyncKeepAlive` (native) and the push path above are what
+  // make it happen on time. This stays as the fallback for a device with
+  // neither: it costs nothing when the others work, since every path runs the
+  // same idempotent check.
   await BackgroundTask.registerTaskAsync(USAGE_CHECK_TASK, {
     minimumInterval: 15,
   });

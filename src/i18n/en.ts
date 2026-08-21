@@ -6,6 +6,7 @@ export const en = {
   common: {
     appName: 'NetTrack',
     retry: 'Retry',
+    ok: 'OK',
     cancel: 'Cancel',
     apply: 'Apply',
     close: 'Close',
@@ -23,6 +24,37 @@ export const en = {
     wifi: 'Wi-Fi',
     all: 'All',
     a11y: '{{label}} data',
+  },
+  reliability: {
+    title: 'Background updates',
+    keepAlive: 'Keep updates on time',
+    keepAliveHint:
+      'Check usage every 15 minutes even when the app is closed. Without this, Android decides when to run the check and can put it off for a day at a time.',
+    keepAliveCaveat:
+      'Android requires a permanent notification for this, and it uses a little more battery.',
+    batteryHint:
+      'Android is still allowed to pause this app in the background, which is the most common reason updates stop.',
+    batteryAction: 'Allow background activity',
+    batteryOk: 'Background activity is allowed.',
+    syncOk: 'Last synced {{when}}.',
+    syncFailing: 'Sync has been failing since {{when}}.',
+    syncNever: 'Not synced yet.',
+  },
+  wifiNetworks: {
+    title: 'Wi-Fi networks',
+    appTitle: '{{name}} by Wi-Fi network',
+    unknown: 'Unrecorded network',
+    rowA11y: '{{name}}: {{bytes}}, {{percent}} percent',
+    settingTitle: 'Separate Wi-Fi networks',
+    settingHint:
+      'Split Wi-Fi usage by the network it was used on, instead of one combined Wi-Fi total.',
+    settingCaveat:
+      'Android needs location permission to read a network’s name, and keeps a notification showing while this runs. It only covers usage from the moment you turn it on — earlier Wi-Fi usage stays under “Unrecorded network”. Figures are approximate for the hour a network changed.',
+    settingSeen: 'Networks seen so far: {{names}}.',
+    permissionTitle: 'Allow location access?',
+    permissionBody:
+      'Android treats a Wi-Fi network’s name as location data, so this permission is the only way to tell your networks apart. Your location is never recorded or shared.',
+    permissionDenied: 'Without location permission, Wi-Fi networks cannot be told apart.',
   },
   range: {
     today: 'Today',
@@ -276,9 +308,11 @@ export const en = {
     // whenever any of those three functions changes; under-disclosure here is
     // the dangerous direction, and a package name is not an "app name".
     whatIsShared:
-      'Device details and daily app data usage broken down by Wi-Fi and mobile data (top 50 apps).\nPeriodic status check-ins (battery level, active foreground app, network type) and data limit increase requests.',
+      'Device details and daily app data usage broken down by Wi-Fi and mobile data (top 50 apps).\nPeriodic status check-ins (battery level, active foreground app, network type) and data limit increase requests.\nIf you turn on “Separate Wi-Fi networks”, the names of the Wi-Fi networks you use and how much data was used on each.',
     whatNeverLeaves:
-      'What never leaves this device: your location, Wi-Fi network name, browsing content, message content, and screen contents.',
+      'What never leaves this device: your location, browsing content, message content, and screen contents.',
+    wifiNamesShared:
+      'Wi-Fi network names are shared only while “Separate Wi-Fi networks” is on. Turn it off in Settings to stop sharing them.',
     joinTitle: 'Join family sharing?',
     joinBody:
       '{{label}} wants to pair with this device. Once joined, this device’s usage will be shared with them — see Settings for exactly what that includes.',

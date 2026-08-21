@@ -86,6 +86,134 @@ class StatsReader(private val context: Context) {
         }
     }
 
+    /**
+     * The same per-app Wi-Fi totals `appUsage` returns, split by which network
+     * the bytes were used on.
+     *
+     * Android will not answer this question directly — `NetworkStats.Bucket`
+     * has no SSID and the per-network templates Settings uses are hidden — so
+     * the split is reconstructed: `WifiSessions` remembers when the connected
+     * network changed, and every bucket here is apportioned across the sessions
+     * it overlaps in proportion to how much of the bucket each one covers.
+     *
+     * That proportion is the honest part and the approximate part at once.
+     * System buckets are hours wide, so a network switched at 20:30 splits that
+     * hour's bytes evenly between two networks rather than by what was actually
+     * transferred on each side. Boundary error is bounded by one bucket per
+     * switch and vanishes over a day; do not present these figures as exact to
+     * the byte.
+     *
+     * `queryDetails` once for the whole range rather than `querySummary` once
+     * per session: a month with a dozen switches a day is several hundred
+     * sessions, and that many round trips through NetworkStatsManager is
+     * seconds of blocked work for an answer one pass already contains.
+     *
+     * Wi-Fi only. Mobile has the same problem with no equivalent answer — the
+     * per-SIM breakdown needs a `subscriberId` that has been carrier-privileged
+     * since Android 10 — so mobile stays one bucket and callers keep using
+     * `appUsage` for it.
+     */
+    @Suppress("DEPRECATION")
+    fun appUsageByWifiNetwork(q: WifiUsageQuery): Map<String, Any?> {
+        val now = System.currentTimeMillis()
+        val sessions = WifiSessions.sessions(context, q.start, q.end, now)
+
+        // ssid ("" = observed but not on Wi-Fi, null key = never observed)
+        //   -> uid -> [rx, tx, rxForeground, txForeground]
+        val byNetwork = LinkedHashMap<String?, HashMap<Int, LongArray>>()
+        var coveredStart = Long.MAX_VALUE
+        var coveredEnd = Long.MIN_VALUE
+
+        fun add(ssid: String?, uid: Int, b: NetworkStats.Bucket, share: Double) {
+            if (share <= 0.0) return
+            val slot = byNetwork.getOrPut(ssid) { HashMap() }.getOrPut(uid) { LongArray(4) }
+            val rx = (b.rxBytes * share).toLong()
+            val tx = (b.txBytes * share).toLong()
+            slot[0] += rx
+            slot[1] += tx
+            if (b.state == NetworkStats.Bucket.STATE_FOREGROUND) {
+                slot[2] += rx
+                slot[3] += tx
+            }
+        }
+
+        val stats = try {
+            nsm.queryDetails(ConnectivityManager.TYPE_WIFI, null, q.start, q.end)
+        } catch (e: SecurityException) {
+            throw UsageAccessDeniedException()
+        }
+
+        stats.use { s ->
+            val b = NetworkStats.Bucket()
+            while (s.hasNextBucket()) {
+                s.getNextBucket(b)
+                // Tagged rows are a subset of TAG_NONE rows — see `appUsage`.
+                if (b.tag != NetworkStats.Bucket.TAG_NONE) continue
+
+                if (b.startTimeStamp < coveredStart) coveredStart = b.startTimeStamp
+                if (b.endTimeStamp > coveredEnd) coveredEnd = b.endTimeStamp
+
+                // Clipped to the request: `queryDetails` rounds outward to
+                // whole buckets, and apportioning the parts that fall outside
+                // the range would credit a network for time nobody asked about.
+                val from = maxOf(b.startTimeStamp, q.start)
+                val to = minOf(b.endTimeStamp, q.end)
+                val span = to - from
+                if (span <= 0) continue
+
+                var assigned = 0L
+                for (session in sessions) {
+                    val overlap = minOf(to, session.end) - maxOf(from, session.start)
+                    if (overlap <= 0) continue
+                    add(session.ssid, b.uid, b, overlap.toDouble() / span)
+                    assigned += overlap
+                }
+                // Whatever the log has no opinion about — before tracking was
+                // switched on, or a gap where the watch was not running. It is
+                // reported as its own unattributed bucket rather than being
+                // dropped, so the per-network figures always add up to the
+                // Wi-Fi total the rest of the app shows.
+                if (assigned < span) {
+                    add(null, b.uid, b, (span - assigned).toDouble() / span)
+                }
+            }
+        }
+
+        if (byNetwork.isEmpty()) {
+            coveredStart = q.start
+            coveredEnd = q.end
+        }
+
+        val resolver = AppResolver(context)
+        val networks = byNetwork.entries
+            .map { (ssid, apps) ->
+                mapOf(
+                    "ssid" to ssid,
+                    "totalBytes" to apps.values.sumOf { it[0] + it[1] },
+                    "apps" to apps.map { (uid, v) ->
+                        mapOf(
+                            "uid" to uid,
+                            "packages" to resolver.packages(uid),
+                            "label" to resolver.label(uid),
+                            "rxBytes" to v[0],
+                            "txBytes" to v[1],
+                            "rxForegroundBytes" to v[2],
+                            "txForegroundBytes" to v[3],
+                            "coveredStart" to coveredStart,
+                            "coveredEnd" to coveredEnd
+                        )
+                    }
+                )
+            }
+            .sortedByDescending { it["totalBytes"] as Long }
+
+        return mapOf(
+            "networks" to networks,
+            "coveredStart" to coveredStart,
+            "coveredEnd" to coveredEnd
+        )
+    }
+
     @Suppress("DEPRECATION")
     fun series(q: SeriesQuery): Map<String, Any?> {
         require(q.bucketMs > 0) { "bucketMs must be positive" }

@@ -24,6 +24,8 @@ import { openAppDataUsageSettings } from '@/features/usage/api';
 import { formatBytes } from '@/features/usage/format';
 import { useUsage } from '@/features/usage/useUsage';
 import { useUsageContext } from '@/features/usage/useUsageContext';
+import { useWifiNetworks } from '@/features/usage/useWifiNetworks';
+import { AppWifiNetworks } from '@/features/usage/WifiNetworksCard';
 import { useTheme } from '@/hooks/use-theme';
 
 function LegendRow({
@@ -122,6 +124,9 @@ export default function AppUsageDetail() {
   const uid = Number(uidParam);
   const { range, network } = useUsageContext();
   const { data, loading, error, reload } = useUsage(range, network);
+  // Same gate as the dashboard: the Mobile tab has no per-network split to
+  // show, so it does not run the query behind one.
+  const wifiNetworks = useWifiNetworks(range, network !== 'MOBILE');
 
   const app = data?.apps.find((a) => a.uid === uid);
   const validUid = Number.isInteger(uid);
@@ -204,6 +209,13 @@ export default function AppUsageDetail() {
               title={t('totals.appTitle')}
               totals={{ download: app.download, upload: app.upload, total: app.total }}
             />
+            {wifiNetworks.data ? (
+              <AppWifiNetworks
+                networks={wifiNetworks.data.networks}
+                uid={app.uid}
+                appName={app.name}
+              />
+            ) : null}
             <StateSplit foreground={app.foreground} background={app.background} />
             <UsageChartCard uid={app.uid} />
             {app.packageName ? (

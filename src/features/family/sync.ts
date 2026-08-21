@@ -7,6 +7,11 @@ import type { AppUsage } from "@/features/usage/aggregate";
 import { fetchUsage } from "@/features/usage/api";
 import { presetRange } from "@/features/usage/range";
 import { loadSettings, saveSettings } from "@/features/usage/settings";
+import {
+  fetchWifiNetworkUsage,
+  isWifiWatchEnabled,
+} from "@/features/usage/wifiNetworks";
+import type { WifiNetworkSlice } from "@/features/usage/wifiSlices";
 
 import { mergeCache, readCache } from "./cache";
 import { applyGrant, isRequestExpired, type GrantPayload } from "./request";
@@ -38,6 +43,8 @@ export type Snapshot = {
 
 /** More than this and the payload stops being a few KB. */
 const MAX_APPS = 50;
+/** A device on more than this many Wi-Fi networks in one day is an outlier. */
+const MAX_NETWORKS = 20;
 const DAY = 86_400_000;
 
 /**
@@ -55,8 +62,14 @@ const config = (Constants.expoConfig?.extra as any)?.family as
   | { url: string; anonKey: string }
   | undefined;
 
-/** The transport for one RPC call. No stamping here — see `syncRun`. */
-async function rpc(name: string, body: Record<string, unknown>): Promise<any> {
+/**
+ * The transport for one RPC call. No stamping here — see `syncRun`.
+ *
+ * Exported for `pushToken.ts`, which registers this device's push token
+ * through the same `/rest/v1/rpc` endpoint and must not re-derive the config
+ * lookup, the header set or the error handling.
+ */
+export async function rpc(name: string, body: Record<string, unknown>): Promise<any> {
   if (!config?.url) throw new Error("family sync is not configured");
   const res = await fetch(`${config.url}/rest/v1/rpc/${name}`, {
     method: "POST",
@@ -126,6 +139,7 @@ export function dailyPayload(
     mobileApps?: AppUsage[];
     wifiApps?: AppUsage[];
     totals?: { mobile: number; wifi: number };
+    wifiNetworks?: WifiNetworkSlice[];
   }
 ) {
   const all = compressApps(allApps);
@@ -137,7 +151,33 @@ export function dailyPayload(
     ...(extras?.totals ? { totals: extras.totals } : {}),
     ...(m ? { mobileApps: m.list, mobileOtherBytes: m.otherBytes } : {}),
     ...(w ? { wifiApps: w.list, wifiOtherBytes: w.otherBytes } : {}),
+    ...(extras?.wifiNetworks
+      ? { wifiNetworks: compressWifiNetworks(extras.wifiNetworks) }
+      : {}),
   };
+}
+
+/**
+ * The Wi-Fi split as network *name* and byte totals — no app list per network.
+ *
+ * The per-app breakdown already ships twice (combined and per transport);
+ * adding a third copy per network would multiply the payload by however many
+ * networks the child has been on, for a screen the parent reads as "how much
+ * at home, how much elsewhere". Names only, totals only.
+ *
+ * This is the one field in the whole payload that says something about *where*
+ * the child was — a home SSID identifies a home — which is why it ships only
+ * when the child has switched per-network tracking on for themselves, and why
+ * `family.whatIsShared` names it explicitly. A child who never enabled it
+ * sends nothing here and the parent's screen falls back to the plain Wi-Fi
+ * total, exactly as before.
+ */
+function compressWifiNetworks(networks: WifiNetworkSlice[]) {
+  return networks
+    .filter((n) => n.totals.total > 0)
+    .sort((a, b) => b.totals.total - a.totals.total)
+    .slice(0, MAX_NETWORKS)
+    .map((n) => ({ ssid: n.ssid, dl: n.totals.download, ul: n.totals.upload }));
 }
 
 /**
@@ -153,7 +193,11 @@ export function recentPayload(
   context: DeviceContext | null,
   at: number,
   coverage: { start: number; end: number } | null,
-  perNetwork?: { mobileApps: AppUsage[]; wifiApps: AppUsage[] }
+  perNetwork?: {
+    mobileApps: AppUsage[];
+    wifiApps: AppUsage[];
+    wifiNetworks?: WifiNetworkSlice[];
+  }
 ) {
   return { ...dailyPayload(apps, perNetwork), totals, context, at, coverage };
 }
@@ -257,7 +301,15 @@ async function loadDayUsage(dayStart: number) {
   const wifi = wifiApps.reduce((s, a) => s + a.total, 0);
   const totals = mobile > 0 || wifi > 0 ? { mobile, wifi } : undefined;
 
-  return { allApps, mobileApps, wifiApps, totals };
+  // Live rather than from the archive: `snapshotDay` writes the archive's
+  // per-network rows from this same source, and reading them back here would
+  // report `null` for a day whose snapshot has not run yet — which a parent
+  // would read as "we don't know", not "not archived yet".
+  const wifiNetworks = isWifiWatchEnabled()
+    ? (await fetchWifiNetworkUsage(range)).networks
+    : undefined;
+
+  return { allApps, mobileApps, wifiApps, totals, wifiNetworks };
 }
 
 /**
@@ -299,6 +351,7 @@ export async function syncFromChild(now: number) {
           mobileApps: day.mobileApps,
           wifiApps: day.wifiApps,
           totals: day.totals,
+          wifiNetworks: day.wifiNetworks,
         })
       );
     }
@@ -307,6 +360,9 @@ export async function syncFromChild(now: number) {
     const mobile = await fetchUsage(today, "MOBILE");
     const wifi = await fetchUsage(today, "WIFI");
     const all = await fetchUsage(today, "ALL");
+    const todayNetworks = isWifiWatchEnabled()
+      ? (await fetchWifiNetworkUsage(today)).networks
+      : undefined;
     await pushSnapshot(
       "recent",
       0,
@@ -316,7 +372,11 @@ export async function syncFromChild(now: number) {
         context,
         now,
         all.coverage,
-        { mobileApps: mobile.apps, wifiApps: wifi.apps }
+        {
+          mobileApps: mobile.apps,
+          wifiApps: wifi.apps,
+          wifiNetworks: todayNetworks,
+        }
       )
     );
 
@@ -476,6 +536,7 @@ export async function backfillFromChild(now: number): Promise<void> {
           mobileApps: day.mobileApps,
           wifiApps: day.wifiApps,
           totals: day.totals,
+          wifiNetworks: day.wifiNetworks,
         })
       );
     } catch (e) {

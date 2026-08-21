@@ -1,6 +1,7 @@
 import type { NetworkFilter } from "@modules/network-usage";
 
 import type { AppUsage } from "@/features/usage/aggregate";
+import type { WifiNetworkSlice } from "@/features/usage/wifiSlices";
 
 type WireApp = { uid: number; name: string; pkg: string | null; dl: number; ul: number };
 
@@ -15,6 +16,12 @@ type WirePayload = {
   mobileOtherBytes?: number;
   wifiApps?: WireApp[];
   wifiOtherBytes?: number;
+  /**
+   * Per-Wi-Fi-network totals, present only when the child turned per-network
+   * tracking on. `ssid: null` is the child's own unattributed bucket, not a
+   * network with no name.
+   */
+  wifiNetworks?: { ssid: string | null; dl: number; ul: number }[];
   /** `recent` rows only: the child's own clock when the row was built. */
   at?: number;
 };
@@ -132,4 +139,31 @@ export function extractNetworkTotals(
     };
   }
   return null;
+}
+
+/**
+ * The child's Wi-Fi split, in the same `WifiNetworkSlice` shape this device's
+ * own screens render — so `WifiNetworksCard` works for a child without a
+ * parent-only copy of it.
+ *
+ * `apps` is always empty: the child sends network totals only (see
+ * `compressWifiNetworks` in `./sync` for why), so there is no per-app
+ * breakdown to hand back and inventing one would be a lie.
+ *
+ * Returns `[]`, never a fabricated single row, when the payload has no
+ * `wifiNetworks` — a child who has not enabled tracking has not told the
+ * parent which networks it used, and "all of it on one unnamed network" is a
+ * different claim from "we don't know".
+ */
+export function wifiNetworksFromPayload(
+  payload: WirePayload | null | undefined
+): WifiNetworkSlice[] {
+  if (!Array.isArray(payload?.wifiNetworks)) return [];
+  return payload.wifiNetworks
+    .map((n) => ({
+      ssid: n.ssid ?? null,
+      apps: [],
+      totals: { download: n.dl, upload: n.ul, total: n.dl + n.ul },
+    }))
+    .sort((a, b) => b.totals.total - a.totals.total);
 }

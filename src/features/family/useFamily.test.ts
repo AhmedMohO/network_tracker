@@ -141,6 +141,10 @@ describe("unpair", () => {
       backfillDoneUntil: null,
       pendingLimitRequest: null,
       appliedGrantRequestAt: null,
+      // Without this, re-pairing would find `registerPushToken`'s
+      // already-registered short-circuit still satisfied and never tell the
+      // new family's server about this device.
+      pushToken: null,
     });
   });
 

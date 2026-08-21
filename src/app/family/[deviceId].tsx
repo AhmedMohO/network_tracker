@@ -31,6 +31,7 @@ import { NetworkFilterTabs } from '@/features/usage/NetworkFilterTabs';
 import { RangePicker } from '@/features/usage/RangePicker';
 import { saveSettings } from '@/features/usage/settings';
 import { TotalsCard } from '@/features/usage/TotalsCard';
+import { WifiNetworksCard } from '@/features/usage/WifiNetworksCard';
 import { UsageChart } from '@/features/usage/UsageChart';
 import { useUsageContext } from '@/features/usage/useUsageContext';
 import { useTheme } from '@/hooks/use-theme';
@@ -238,6 +239,10 @@ export default function ChildUsageScreen() {
           ListHeaderComponent={
             <View style={styles.header}>
               <TotalsCard totals={series.totals} />
+
+              {/* Only when the child enabled per-network tracking on their own
+                  device; `wifiNetworks` is empty otherwise. */}
+              <WifiNetworksCard networks={series.wifiNetworks} />
 
               {/* Mobile vs WiFi breakdown for the selected range, when every
                   day in the range carries the network split. */}

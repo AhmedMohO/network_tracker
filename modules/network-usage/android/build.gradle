@@ -16,3 +16,11 @@ android {
     abortOnError false
   }
 }
+
+// No `dependencies` block on purpose. `SyncKeepAlive` needs to call
+// expo-background-task's consumer, but expo modules are not Gradle projects
+// here — they resolve as Maven artifacts
+// (`host.exp.exponent:expo.modules.backgroundtask:<version>`), so depending on
+// one from this module would mean pinning a version that has to be bumped in
+// lockstep with package.json. It reaches the class by name instead; see the
+// comment on `SyncKeepAlive.runBackgroundTasks`.

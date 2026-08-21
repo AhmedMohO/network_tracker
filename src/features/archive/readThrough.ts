@@ -3,8 +3,13 @@ import type { NetworkFilter } from "@modules/network-usage";
 import { sumUsage } from "@/features/usage/aggregate";
 import { fetchUsage, type UsageResult } from "@/features/usage/api";
 import type { Range } from "@/features/usage/range";
+import {
+  fetchWifiNetworkUsage,
+  type WifiNetworkResult,
+} from "@/features/usage/wifiNetworks";
+import { mergeSlices } from "@/features/usage/wifiSlices";
 
-import { readArchive } from "./db";
+import { readArchive, readArchiveByWifiNetwork } from "./db";
 import { archiveCutoff, mergeUsage, splitRange } from "./merge";
 
 /**
@@ -36,6 +41,34 @@ export async function fetchUsageWithArchive(
     totals: sumUsage(apps),
     // Coverage describes what Android returned, so it only ever comes from the
     // live half of the answer.
+    coverage: recent?.coverage ?? null,
+  };
+}
+
+/**
+ * `fetchWifiNetworkUsage`, extended backwards the same way
+ * `fetchUsageWithArchive` extends `fetchUsage`.
+ *
+ * The archive matters more here than it does for the plain totals: the
+ * transition log is kept for 120 days but Android's per-UID stats are gone in
+ * about 90, so past the cutoff the archive is the only place a per-network
+ * split still exists at all.
+ */
+export async function fetchWifiNetworksWithArchive(
+  range: Range
+): Promise<WifiNetworkResult> {
+  const { archived, live } = splitRange(range, archiveCutoff(Date.now()));
+  if (!archived) return fetchWifiNetworkUsage(range);
+
+  const [old, recent] = await Promise.all([
+    readArchiveByWifiNetwork(archived.start, archived.end),
+    live ? fetchWifiNetworkUsage(live) : null,
+  ]);
+
+  return {
+    networks: mergeSlices(old, recent?.networks ?? []),
+    // Coverage describes what Android returned, so — as above — it only ever
+    // comes from the live half of the answer.
     coverage: recent?.coverage ?? null,
   };
 }

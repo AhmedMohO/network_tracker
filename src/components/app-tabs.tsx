@@ -1,4 +1,11 @@
-import { NativeTabs } from 'expo-router/unstable-native-tabs';
+import { Tabs } from 'expo-router';
+import {
+  Activity,
+  ArrowLeftRight,
+  LayoutDashboard,
+  Settings,
+  Terminal,
+} from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 import { useColorScheme } from 'react-native';
 
@@ -10,51 +17,71 @@ export default function AppTabs() {
   const colors = Colors[scheme === 'unspecified' ? 'light' : scheme];
 
   return (
-    <NativeTabs
-      backgroundColor={colors.card}
-      indicatorColor={colors.secondary}
-      labelStyle={{ selected: { color: colors.accent } }}>
-      <NativeTabs.Trigger name="index">
-        <NativeTabs.Trigger.Label>{t('tabs.home')}</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon
-          src={require('@/assets/images/tabIcons/home.png')}
-          renderingMode="template"
-        />
-      </NativeTabs.Trigger>
+    <Tabs
+      screenOptions={{
+        headerShown: false,
+        tabBarActiveTintColor: colors.accent,
+        tabBarInactiveTintColor: colors.mutedForeground,
+        tabBarStyle: {
+          backgroundColor: colors.card,
+          borderTopColor: colors.border,
+        },
+        tabBarLabelStyle: {
+          fontSize: 12,
+          fontWeight: '500',
+        },
+      }}>
+      <Tabs.Screen
+        name="index"
+        options={{
+          title: t('tabs.home'),
+          tabBarIcon: ({ color, size }) => (
+            <LayoutDashboard size={size ?? 22} color={color} />
+          ),
+        }}
+      />
 
-      <NativeTabs.Trigger name="compare">
-        <NativeTabs.Trigger.Label>{t('tabs.compare')}</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon
-          src={require('@/assets/images/tabIcons/compare.png')}
-          renderingMode="template"
-        />
-      </NativeTabs.Trigger>
+      <Tabs.Screen
+        name="compare"
+        options={{
+          title: t('tabs.compare'),
+          tabBarIcon: ({ color, size }) => (
+            <ArrowLeftRight size={size ?? 22} color={color} />
+          ),
+        }}
+      />
 
-      <NativeTabs.Trigger name="live">
-        <NativeTabs.Trigger.Label>{t('tabs.live')}</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon
-          src={require('@/assets/images/tabIcons/live.png')}
-          renderingMode="template"
-        />
-      </NativeTabs.Trigger>
+      <Tabs.Screen
+        name="live"
+        options={{
+          title: t('tabs.live'),
+          tabBarIcon: ({ color, size }) => (
+            <Activity size={size ?? 22} color={color} />
+          ),
+        }}
+      />
 
-      <NativeTabs.Trigger name="settings">
-        <NativeTabs.Trigger.Label>{t('tabs.settings')}</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon
-          src={require('@/assets/images/tabIcons/settings.png')}
-          renderingMode="template"
-        />
-      </NativeTabs.Trigger>
+      <Tabs.Screen
+        name="settings"
+        options={{
+          title: t('tabs.settings'),
+          tabBarIcon: ({ color, size }) => (
+            <Settings size={size ?? 22} color={color} />
+          ),
+        }}
+      />
 
-      {__DEV__ && (
-        <NativeTabs.Trigger name="probe">
-          <NativeTabs.Trigger.Label>{t('tabs.probe')}</NativeTabs.Trigger.Label>
-          <NativeTabs.Trigger.Icon
-            src={require('@/assets/images/tabIcons/probe.png')}
-            renderingMode="template"
-          />
-        </NativeTabs.Trigger>
-      )}
-    </NativeTabs>
+      <Tabs.Screen
+        name="probe"
+        options={{
+          href: __DEV__ ? undefined : null,
+          title: t('tabs.probe'),
+          tabBarIcon: ({ color, size }) => (
+            <Terminal size={size ?? 22} color={color} />
+          ),
+        }}
+      />
+    </Tabs>
   );
 }
+

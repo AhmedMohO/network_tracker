@@ -7,6 +7,7 @@ import { Alert, AppState, Platform, useColorScheme } from 'react-native';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { parsePairLink } from '@/features/family/pair';
+import { registerPushToken } from '@/features/family/pushToken';
 import { backfillFromChild, syncFromChild } from '@/features/family/sync';
 import { joinAsChild } from '@/features/family/useFamily';
 // Importing this at module scope registers the TaskManager task on load.
@@ -14,6 +15,7 @@ import { registerBackgroundCheck } from '@/features/limits/backgroundCheck';
 import { ensureNotificationSetup } from '@/features/limits/notify';
 import { applyOtaUpdate, checkForOtaUpdate } from '@/features/updates/ota';
 import { PermissionGate } from '@/features/usage/PermissionGate';
+import { runFirstTimeSetup } from '@/features/usage/firstRun';
 import { loadSettings } from '@/features/usage/settings';
 import { UsageProvider } from '@/features/usage/useUsageContext';
 import i18n, { syncLayoutDirection } from '@/i18n';
@@ -43,7 +45,14 @@ export default function RootLayout() {
   useEffect(() => {
     if (Platform.OS !== 'android') return;
     registerBackgroundCheck().catch(() => {});
-    ensureNotificationSetup().catch(() => {});
+    // Sequenced, not fired in parallel: a push token is only issued once the
+    // notification permission is granted, and `ensureNotificationSetup` is
+    // what asks. Running them side by side meant the very first launch — the
+    // one where the user says yes — always missed the token and waited for
+    // the next app start to register.
+    ensureNotificationSetup()
+      .then(() => registerPushToken())
+      .catch((e) => { console.warn('[family] push registration failed:', e); });
   }, []);
 
   // Android's background task is a floor of 15 minutes and a promise of
@@ -63,9 +72,22 @@ export default function RootLayout() {
       syncFromChild(now).catch((e) => { console.warn('[family] foreground syncFromChild failed:', e); });
       backfillFromChild(now).catch((e) => { console.warn('[family] foreground backfillFromChild failed:', e); });
     };
+    // Rides the same listener rather than adding a second one. It has to be
+    // retried on every foreground, not just at startup: on a fresh install
+    // usage access is still ungranted at this point, and `runFirstTimeSetup`
+    // returns without stamping until it is — the pass that runs the setup is
+    // the one right after the user comes back from the settings screen. Its
+    // own stamp makes every later call a single settings read. Unthrottled,
+    // unlike `push`, because it is that read and nothing else once done.
+    const setUp = () => {
+      runFirstTimeSetup().catch((e) => { console.warn('[setup] first run failed:', e); });
+    };
     push();
+    setUp();
     const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') push();
+      if (state !== 'active') return;
+      push();
+      setUp();
     });
     return () => sub.remove();
   }, []);

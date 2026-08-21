@@ -17,7 +17,66 @@
          Store, so it installs its own updates through the system installer. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+    <!-- Per-network Wi-Fi tracking (WifiSessions / WifiWatchService). Reading
+         the connected network's name has required ACCESS_FINE_LOCATION *and*
+         location services switched on since Android 10; without it WifiInfo
+         reports UNKNOWN_SSID. The user opts in from Settings, and everything
+         else in the app works with the permission denied. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- Lets the app show the one-tap "allow background activity" dialog
+         instead of walking the user through six levels of system settings.
+         Play policy restricts this to apps whose core function breaks without
+         it; we ship outside Play (see REQUEST_INSTALL_PACKAGES above), and a
+         usage tracker that Android refuses to run is precisely that case.
+         See SyncKeepAlive.requestIgnoreBatteryOptimizations. -->
+    <uses-permission
+        android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"
+        tools:ignore="BatteryLife" />
+
     <application>
+        <!-- specialUse, not dataSync: Android 15 caps dataSync at six hours a
+             day, and a watch that stops for the rest of the day mis-attributes
+             everything after it. See WifiWatchService's own comment. -->
+        <service
+            android:name=".WifiWatchService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Records which Wi-Fi network is connected so per-app data usage can be attributed to the right network, which Android exposes no other way, and keeps the app in the active standby bucket so its periodic usage check is not deferred for hours." />
+        </service>
+
+        <!-- SyncKeepAlive's alarm target. Not exported: the only sender is
+             this app's own PendingIntent, held by the system AlarmManager,
+             which does not require the receiver to be exported. -->
+        <receiver
+            android:name=".SyncTickReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="expo.modules.networkusage.SYNC_TICK" />
+            </intent-filter>
+        </receiver>
+
+        <!-- exported="true" is required, not an oversight: BOOT_COMPLETED is
+             broadcast by system_server, and a receiver that is not exported
+             never hears a broadcast from another process — it would simply
+             never fire. Safe because BOOT_COMPLETED is a protected broadcast
+             that only the system is allowed to send. -->
+        <receiver
+            android:name=".WifiWatchBootReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.apkprovider"

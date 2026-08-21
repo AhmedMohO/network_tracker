@@ -5,6 +5,13 @@ import type { AppUsage } from "@/features/usage/aggregate";
 // mock. Explicit factories keep those modules from ever loading for real.
 jest.mock("@/features/archive/db", () => ({ readArchive: jest.fn() }));
 jest.mock("@/features/usage/api", () => ({ fetchUsage: jest.fn() }));
+// Same reason as `api` above — `wifiNetworks` imports `@/i18n` at module scope.
+// The default is "watch off", which is the state every assertion below was
+// written against; the per-network tests opt in by re-mocking the return.
+jest.mock("@/features/usage/wifiNetworks", () => ({
+  fetchWifiNetworkUsage: jest.fn(),
+  isWifiWatchEnabled: jest.fn(() => false),
+}));
 jest.mock("@/features/usage/settings", () => ({
   loadSettings: jest.fn(),
   saveSettings: jest.fn(),

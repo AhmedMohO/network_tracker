@@ -1,6 +1,7 @@
 import { reloadAppAsync } from "expo";
 import { useRouter } from "expo-router";
 import {
+	BatteryCharging,
 	Calendar,
 	Check,
 	DownloadCloud,
@@ -9,6 +10,8 @@ import {
 	Languages,
 	Lock,
 	Percent,
+	RefreshCw,
+	Router,
 	Save,
 	Sliders,
 	Smartphone,
@@ -17,7 +20,15 @@ import {
 } from "lucide-react-native";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Pressable, ScrollView, StyleSheet, Switch, View } from "react-native";
+import {
+	AppState,
+	Platform,
+	Pressable,
+	ScrollView,
+	StyleSheet,
+	Switch,
+	View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ThemedText } from "@/components/themed-text";
@@ -35,12 +46,25 @@ import {
 import { PairingCard } from "@/features/family/PairingCard";
 import { useFamily } from "@/features/family/useFamily";
 import { LimitCard } from "@/features/limits/LimitCard";
+import {
+	isBatteryOptimized,
+	isSyncKeepAliveEnabled,
+	requestIgnoreBatteryOptimizations,
+	setSyncKeepAliveEnabled,
+} from "@/features/limits/keepAlive";
 import type { LimitNetwork } from "@/features/limits/limits";
 import { useLimitStatus } from "@/features/limits/useLimitStatus";
 import { saveSettings } from "@/features/usage/settings";
 import { useUsageContext } from "@/features/usage/useUsageContext";
+import {
+	disableWifiWatch,
+	enableWifiWatch,
+	isWifiWatchEnabled,
+	knownWifiNetworks,
+} from "@/features/usage/wifiNetworks";
 import { useTheme } from "@/hooks/use-theme";
 import { LANGUAGES, setLanguage, type Language } from "@/i18n";
+import { formatDateTime } from "@/i18n/format";
 
 /** A GB-denominated limit stores as bytes; this converts both ways. */
 const GB = 1024 ** 3;
@@ -116,6 +140,53 @@ export default function SettingsScreen() {
 			reloadAppAsync();
 		}
 	};
+
+	// Native state, not `Settings`: the boot receiver has to read it from a
+	// process with no JS running, so `WifiSessions` owns it and this mirrors it.
+	const [wifiWatch, setWifiWatch] = useState(isWifiWatchEnabled);
+	const [seenNetworks, setSeenNetworks] = useState<string[]>(knownWifiNetworks);
+
+	const toggleWifiWatch = async (value: boolean) => {
+		if (!value) {
+			disableWifiWatch();
+			setWifiWatch(false);
+			return;
+		}
+		// Reading a network's name is a location read as far as Android is
+		// concerned, so a decline here is an ordinary outcome, not a failure:
+		// the switch goes back to off and everything else keeps working.
+		const granted = await enableWifiWatch();
+		setWifiWatch(granted);
+		setSeenNetworks(knownWifiNetworks());
+		if (!granted) toast(t("wifiNetworks.permissionDenied"));
+	};
+
+	// Same reason `wifiWatch` above is native state: `SyncKeepAlive` has to be
+	// readable from the boot receiver, which runs with no JS alive.
+	const [keepAlive, setKeepAlive] = useState(isSyncKeepAliveEnabled);
+	const [batteryOptimized, setBatteryOptimized] = useState(isBatteryOptimized);
+
+	const toggleKeepAlive = (value: boolean) => {
+		setSyncKeepAliveEnabled(value);
+		setKeepAlive(isSyncKeepAliveEnabled());
+	};
+
+	// All three are native state that this screen does not own: the exemption
+	// is granted in a system dialog, and both switches can be flipped by
+	// `runFirstTimeSetup` after this screen has already mounted. Coming back to
+	// the foreground is the only moment it can learn any of it — without this
+	// the battery row keeps nagging after the user said yes, and the switches
+	// read off while the features are on.
+	useEffect(() => {
+		if (Platform.OS !== "android") return;
+		const sub = AppState.addEventListener("change", (state) => {
+			if (state !== "active") return;
+			setBatteryOptimized(isBatteryOptimized());
+			setKeepAlive(isSyncKeepAliveEnabled());
+			setWifiWatch(isWifiWatchEnabled());
+		});
+		return () => sub.remove();
+	}, []);
 
 	const toggleSystemApps = async (value: boolean) => {
 		try {
@@ -352,6 +423,9 @@ export default function SettingsScreen() {
 						/>
 					</Card>
 
+					{/* Family Sharing Card */}
+					<PairingCard />
+
 					{/* System Apps Toggle Card */}
 					<Card style={styles.card}>
 						<SectionHeader
@@ -380,8 +454,126 @@ export default function SettingsScreen() {
 						</View>
 					</Card>
 
-					{/* Family Sharing Card */}
-					<PairingCard />
+					{/* Per-Wi-Fi-network Tracking Card */}
+					<Card style={styles.card}>
+						<SectionHeader
+							icon={<Router size={16} color={theme.accent} />}
+							title={t("wifiNetworks.settingTitle")}
+						/>
+						<View style={styles.switchRow}>
+							<ThemedText
+								type="small"
+								themeColor="textSecondary"
+								style={styles.switchLabel}>
+								{t("wifiNetworks.settingHint")}
+							</ThemedText>
+							<Switch
+								value={wifiWatch}
+								onValueChange={toggleWifiWatch}
+								accessibilityLabel={t("wifiNetworks.settingTitle")}
+								trackColor={{
+									true: theme.accentMuted,
+									false: theme.backgroundSelected,
+								}}
+								thumbColor={wifiWatch ? theme.primary : theme.border}
+							/>
+						</View>
+						{/* The honest caveats, on the screen where the choice is made
+						    rather than buried in a help page nobody opens. */}
+						<ThemedText type="small" themeColor="textSecondary">
+							{t("wifiNetworks.settingCaveat")}
+						</ThemedText>
+						{/* A child's network names go to the parent with every sync, so
+						    the person whose networks they are is told here — on the
+						    switch that starts it — not only in the pairing disclosure. */}
+						{wifiWatch && familyRole === "child" ? (
+							<ThemedText type="small" themeColor="textSecondary">
+								{t("family.wifiNamesShared")}
+							</ThemedText>
+						) : null}
+						{wifiWatch && seenNetworks.length > 0 ? (
+							<ThemedText type="small" themeColor="textSecondary">
+								{t("wifiNetworks.settingSeen", {
+									names: seenNetworks.join(", "),
+								})}
+							</ThemedText>
+						) : null}
+					</Card>
+
+					{/* Background Reliability Card.
+
+					    What the pairing card above depends on: `minimumInterval: 15`
+					    is a request WorkManager is free to defer for a day, which is
+					    how a paired child ends up pushing once and never again. The
+					    two rows here are the only two things a user can do about
+					    it. */}
+					<Card style={styles.card}>
+						<SectionHeader
+							icon={<RefreshCw size={16} color={theme.accent} />}
+							title={t("reliability.title")}
+						/>
+
+						<View style={styles.switchRow}>
+							<ThemedText
+								type="small"
+								themeColor="textSecondary"
+								style={styles.switchLabel}>
+								{t("reliability.keepAliveHint")}
+							</ThemedText>
+							<Switch
+								value={keepAlive}
+								onValueChange={toggleKeepAlive}
+								accessibilityLabel={t("reliability.keepAlive")}
+								trackColor={{
+									true: theme.accentMuted,
+									false: theme.backgroundSelected,
+								}}
+								thumbColor={keepAlive ? theme.primary : theme.border}
+							/>
+						</View>
+						{/* The persistent notification is not a surprise to spring on
+						    someone after the fact — Android requires it, and the switch
+						    that causes it says so. */}
+						<ThemedText type="small" themeColor="textSecondary">
+							{t("reliability.keepAliveCaveat")}
+						</ThemedText>
+
+						{batteryOptimized ? (
+							<>
+								<ThemedText type="small" themeColor="textSecondary">
+									{t("reliability.batteryHint")}
+								</ThemedText>
+								<Button
+									variant="secondary"
+									icon={<BatteryCharging size={16} color={theme.text} />}
+									title={t("reliability.batteryAction")}
+									onPress={requestIgnoreBatteryOptimizations}
+									accessibilityLabel={t("reliability.batteryAction")}
+								/>
+							</>
+						) : (
+							<ThemedText type="small" themeColor="textSecondary">
+								{t("reliability.batteryOk")}
+							</ThemedText>
+						)}
+
+						{/* Until now `lastSyncOkAt` was written on every run and read by
+						    nothing, so the only sign that sync had died was a
+						    notification two days later. */}
+						{familyRole ? (
+							<ThemedText type="small" themeColor="textSecondary">
+								{settings?.lastSyncErrorAt
+									? t("reliability.syncFailing", {
+											when: formatDateTime(settings.lastSyncErrorAt),
+										})
+									: settings?.lastSyncOkAt
+										? t("reliability.syncOk", {
+												when: formatDateTime(settings.lastSyncOkAt),
+											})
+										: t("reliability.syncNever")}
+							</ThemedText>
+						) : null}
+					</Card>
 
 					{/* Updates Card */}
 					<Card style={styles.card}>

@@ -2,7 +2,13 @@ import type { NetworkFilter, SeriesBin } from "@modules/network-usage";
 
 import type { AppUsage } from "@/features/usage/aggregate";
 
-import { extractNetworkTotals, fromPayload } from "./fromPayload";
+import { mergeSlices, type WifiNetworkSlice } from "@/features/usage/wifiSlices";
+
+import {
+  extractNetworkTotals,
+  fromPayload,
+  wifiNetworksFromPayload,
+} from "./fromPayload";
 import type { Snapshot } from "./sync";
 
 const DAY = 86_400_000;
@@ -22,6 +28,16 @@ export type DailySeries = {
   networkTotals: { mobile: number; wifi: number } | null;
   /** Days folded into the totals above with no mobile/wifi split of their own. */
   splitMissingDays: number;
+  /**
+   * The child's Wi-Fi usage per network name, summed over the days in range
+   * that carry one. Empty when no day does — a child that never turned
+   * per-network tracking on has not told the parent anything to show here,
+   * which is not the same as having used one unnamed network.
+   *
+   * Totals only, no per-app rows: that is all the child sends (see
+   * `compressWifiNetworks` in `./sync`).
+   */
+  wifiNetworks: WifiNetworkSlice[];
   /**
    * The day key contributed by a `recent` row rather than a completed
    * `daily` one — an in-progress measurement, not a finished day — or `null`
@@ -111,6 +127,7 @@ export function buildDailySeries(
   let mobile = 0;
   let wifi = 0;
   let splitMissingDays = 0;
+  let wifiNetworks: WifiNetworkSlice[] = [];
 
   for (const day of days) {
     const row = byDay.get(day)!;
@@ -136,6 +153,10 @@ export function buildDailySeries(
       splitMissingDays += 1;
     }
 
+    // Accumulated across the same day rows everything else here uses, so a
+    // day counted once for totals is counted once for networks too.
+    wifiNetworks = mergeSlices(wifiNetworks, wifiNetworksFromPayload(row.payload));
+
     download += dayDownload;
     upload += dayUpload;
     total += dayTotal;
@@ -155,6 +176,7 @@ export function buildDailySeries(
     totals: { download, upload, total },
     networkTotals: splitMissingDays < days.length ? { mobile, wifi } : null,
     splitMissingDays,
+    wifiNetworks,
     partialDay,
     missingDays,
     daysInRange,

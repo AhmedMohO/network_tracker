@@ -32,6 +32,25 @@ export type RawBucket = {
   txBytes: number;
 };
 
+/**
+ * One Wi-Fi network's slice of a range. `ssid` is `null` for bytes the
+ * transition log has no opinion about — time before per-network tracking was
+ * switched on, or a gap where the watch was not running. Those bytes are
+ * reported rather than dropped so the per-network figures still sum to the
+ * Wi-Fi total shown everywhere else.
+ */
+export type WifiNetworkUsage = {
+  ssid: string | null;
+  totalBytes: number;
+  apps: AppUsageRow[];
+};
+
+export type WifiNetworkUsageResult = {
+  networks: WifiNetworkUsage[];
+  coveredStart: number;
+  coveredEnd: number;
+};
+
 export type SeriesQuery = {
   start: number;
   end: number;
@@ -68,6 +87,34 @@ export type NetworkUsageModule = {
   getAppIcon(packageName: string): Promise<string | null>;
   dumpBuckets(q: UsageQuery): Promise<RawBucket[]>;
   getSeries(q: SeriesQuery): Promise<SeriesResult>;
+  /**
+   * Wi-Fi usage split by network name. Approximate at bucket boundaries and
+   * only as far back as the transition log goes — see the Kotlin
+   * `appUsageByWifiNetwork` doc comment before trusting a figure to the byte.
+   */
+  getWifiNetworkUsage(q: { start: number; end: number }): Promise<WifiNetworkUsageResult>;
+  isWifiWatchEnabled(): boolean;
+  /**
+   * Starts or stops the foreground service that records network changes.
+   * Requesting `ACCESS_FINE_LOCATION` is the caller's job: without it the
+   * watch still runs and simply records every network as unknown.
+   */
+  setWifiWatchEnabled(enabled: boolean): void;
+  /** Network names seen so far, newest first. */
+  getKnownWifiNetworks(): string[];
+  clearWifiSessions(): void;
+  isSyncKeepAliveEnabled(): boolean;
+  /**
+   * Reliable background checks: arms an `AlarmManager` alarm that fires in
+   * Doze and runs the registered background task, and brings the foreground
+   * service up with it so App Standby does not defer that alarm. See the
+   * Kotlin `SyncKeepAlive` for why WorkManager alone is not enough.
+   */
+  setSyncKeepAliveEnabled(enabled: boolean): void;
+  /** False when Android is still free to defer this app's background work. */
+  isIgnoringBatteryOptimizations(): boolean;
+  /** Opens the system's one-tap exemption dialog. */
+  requestIgnoreBatteryOptimizations(): void;
   getDeviceCounters(): {
     mobileRx: number;
     mobileTx: number;

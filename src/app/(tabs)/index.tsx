@@ -31,6 +31,8 @@ import { TotalsCard } from '@/features/usage/TotalsCard';
 import { UsageChartCard } from '@/features/usage/UsageChart';
 import { useUsage } from '@/features/usage/useUsage';
 import { useUsageContext } from '@/features/usage/useUsageContext';
+import { useWifiNetworks } from '@/features/usage/useWifiNetworks';
+import { WifiNetworksCard } from '@/features/usage/WifiNetworksCard';
 import { useTheme } from '@/hooks/use-theme';
 
 export default function Dashboard() {
@@ -40,6 +42,9 @@ export default function Dashboard() {
   const { range, network, settings } = useUsageContext();
   const { data, loading, error, reload } = useUsage(range, network);
   const limitStatus = useLimitStatus(network === 'WIFI' ? 'WIFI' : 'MOBILE');
+  // Mobile-only views never render this card, so they never pay for the query
+  // — Android has no per-SIM split to show there anyway.
+  const wifiNetworks = useWifiNetworks(range, network !== 'MOBILE');
 
   const { visible: apps, hidden } = useMemo(
     () => partitionApps(data?.apps ?? [], settings?.showSystemApps ?? false),
@@ -131,6 +136,9 @@ export default function Dashboard() {
                     every 15 minutes for a component that renders null. */}
                 {settings?.familyRole === 'child' ? <RequestCard /> : null}
                 <TotalsCard totals={data.totals} coverage={data.coverage} hidden={hidden} />
+                {wifiNetworks.data ? (
+                  <WifiNetworksCard networks={wifiNetworks.data.networks} />
+                ) : null}
                 <UsageChartCard />
                 <View style={styles.headingRow}>
                   {apps.length > 0 ? (

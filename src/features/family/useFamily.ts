@@ -6,6 +6,7 @@ import { useUsageContext } from "@/features/usage/useUsageContext";
 import i18n from "@/i18n";
 
 import { newDeviceId, newPairToken } from "./pair";
+import { registerPushToken } from "./pushToken";
 import {
   backfillFromChild,
   forgetPair,
@@ -37,12 +38,19 @@ export function defaultDeviceLabel(): string {
 export async function becomeParent(label: string): Promise<Settings> {
   const s = await loadSettings();
   if (s.familyRole === "parent" && s.pairToken) return s;
-  return saveSettings({
+  const next = await saveSettings({
     familyRole: "parent",
     pairToken: newPairToken(),
     deviceId: newDeviceId(),
     deviceLabel: label,
   });
+  // Fire-and-forget: a parent that cannot register a push token still pairs,
+  // it just falls back to its own schedule for pulling. Not awaited so a slow
+  // or failing RPC never delays the screen that is showing the new QR code.
+  registerPushToken().catch((e) => {
+    console.warn("[family] parent push registration failed:", e);
+  });
+  return next;
 }
 
 /**
@@ -61,13 +69,21 @@ export async function joinAsChild(token: string, parentLabel: string): Promise<S
   const s = await loadSettings();
   if (s.pairToken === token) return s;
   if (s.pairToken) throw new Error(i18n.t("family.alreadyPairedError"));
-  return saveSettings({
+  const next = await saveSettings({
     familyRole: "child",
     pairToken: token,
     deviceId: newDeviceId(),
     pairedLabel: parentLabel,
     deviceLabel: s.deviceLabel ?? defaultDeviceLabel(),
   });
+  // Same reasoning as `becomeParent`. The deep-link path reloads the app
+  // straight after this, which would register on the next start anyway — but
+  // the settings paste field does not, and a child is the device that most
+  // needs waking.
+  registerPushToken().catch((e) => {
+    console.warn("[family] child push registration failed:", e);
+  });
+  return next;
 }
 
 /**
@@ -104,6 +120,12 @@ export async function unpair(): Promise<void> {
     // be resolved.
     pendingLimitRequest: null,
     appliedGrantRequestAt: null,
+    // `forgetPair` has already deleted the server's copy. Clearing this one
+    // is what lets a *later* pairing register again: `registerPushToken`
+    // skips the RPC when the token it computes matches what is stored, and
+    // the Expo token does not change on unpair — so leaving it set would
+    // leave the next family with no token on the server and no push wakeups.
+    pushToken: null,
   });
 }
 

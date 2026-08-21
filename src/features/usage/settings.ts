@@ -63,6 +63,19 @@ export type Settings = {
    * queries and routinely outlives the JS context that started it.
    */
   backfillDoneUntil: number | null;
+  /**
+   * The Expo push token last successfully handed to `family_register_token`,
+   * or null. Stored only so app start can skip the RPC when nothing changed —
+   * the token is stable across launches but is *not* guaranteed stable across
+   * reinstalls or a data clear, so it is compared rather than assumed.
+   */
+  pushToken: string | null;
+  /**
+   * When `runFirstTimeSetup` last ran, or null if it never has. Null on an
+   * upgrade too, so an install that predates the reliability work gets the
+   * same one-time offer on its next launch rather than staying quietly broken.
+   */
+  firstRunDoneAt: number | null;
 };
 
 const KEY = "settings.v1";
@@ -89,6 +102,8 @@ const DEFAULTS: Settings = {
   appliedGrantRequestAt: null,
   childRequestNotifiedAt: {},
   backfillDoneUntil: null,
+  pushToken: null,
+  firstRunDoneAt: null,
 };
 
 export async function loadSettings(): Promise<Settings> {
