@@ -18,7 +18,8 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.network_tracker"
+      "package": "com.anonymous.network_tracker",
+      "versionCode": 2
     },
     "web": {
       "output": "static",
