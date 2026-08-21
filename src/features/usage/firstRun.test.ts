@@ -22,7 +22,7 @@ import {
 import { hasUsageAccess } from "./api";
 import { runFirstTimeSetup } from "./firstRun";
 import { loadSettings, saveSettings } from "./settings";
-import { enableWifiWatch, isWifiWatchEnabled } from "./wifiNetworks";
+import { enableWifiWatch } from "./wifiNetworks";
 
 const asMock = (fn: unknown) => fn as jest.Mock;
 
@@ -30,7 +30,6 @@ beforeEach(() => {
   asMock(loadSettings).mockReset().mockResolvedValue({ firstRunDoneAt: null });
   asMock(saveSettings).mockReset().mockResolvedValue(undefined);
   asMock(hasUsageAccess).mockReset().mockReturnValue(true);
-  asMock(isWifiWatchEnabled).mockReset().mockReturnValue(false);
   asMock(enableWifiWatch).mockReset().mockResolvedValue(true);
   asMock(setSyncKeepAliveEnabled).mockReset();
   asMock(isBatteryOptimized).mockReset().mockReturnValue(true);
@@ -38,21 +37,27 @@ beforeEach(() => {
 });
 
 describe("runFirstTimeSetup", () => {
-  it("turns both features on, asks for the exemption, and stamps", async () => {
+  it("turns background updates on, asks for the exemption, and stamps", async () => {
     await runFirstTimeSetup();
     expect(setSyncKeepAliveEnabled).toHaveBeenCalledWith(true);
-    expect(enableWifiWatch).toHaveBeenCalled();
     expect(requestIgnoreBatteryOptimizations).toHaveBeenCalled();
     expect(saveSettings).toHaveBeenCalledWith(
       expect.objectContaining({ firstRunDoneAt: expect.any(Number) }),
     );
   });
 
+  // The whole point of this test: per-network tracking costs a location
+  // permission, and asking for one on first launch is how it gets denied for
+  // good. It is opt-in from Settings and nothing here may pre-empt that.
+  it("never touches the Wi-Fi watch", async () => {
+    await runFirstTimeSetup();
+    expect(enableWifiWatch).not.toHaveBeenCalled();
+  });
+
   it("does nothing at all once it has run", async () => {
     asMock(loadSettings).mockResolvedValue({ firstRunDoneAt: 1 });
     await runFirstTimeSetup();
     expect(setSyncKeepAliveEnabled).not.toHaveBeenCalled();
-    expect(enableWifiWatch).not.toHaveBeenCalled();
     expect(saveSettings).not.toHaveBeenCalled();
   });
 
@@ -65,33 +70,10 @@ describe("runFirstTimeSetup", () => {
     expect(saveSettings).not.toHaveBeenCalled();
   });
 
-  it("stamps even when the user declines the location prompt", async () => {
-    asMock(enableWifiWatch).mockResolvedValue(false);
-    await runFirstTimeSetup();
-    expect(saveSettings).toHaveBeenCalledWith(
-      expect.objectContaining({ firstRunDoneAt: expect.any(Number) }),
-    );
-  });
-
-  // A declined prompt must not take the rest of the setup down with it.
-  it("still asks for the exemption when the location prompt throws", async () => {
-    asMock(enableWifiWatch).mockRejectedValue(new Error("no activity"));
-    await runFirstTimeSetup();
-    expect(requestIgnoreBatteryOptimizations).toHaveBeenCalled();
-    expect(saveSettings).toHaveBeenCalled();
-  });
-
   it("skips the battery dialog when Android already exempted the app", async () => {
     asMock(isBatteryOptimized).mockReturnValue(false);
     await runFirstTimeSetup();
     expect(requestIgnoreBatteryOptimizations).not.toHaveBeenCalled();
-    expect(saveSettings).toHaveBeenCalled();
-  });
-
-  it("does not re-prompt for location when the watch is already on", async () => {
-    asMock(isWifiWatchEnabled).mockReturnValue(true);
-    await runFirstTimeSetup();
-    expect(enableWifiWatch).not.toHaveBeenCalled();
     expect(saveSettings).toHaveBeenCalled();
   });
 });
