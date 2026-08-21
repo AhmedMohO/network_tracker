@@ -426,6 +426,39 @@ export default function SettingsScreen() {
 					{/* Family Sharing Card */}
 					<PairingCard />
 
+					{/* Updates Card */}
+					<Card style={styles.card}>
+						<SectionHeader
+							icon={<DownloadCloud size={16} color={theme.accent} />}
+							title={t("updateScreen.title")}
+						/>
+						<Button
+							variant="secondary"
+							icon={<DownloadCloud size={16} color={theme.text} />}
+							title={t("updateScreen.check")}
+							onPress={() => router.push("/update")}
+							accessibilityLabel={t("updateScreen.check")}
+						/>
+					</Card>
+
+					{/* Family list entry point — parent devices only. Not a sixth
+              native tab: there are already five. */}
+					{familyRole === "parent" && (
+						<Card style={styles.card}>
+							<SectionHeader
+								icon={<Users size={16} color={theme.accent} />}
+								title={t("family.listTitle")}
+							/>
+							<Button
+								variant="secondary"
+								icon={<Users size={16} color={theme.text} />}
+								title={t("family.viewChildren")}
+								onPress={() => router.push("/family")}
+								accessibilityLabel={t("family.viewChildren")}
+							/>
+						</Card>
+					)}
+
 					{/* System Apps Toggle Card */}
 					<Card style={styles.card}>
 						<SectionHeader
@@ -574,39 +607,6 @@ export default function SettingsScreen() {
 							</ThemedText>
 						) : null}
 					</Card>
-
-					{/* Updates Card */}
-					<Card style={styles.card}>
-						<SectionHeader
-							icon={<DownloadCloud size={16} color={theme.accent} />}
-							title={t("updateScreen.title")}
-						/>
-						<Button
-							variant="secondary"
-							icon={<DownloadCloud size={16} color={theme.text} />}
-							title={t("updateScreen.check")}
-							onPress={() => router.push("/update")}
-							accessibilityLabel={t("updateScreen.check")}
-						/>
-					</Card>
-
-					{/* Family list entry point — parent devices only. Not a sixth
-              native tab: there are already five. */}
-					{familyRole === "parent" && (
-						<Card style={styles.card}>
-							<SectionHeader
-								icon={<Users size={16} color={theme.accent} />}
-								title={t("family.listTitle")}
-							/>
-							<Button
-								variant="secondary"
-								icon={<Users size={16} color={theme.text} />}
-								title={t("family.viewChildren")}
-								onPress={() => router.push("/family")}
-								accessibilityLabel={t("family.viewChildren")}
-							/>
-						</Card>
-					)}
 
 					{/* Privacy Guarantee Card */}
 					<Card style={styles.card}>

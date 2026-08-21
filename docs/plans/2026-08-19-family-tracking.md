@@ -4,11 +4,11 @@
 
 **Continues from:** [`2026-08-18-network-usage-phases-3-7.md`](./2026-08-18-network-usage-phases-3-7.md) (Tasks 1–24). Task numbering continues at 25.
 
-**Supersedes:** that plan's "Deliberately not built → Cloud sync, accounts, multi-device" entry, which said *"If this ever changes, it is a new project, not a phase."* This is that change, and the entry was right about the cost: §Privacy below is not optional paperwork, it is the reason this plan is shaped the way it is.
+**Supersedes:** that plan's "Deliberately not built → Cloud sync, accounts, multi-device" entry, which said _"If this ever changes, it is a new project, not a phase."_ This is that change, and the entry was right about the cost: §Privacy below is not optional paperwork, it is the reason this plan is shaped the way it is.
 
 **Goal:** A parent's device can see a child's device's network usage — history, today so far, and what the child's phone was doing at the last check-in — without turning this app into a hosted product with accounts.
 
-**Architecture:** Unchanged on device. Kotlin stays a thin reader. The child pushes the rollups it *already computes* in `runUsageCheck`; the parent pulls them and renders them through the *existing* `TotalsCard` / `AppRow` / `UsageChart`, because the pulled payload is `AppUsage[]` — the same type those components already take. The new surface is one Postgres table, three RPCs, and one `fetch` wrapper.
+**Architecture:** Unchanged on device. Kotlin stays a thin reader. The child pushes the rollups it _already computes_ in `runUsageCheck`; the parent pulls them and renders them through the _existing_ `TotalsCard` / `AppRow` / `UsageChart`, because the pulled payload is `AppUsage[]` — the same type those components already take. The new surface is one Postgres table, three RPCs, and one `fetch` wrapper.
 
 **Tech Stack additions:** `expo-crypto` (CSPRNG for the pair token — `Math.random` is not acceptable for a bearer secret). Supabase free tier for storage. **No SDK**: `@supabase/supabase-js` is ~100 KB to send two POSTs; PostgREST is plain `fetch`.
 
@@ -18,16 +18,16 @@
 
 Named up front so no task quietly reintroduces them. Each was in the source wishlist (`docs/temp-plan.md`) and each is cut for a stated reason, not for convenience.
 
-| Cut | Why |
-|---|---|
-| **Remote pause / throttle / block an app's data** | No public Android API. Per-app network policy is `MANAGE_NETWORK_POLICY`, `signature\|privileged`. Only a Device Owner DPC can do it, which needs ADB provisioning on a factory-reset device. If you ever want this, it is a separate project with a device-provisioning story, not a task here. |
-| **Enforced app-specific limits and bedtime windows** | Same wall. This plan can *alert* on a child's usage; it cannot *stop* it. Any UI that implies enforcement is a lie and must not ship. |
-| **Per-child, per-app live speed** | `useLiveApps.ts` already documents that Android exposes no live per-app throughput, and Phase 0 Q5 recorded this device's mobile counters jumping ±1.1 GB in 11 s. A remote per-app speed number would be fabricated twice over. |
-| **Hourly heatmap / 24-hour timeline** | Buckets are ~2 h wide and attributed whole to their start bin; `chooseBucketMs` is floored at 2 h for exactly this. "Hourly" is precision this data does not have. |
-| **Real-time streaming, pub/sub, websockets** | The child can only report on Android's 15-minute background floor. A realtime channel would deliver 15-minute-old data at 60 fps. |
-| **End-to-end encryption** | Incompatible with the source plan's own server-side threshold logic, and the pair token already gates access. Encrypting with a key both devices hold and the server never sees is achievable, but buys nothing until there is a server operator to distrust. Revisit if this ever becomes multi-tenant. |
-| **Accounts, roles table, co-guardians, child PIN lock** | The pair token *is* the family. And a PIN on a sideloaded APK the child can uninstall — they already hold `REQUEST_INSTALL_PACKAGES` — is theatre. |
-| **Tamper watchdog ("alert if the app is killed")** | Doze plus the 15-minute `BackgroundTask` floor makes this fire every night on a healthy device. What *is* honest, and is built here, is a **last-seen timestamp** the parent reads for themselves. |
+| Cut                                                     | Why                                                                                                                                                                                                                                                                                                      |
+| ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Remote pause / throttle / block an app's data**       | No public Android API. Per-app network policy is `MANAGE_NETWORK_POLICY`, `signature\|privileged`. Only a Device Owner DPC can do it, which needs ADB provisioning on a factory-reset device. If you ever want this, it is a separate project with a device-provisioning story, not a task here.         |
+| **Enforced app-specific limits and bedtime windows**    | Same wall. This plan can _alert_ on a child's usage; it cannot _stop_ it. Any UI that implies enforcement is a lie and must not ship.                                                                                                                                                                    |
+| **Per-child, per-app live speed**                       | `useLiveApps.ts` already documents that Android exposes no live per-app throughput, and Phase 0 Q5 recorded this device's mobile counters jumping ±1.1 GB in 11 s. A remote per-app speed number would be fabricated twice over.                                                                         |
+| **Hourly heatmap / 24-hour timeline**                   | Buckets are ~2 h wide and attributed whole to their start bin; `chooseBucketMs` is floored at 2 h for exactly this. "Hourly" is precision this data does not have.                                                                                                                                       |
+| **Real-time streaming, pub/sub, websockets**            | The child can only report on Android's 15-minute background floor. A realtime channel would deliver 15-minute-old data at 60 fps.                                                                                                                                                                        |
+| **End-to-end encryption**                               | Incompatible with the source plan's own server-side threshold logic, and the pair token already gates access. Encrypting with a key both devices hold and the server never sees is achievable, but buys nothing until there is a server operator to distrust. Revisit if this ever becomes multi-tenant. |
+| **Accounts, roles table, co-guardians, child PIN lock** | The pair token _is_ the family. And a PIN on a sideloaded APK the child can uninstall — they already hold `REQUEST_INSTALL_PACKAGES` — is theatre.                                                                                                                                                       |
+| **Tamper watchdog ("alert if the app is killed")**      | Doze plus the 15-minute `BackgroundTask` floor makes this fire every night on a healthy device. What _is_ honest, and is built here, is a **last-seen timestamp** the parent reads for themselves.                                                                                                       |
 
 ---
 
@@ -39,16 +39,16 @@ All constraints from the previous two plans still apply. Additionally:
 - **Every figure the parent sees carries its own "as of" time.** A number without one is a bug in this feature, not a cosmetic gap. The child's clock is the source; render it in the parent's locale via `src/i18n/format.ts`.
 - **Nothing is pushed until a pair token exists.** An unpaired install is byte-for-byte the app that shipped in Phase 7: zero network calls, zero rows.
 - **Push is best-effort and never blocks a local result.** A failed sync must not cost `runUsageCheck` its alerts or its `snapshotDay` — the same `try/catch` posture the archive snapshot already uses.
-- **Payloads carry no content.** App *names* and *byte counts* only — never URLs, never SSIDs (a home Wi-Fi SSID is a geolocator), never contacts, never screen text.
+- **Payloads carry no content.** App _names_ and _byte counts_ only — never URLs, never SSIDs (a home Wi-Fi SSID is a geolocator), never contacts, never screen text.
 - **Test on two physical devices.** Every task in Phases 9–11 has a two-device round trip. An emulator pair is acceptable for Phase 8 only.
 
 ---
 
 ## Privacy — read before Task 25
 
-Phases 1–7 could say *"nothing leaves the device."* After this plan that is false, and the app must say so where the user can see it. This is a hard requirement of Task 28, not a nice-to-have.
+Phases 1–7 could say _"nothing leaves the device."_ After this plan that is false, and the app must say so where the user can see it. This is a hard requirement of Task 28, not a nice-to-have.
 
-**What leaves the child's device:** per-day, per-app byte totals; app display names and package names; today's running totals, plus the coverage window Android actually reported them over when it differs from the one requested; the device's own id and the label it was paired with. **As of Phase 10 (Task 31) only:** at heartbeat time, also the foreground package name, battery percent, and connection type (`MOBILE`/`WIFI`/`NONE` — the *type*, never the SSID or the carrier). Phase 9 pushes `context: null` — the on-device disclosure copy (`family.whatIsShared`) must list only what the running build actually transmits, and gets the three heartbeat fields added back when Task 31 wires them up.
+**What leaves the child's device:** per-day, per-app byte totals; app display names and package names; today's running totals, plus the coverage window Android actually reported them over when it differs from the one requested; the device's own id and the label it was paired with. **As of Phase 10 (Task 31) only:** at heartbeat time, also the foreground package name, battery percent, and connection type (`MOBILE`/`WIFI`/`NONE` — the _type_, never the SSID or the carrier). Phase 9 pushes `context: null` — the on-device disclosure copy (`family.whatIsShared`) must list only what the running build actually transmits, and gets the three heartbeat fields added back when Task 31 wires them up.
 
 **What never leaves:** anything not in that list. In particular no location, no SSID, no browsing content, no message content, no screen contents.
 
@@ -56,7 +56,7 @@ Phases 1–7 could say *"nothing leaves the device."* After this plan that is fa
 
 **Retention and deletion:** the table holds 90 days (Task 26 schedules the prune). "Unpair and delete" in Task 28 calls an RPC that hard-deletes every row for that token, from either side of the pair.
 
-**Backups: none, deliberately.** The Supabase free plan includes no automatic backups, and that is the correct posture here rather than a gap to close. Every row in this table is *derived* — the child's SQLite archive is the authoritative copy. Losing the entire project costs the parent their view of history and nothing else; it re-populates as the children check in. Do not "fix" this by paying for backups, and do not let anything in this feature become the only copy of something.
+**Backups: none, deliberately.** The Supabase free plan includes no automatic backups, and that is the correct posture here rather than a gap to close. Every row in this table is _derived_ — the child's SQLite archive is the authoritative copy. Losing the entire project costs the parent their view of history and nothing else; it re-populates as the children check in. Do not "fix" this by paying for backups, and do not let anything in this feature become the only copy of something.
 
 **Disclosure:** the child device shows a persistent, non-dismissible banner on its home screen while paired, naming the parent device label and what is shared, with unpair one tap away. A monitoring app that hides its monitoring is stalkerware regardless of intent; the banner is what makes this not that. It is built in Task 28 and it does not get an "advanced setting" to turn it off.
 
@@ -73,11 +73,13 @@ No UI in this phase. It ends with a child device pushing a real payload and a `c
 Pure functions and one storage extension. No network, no UI.
 
 **Files:**
+
 - Create: `src/features/family/pair.ts`
 - Create: `src/features/family/pair.test.ts`
 - Modify: `src/features/usage/settings.ts`
 
 **Interfaces:**
+
 - Consumes: `expo-crypto`
 - Produces:
   - `newPairToken(): string` — 32 hex chars from 16 CSPRNG bytes
@@ -100,57 +102,61 @@ Create `src/features/family/pair.test.ts`:
 import { newPairToken, pairLink, parsePairLink } from "./pair";
 
 describe("newPairToken", () => {
-  it("is 32 hex characters", () => {
-    expect(newPairToken()).toMatch(/^[0-9a-f]{32}$/);
-  });
+	it("is 32 hex characters", () => {
+		expect(newPairToken()).toMatch(/^[0-9a-f]{32}$/);
+	});
 
-  it("does not repeat", () => {
-    const tokens = new Set(Array.from({ length: 100 }, newPairToken));
-    expect(tokens.size).toBe(100);
-  });
+	it("does not repeat", () => {
+		const tokens = new Set(Array.from({ length: 100 }, newPairToken));
+		expect(tokens.size).toBe(100);
+	});
 });
 
 describe("parsePairLink", () => {
-  it("round-trips a link", () => {
-    const token = newPairToken();
-    expect(parsePairLink(pairLink(token, "Dad's phone"))).toEqual({
-      token,
-      label: "Dad's phone",
-    });
-  });
+	it("round-trips a link", () => {
+		const token = newPairToken();
+		expect(parsePairLink(pairLink(token, "Dad's phone"))).toEqual({
+			token,
+			label: "Dad's phone",
+		});
+	});
 
-  it("survives a label with spaces and punctuation", () => {
-    const token = newPairToken();
-    const parsed = parsePairLink(pairLink(token, "Mum and Dad's Pixel"));
-    expect(parsed?.label).toBe("Mum and Dad's Pixel");
-  });
+	it("survives a label with spaces and punctuation", () => {
+		const token = newPairToken();
+		const parsed = parsePairLink(pairLink(token, "Mum and Dad's Pixel"));
+		expect(parsed?.label).toBe("Mum and Dad's Pixel");
+	});
 
-  it("rejects a link with no token", () => {
-    expect(parsePairLink("nettrack://pair?label=x")).toBeNull();
-  });
+	it("rejects a link with no token", () => {
+		expect(parsePairLink("nettrack://pair?label=x")).toBeNull();
+	});
 
-  it("rejects a token that is not 32 hex characters", () => {
-    expect(parsePairLink("nettrack://pair?t=short&label=x")).toBeNull();
-    expect(parsePairLink(`nettrack://pair?t=${"z".repeat(32)}&label=x`)).toBeNull();
-  });
+	it("rejects a token that is not 32 hex characters", () => {
+		expect(parsePairLink("nettrack://pair?t=short&label=x")).toBeNull();
+		expect(
+			parsePairLink(`nettrack://pair?t=${"z".repeat(32)}&label=x`),
+		).toBeNull();
+	});
 
-  it("rejects another scheme carrying the right shape", () => {
-    expect(parsePairLink(`https://evil.test/pair?t=${"a".repeat(32)}`)).toBeNull();
-  });
+	it("rejects another scheme carrying the right shape", () => {
+		expect(
+			parsePairLink(`https://evil.test/pair?t=${"a".repeat(32)}`),
+		).toBeNull();
+	});
 
-  it("rejects a nettrack link that is not the pair route", () => {
-    expect(parsePairLink(`nettrack://update?t=${"a".repeat(32)}`)).toBeNull();
-  });
+	it("rejects a nettrack link that is not the pair route", () => {
+		expect(parsePairLink(`nettrack://update?t=${"a".repeat(32)}`)).toBeNull();
+	});
 
-  it("returns null rather than throwing on junk", () => {
-    expect(parsePairLink("")).toBeNull();
-    expect(parsePairLink("not a url at all")).toBeNull();
-  });
+	it("returns null rather than throwing on junk", () => {
+		expect(parsePairLink("")).toBeNull();
+		expect(parsePairLink("not a url at all")).toBeNull();
+	});
 
-  it("defaults a missing label rather than failing", () => {
-    const token = "a".repeat(32);
-    expect(parsePairLink(`nettrack://pair?t=${token}`)?.label).toBe("");
-  });
+	it("defaults a missing label rather than failing", () => {
+		const token = "a".repeat(32);
+		expect(parsePairLink(`nettrack://pair?t=${token}`)?.label).toBe("");
+	});
 });
 ```
 
@@ -172,9 +178,9 @@ const TOKEN_BYTES = 16;
 const TOKEN_PATTERN = /^[0-9a-f]{32}$/;
 
 function randomHex(bytes: number): string {
-  return Array.from(Crypto.getRandomBytes(bytes))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+	return Array.from(Crypto.getRandomBytes(bytes))
+		.map((b) => b.toString(16).padStart(2, "0"))
+		.join("");
 }
 
 /**
@@ -183,16 +189,16 @@ function randomHex(bytes: number): string {
  * a real risk here, so this goes through the platform CSPRNG.
  */
 export function newPairToken(): string {
-  return randomHex(TOKEN_BYTES);
+	return randomHex(TOKEN_BYTES);
 }
 
 /** Distinguishes two devices inside one pair. Not a secret, but no reason to reuse. */
 export function newDeviceId(): string {
-  return randomHex(TOKEN_BYTES);
+	return randomHex(TOKEN_BYTES);
 }
 
 export function pairLink(token: string, label: string): string {
-  return `${SCHEME}://${HOST}?t=${token}&label=${encodeURIComponent(label)}`;
+	return `${SCHEME}://${HOST}?t=${token}&label=${encodeURIComponent(label)}`;
 }
 
 /**
@@ -201,24 +207,26 @@ export function pairLink(token: string, label: string): string {
  * message. A wrong scheme, a wrong route, or a token that is not exactly the
  * shape `newPairToken` produces is rejected rather than half-accepted.
  */
-export function parsePairLink(url: string): { token: string; label: string } | null {
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return null;
-  }
-  if (parsed.protocol !== `${SCHEME}:`) return null;
-  // React Native's URL polyfill puts `pair` in `host` for `scheme://pair?x`,
-  // but a stricter parser can leave it in `pathname`. Accept either rather
-  // than depending on which one is loaded.
-  const route = parsed.host || parsed.pathname.replace(/^\/+/, "");
-  if (route !== HOST) return null;
+export function parsePairLink(
+	url: string,
+): { token: string; label: string } | null {
+	let parsed: URL;
+	try {
+		parsed = new URL(url);
+	} catch {
+		return null;
+	}
+	if (parsed.protocol !== `${SCHEME}:`) return null;
+	// React Native's URL polyfill puts `pair` in `host` for `scheme://pair?x`,
+	// but a stricter parser can leave it in `pathname`. Accept either rather
+	// than depending on which one is loaded.
+	const route = parsed.host || parsed.pathname.replace(/^\/+/, "");
+	if (route !== HOST) return null;
 
-  const token = parsed.searchParams.get("t");
-  if (!token || !TOKEN_PATTERN.test(token)) return null;
+	const token = parsed.searchParams.get("t");
+	if (!token || !TOKEN_PATTERN.test(token)) return null;
 
-  return { token, label: parsed.searchParams.get("label") ?? "" };
+	return { token, label: parsed.searchParams.get("label") ?? "" };
 }
 ```
 
@@ -227,11 +235,11 @@ export function parsePairLink(url: string): { token: string; label: string } | n
 In `src/features/usage/settings.ts`, add to `Settings` and to `DEFAULTS` (all four default to `null`):
 
 ```ts
-  /** null until this install joins a pair. See `features/family/pair`. */
-  familyRole: "parent" | "child" | null;
-  pairToken: string | null;
-  deviceId: string | null;
-  deviceLabel: string | null;
+/** null until this install joins a pair. See `features/family/pair`. */
+familyRole: "parent" | "child" | null;
+pairToken: string | null;
+deviceId: string | null;
+deviceLabel: string | null;
 ```
 
 The existing `{ ...DEFAULTS, ...stored }` merge means an upgrade install lands unpaired with no migration — which is the correct default, and is why `familyRole` is nullable rather than defaulting to `"parent"`.
@@ -255,10 +263,12 @@ git commit -m "feat: pair token, device identity and family settings"
 SQL only. No app code in this task — it ends with `curl` proving the RPCs work, so Task 27 has something real to write against.
 
 **Files:**
+
 - Create: `docs/family-schema.sql`
 - Modify: `app.json` (`expo.extra`), `README.md`
 
 **Interfaces:**
+
 - Produces: Supabase RPCs `family_push`, `family_pull`, `family_forget`
 
 **Design note.** Row-level security driven by PostgREST request headers is fiddly and easy to get subtly wrong. Three `SECURITY DEFINER` functions with RLS denying all direct table access is fewer moving parts and fails closed: the anon key alone reads nothing, and every path into the table must present the token as an argument.
@@ -418,11 +428,13 @@ git commit -m "feat: family sync schema with token-gated RPCs"
 ### Task 27: Sync client, and the child's push
 
 **Files:**
+
 - Create: `src/features/family/sync.ts`
 - Create: `src/features/family/sync.test.ts`
 - Modify: `src/features/limits/backgroundCheck.ts`
 
 **Interfaces:**
+
 - Consumes: `loadSettings`, `readArchive`, `fetchUsage`, `presetRange`
 - Produces:
   - `type Snapshot = { deviceId; deviceLabel; kind; day; payload; updatedAt }`
@@ -443,53 +455,80 @@ import type { AppUsage } from "@/features/usage/aggregate";
 import { dailyPayload, recentPayload } from "./sync";
 
 const app = (uid: number, total: number): AppUsage => ({
-  uid, name: `app${uid}`, packageName: `com.a${uid}`,
-  download: total, upload: 0, total, foreground: 0, background: 0, percentage: 0,
+	uid,
+	name: `app${uid}`,
+	packageName: `com.a${uid}`,
+	download: total,
+	upload: 0,
+	total,
+	foreground: 0,
+	background: 0,
+	percentage: 0,
 });
 
 describe("dailyPayload", () => {
-  it("keeps app identity and bytes", () => {
-    const p = dailyPayload([app(1, 100), app(2, 50)]);
-    expect(p.apps).toHaveLength(2);
-    expect(p.apps[0]).toEqual({ uid: 1, name: "app1", pkg: "com.a1", dl: 100, ul: 0 });
-  });
+	it("keeps app identity and bytes", () => {
+		const p = dailyPayload([app(1, 100), app(2, 50)]);
+		expect(p.apps).toHaveLength(2);
+		expect(p.apps[0]).toEqual({
+			uid: 1,
+			name: "app1",
+			pkg: "com.a1",
+			dl: 100,
+			ul: 0,
+		});
+	});
 
-  it("drops apps with no traffic rather than shipping empty rows", () => {
-    expect(dailyPayload([app(1, 100), app(2, 0)]).apps).toHaveLength(1);
-  });
+	it("drops apps with no traffic rather than shipping empty rows", () => {
+		expect(dailyPayload([app(1, 100), app(2, 0)]).apps).toHaveLength(1);
+	});
 
-  it("caps the app list so one payload cannot grow unbounded", () => {
-    const many = Array.from({ length: 200 }, (_, i) => app(i, 200 - i));
-    const p = dailyPayload(many);
-    expect(p.apps.length).toBeLessThanOrEqual(50);
-    // The cap keeps the biggest, not the first 50 in whatever order arrived.
-    expect(p.apps[0].uid).toBe(0);
-    // Everything trimmed is still counted, so the parent's total matches the
-    // child's total. A silently dropped tail would be fabricated accuracy.
-    expect(p.otherBytes).toBeGreaterThan(0);
-    expect(p.apps.reduce((s, a) => s + a.dl + a.ul, 0) + p.otherBytes)
-      .toBe(many.reduce((s, a) => s + a.total, 0));
-  });
+	it("caps the app list so one payload cannot grow unbounded", () => {
+		const many = Array.from({ length: 200 }, (_, i) => app(i, 200 - i));
+		const p = dailyPayload(many);
+		expect(p.apps.length).toBeLessThanOrEqual(50);
+		// The cap keeps the biggest, not the first 50 in whatever order arrived.
+		expect(p.apps[0].uid).toBe(0);
+		// Everything trimmed is still counted, so the parent's total matches the
+		// child's total. A silently dropped tail would be fabricated accuracy.
+		expect(p.otherBytes).toBeGreaterThan(0);
+		expect(p.apps.reduce((s, a) => s + a.dl + a.ul, 0) + p.otherBytes).toBe(
+			many.reduce((s, a) => s + a.total, 0),
+		);
+	});
 
-  it("handles an empty list without inventing a total", () => {
-    expect(dailyPayload([])).toEqual({ apps: [], otherBytes: 0 });
-  });
+	it("handles an empty list without inventing a total", () => {
+		expect(dailyPayload([])).toEqual({ apps: [], otherBytes: 0 });
+	});
 });
 
 describe("recentPayload", () => {
-  it("stamps the child's clock so the parent can render an 'as of'", () => {
-    const p = recentPayload([app(1, 10)], { mobile: 10, wifi: 0 }, null, 1_700_000_000_000);
-    expect(p.at).toBe(1_700_000_000_000);
-  });
+	it("stamps the child's clock so the parent can render an 'as of'", () => {
+		const p = recentPayload(
+			[app(1, 10)],
+			{ mobile: 10, wifi: 0 },
+			null,
+			1_700_000_000_000,
+		);
+		expect(p.at).toBe(1_700_000_000_000);
+	});
 
-  it("carries context through when the probe returned some", () => {
-    const ctx = { foregroundPackage: "com.x", batteryPercent: 42, connection: "MOBILE" as const };
-    expect(recentPayload([], { mobile: 0, wifi: 0 }, ctx, 1).context).toEqual(ctx);
-  });
+	it("carries context through when the probe returned some", () => {
+		const ctx = {
+			foregroundPackage: "com.x",
+			batteryPercent: 42,
+			connection: "MOBILE" as const,
+		};
+		expect(recentPayload([], { mobile: 0, wifi: 0 }, ctx, 1).context).toEqual(
+			ctx,
+		);
+	});
 
-  it("carries null context rather than inventing defaults", () => {
-    expect(recentPayload([], { mobile: 0, wifi: 0 }, null, 1).context).toBeNull();
-  });
+	it("carries null context rather than inventing defaults", () => {
+		expect(
+			recentPayload([], { mobile: 0, wifi: 0 }, null, 1).context,
+		).toBeNull();
+	});
 });
 ```
 
@@ -512,18 +551,18 @@ import { loadSettings } from "@/features/usage/settings";
 export type SnapshotKind = "daily" | "recent" | "request" | "grant";
 
 export type DeviceContext = {
-  foregroundPackage: string | null;
-  batteryPercent: number | null;
-  connection: "MOBILE" | "WIFI" | "NONE";
+	foregroundPackage: string | null;
+	batteryPercent: number | null;
+	connection: "MOBILE" | "WIFI" | "NONE";
 };
 
 export type Snapshot = {
-  deviceId: string;
-  deviceLabel: string;
-  kind: SnapshotKind;
-  day: number;
-  payload: any;
-  updatedAt: number;
+	deviceId: string;
+	deviceLabel: string;
+	kind: SnapshotKind;
+	day: number;
+	payload: any;
+	updatedAt: number;
 };
 
 /** More than this and the payload stops being a few KB. */
@@ -531,20 +570,20 @@ const MAX_APPS = 50;
 const DAY = 86_400_000;
 
 const config = (Constants.expoConfig?.extra as any)?.family as
-  | { url: string; anonKey: string }
-  | undefined;
+	| { url: string; anonKey: string }
+	| undefined;
 
 /** The transport for one RPC call. No stamping here — see `syncRun`. */
 async function rpc(name: string, body: Record<string, unknown>): Promise<any> {
-  if (!config?.url) throw new Error("family sync is not configured");
-  const res = await fetch(`${config.url}/rest/v1/rpc/${name}`, {
-    method: "POST",
-    headers: { apikey: config.anonKey, "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error(`${name}: ${res.status}`);
-  const text = await res.text();
-  return text ? JSON.parse(text) : null;
+	if (!config?.url) throw new Error("family sync is not configured");
+	const res = await fetch(`${config.url}/rest/v1/rpc/${name}`, {
+		method: "POST",
+		headers: { apikey: config.anonKey, "Content-Type": "application/json" },
+		body: JSON.stringify(body),
+	});
+	if (!res.ok) throw new Error(`${name}: ${res.status}`);
+	const text = await res.text();
+	return text ? JSON.parse(text) : null;
 }
 
 /**
@@ -559,17 +598,18 @@ async function rpc(name: string, body: Record<string, unknown>): Promise<any> {
  * function instead of re-deriving this.
  */
 export async function syncRun(fn: () => Promise<void>): Promise<void> {
-  try {
-    await fn();
-    await saveSettings({ lastSyncOkAt: Date.now(), lastSyncErrorAt: null });
-  } catch (e) {
-    // Only the *first* failure of a run of failures is stamped, so the age of
-    // this value answers "how long has sync been broken" rather than "when did
-    // it last retry".
-    const s = await loadSettings();
-    if (s.lastSyncErrorAt === null) await saveSettings({ lastSyncErrorAt: Date.now() });
-    throw e;
-  }
+	try {
+		await fn();
+		await saveSettings({ lastSyncOkAt: Date.now(), lastSyncErrorAt: null });
+	} catch (e) {
+		// Only the *first* failure of a run of failures is stamped, so the age of
+		// this value answers "how long has sync been broken" rather than "when did
+		// it last retry".
+		const s = await loadSettings();
+		if (s.lastSyncErrorAt === null)
+			await saveSettings({ lastSyncErrorAt: Date.now() });
+		throw e;
+	}
 }
 
 /**
@@ -579,38 +619,48 @@ export async function syncRun(fn: () => Promise<void>): Promise<void> {
  * parent's total still equals the child's.
  */
 export function dailyPayload(apps: AppUsage[]) {
-  const used = apps.filter((a) => a.total > 0).sort((a, b) => b.total - a.total);
-  const kept = used.slice(0, MAX_APPS);
-  return {
-    apps: kept.map((a) => ({
-      uid: a.uid, name: a.name, pkg: a.packageName, dl: a.download, ul: a.upload,
-    })),
-    otherBytes: used.slice(MAX_APPS).reduce((s, a) => s + a.total, 0),
-  };
+	const used = apps
+		.filter((a) => a.total > 0)
+		.sort((a, b) => b.total - a.total);
+	const kept = used.slice(0, MAX_APPS);
+	return {
+		apps: kept.map((a) => ({
+			uid: a.uid,
+			name: a.name,
+			pkg: a.packageName,
+			dl: a.download,
+			ul: a.upload,
+		})),
+		otherBytes: used.slice(MAX_APPS).reduce((s, a) => s + a.total, 0),
+	};
 }
 
 export function recentPayload(
-  apps: AppUsage[],
-  totals: { mobile: number; wifi: number },
-  context: DeviceContext | null,
-  at: number,
-  coverage: { start: number; end: number } | null
+	apps: AppUsage[],
+	totals: { mobile: number; wifi: number },
+	context: DeviceContext | null,
+	at: number,
+	coverage: { start: number; end: number } | null,
 ) {
-  return { ...dailyPayload(apps), totals, context, at, coverage };
+	return { ...dailyPayload(apps), totals, context, at, coverage };
 }
 
 /** No-ops when unpaired. Every caller relies on that; do not add a throw. */
-export async function pushSnapshot(kind: SnapshotKind, day: number, payload: unknown) {
-  const s = await loadSettings();
-  if (!s.pairToken || !s.deviceId) return;
-  await rpc("family_push", {
-    p_token: s.pairToken,
-    p_device: s.deviceId,
-    p_label: s.deviceLabel ?? "",
-    p_kind: kind,
-    p_day: day,
-    p_payload: payload,
-  });
+export async function pushSnapshot(
+	kind: SnapshotKind,
+	day: number,
+	payload: unknown,
+) {
+	const s = await loadSettings();
+	if (!s.pairToken || !s.deviceId) return;
+	await rpc("family_push", {
+		p_token: s.pairToken,
+		p_device: s.deviceId,
+		p_label: s.deviceLabel ?? "",
+		p_kind: kind,
+		p_day: day,
+		p_payload: payload,
+	});
 }
 
 /**
@@ -623,28 +673,28 @@ export async function pushSnapshot(kind: SnapshotKind, day: number, payload: unk
  * happened to keep.
  */
 export function parseTimestamptz(iso: string): number {
-  return Date.parse(iso.replace(/(\.\d{3})\d+/, "$1"));
+	return Date.parse(iso.replace(/(\.\d{3})\d+/, "$1"));
 }
 
 export async function pullSnapshots(since = 0): Promise<Snapshot[]> {
-  const s = await loadSettings();
-  if (!s.pairToken) return [];
-  const rows: any[] = await rpc("family_pull", {
-    p_token: s.pairToken,
-    p_since: new Date(since).toISOString(),
-  });
-  return (rows ?? []).map((r) => ({
-    deviceId: r.device_id,
-    deviceLabel: r.device_label,
-    kind: r.kind,
-    day: r.day,
-    payload: r.payload,
-    updatedAt: parseTimestamptz(r.updated_at),
-  }));
+	const s = await loadSettings();
+	if (!s.pairToken) return [];
+	const rows: any[] = await rpc("family_pull", {
+		p_token: s.pairToken,
+		p_since: new Date(since).toISOString(),
+	});
+	return (rows ?? []).map((r) => ({
+		deviceId: r.device_id,
+		deviceLabel: r.device_label,
+		kind: r.kind,
+		day: r.day,
+		payload: r.payload,
+		updatedAt: parseTimestamptz(r.updated_at),
+	}));
 }
 
 export async function forgetPair(token: string) {
-  await rpc("family_forget", { p_token: token });
+	await rpc("family_forget", { p_token: token });
 }
 
 /**
@@ -655,38 +705,41 @@ export async function forgetPair(token: string) {
  * Yesterday comes from the archive rather than a fresh query, because
  * `snapshotDay` has just written it and Android is the slower of the two.
  */
-export async function syncFromChild(now: number, context: DeviceContext | null = null) {
-  const s = await loadSettings();
-  if (s.familyRole !== "child" || !s.pairToken) return;
+export async function syncFromChild(
+	now: number,
+	context: DeviceContext | null = null,
+) {
+	const s = await loadSettings();
+	if (s.familyRole !== "child" || !s.pairToken) return;
 
-  await syncRun(async () => {
-    // An empty archive means no data for that day, not zero data — the
-    // realistic cause is Usage Access having been revoked, and a pushed
-    // zero would read as a real quiet day rather than the gap it is. A day
-    // that genuinely saw zero traffic across every UID still has rows, so
-    // this only skips the case that would otherwise fabricate a figure.
-    const yesterday = presetRange("yesterday", now).start;
-    const archive = await readArchive(yesterday, yesterday + DAY, "ALL");
-    if (archive.length > 0) {
-      await pushSnapshot("daily", yesterday, dailyPayload(archive));
-    }
+	await syncRun(async () => {
+		// An empty archive means no data for that day, not zero data — the
+		// realistic cause is Usage Access having been revoked, and a pushed
+		// zero would read as a real quiet day rather than the gap it is. A day
+		// that genuinely saw zero traffic across every UID still has rows, so
+		// this only skips the case that would otherwise fabricate a figure.
+		const yesterday = presetRange("yesterday", now).start;
+		const archive = await readArchive(yesterday, yesterday + DAY, "ALL");
+		if (archive.length > 0) {
+			await pushSnapshot("daily", yesterday, dailyPayload(archive));
+		}
 
-    const today = presetRange("today", now);
-    const mobile = await fetchUsage(today, "MOBILE");
-    const wifi = await fetchUsage(today, "WIFI");
-    const all = await fetchUsage(today, "ALL");
-    await pushSnapshot(
-      "recent",
-      0,
-      recentPayload(
-        all.apps,
-        { mobile: mobile.totals.total, wifi: wifi.totals.total },
-        context,
-        now,
-        all.coverage
-      )
-    );
-  });
+		const today = presetRange("today", now);
+		const mobile = await fetchUsage(today, "MOBILE");
+		const wifi = await fetchUsage(today, "WIFI");
+		const all = await fetchUsage(today, "ALL");
+		await pushSnapshot(
+			"recent",
+			0,
+			recentPayload(
+				all.apps,
+				{ mobile: mobile.totals.total, wifi: wifi.totals.total },
+				context,
+				now,
+				all.coverage,
+			),
+		);
+	});
 }
 ```
 
@@ -700,13 +753,13 @@ Expected: PASS, 7 tests.
 In `src/features/limits/backgroundCheck.ts`, inside `runUsageCheck`, immediately after the existing `snapshotDay` block. Same posture as that block, and for the same reason — a sync failure must not cost the alerts their result:
 
 ```ts
-  try {
-    await syncFromChild(now);
-  } catch {
-    // Offline, or the project is paused. The next run re-pushes; the RPC
-    // upserts. `rpc` has already stamped `lastSyncErrorAt` — Step 6 is what
-    // stops that stamp from being a secret.
-  }
+try {
+	await syncFromChild(now);
+} catch {
+	// Offline, or the project is paused. The next run re-pushes; the RPC
+	// upserts. `rpc` has already stamped `lastSyncErrorAt` — Step 6 is what
+	// stops that stamp from being a secret.
+}
 ```
 
 - [ ] **Step 6: Notify when sync has been broken for two days**
@@ -718,25 +771,25 @@ Still inside `runUsageCheck`. It must fire **once per failure run** — and re-a
 Use a dedicated one-shot field on `Settings`, `syncErrorNotifiedAt: number | null`, holding the `lastSyncErrorAt` value already reported:
 
 ```ts
-  const { lastSyncErrorAt, syncErrorNotifiedAt } = await loadSettings();
-  if (
-    lastSyncErrorAt &&
-    now - lastSyncErrorAt > 2 * DAY &&
-    syncErrorNotifiedAt !== lastSyncErrorAt
-  ) {
-    await notify(
-      i18n.t("family.syncBrokenTitle"),
-      i18n.t("family.syncBrokenBody", { date: formatDay(lastSyncErrorAt) })
-    );
-    await saveSettings({ syncErrorNotifiedAt: lastSyncErrorAt });
-  }
+const { lastSyncErrorAt, syncErrorNotifiedAt } = await loadSettings();
+if (
+	lastSyncErrorAt &&
+	now - lastSyncErrorAt > 2 * DAY &&
+	syncErrorNotifiedAt !== lastSyncErrorAt
+) {
+	await notify(
+		i18n.t("family.syncBrokenTitle"),
+		i18n.t("family.syncBrokenBody", { date: formatDay(lastSyncErrorAt) }),
+	);
+	await saveSettings({ syncErrorNotifiedAt: lastSyncErrorAt });
+}
 ```
 
 Comparing against the failure-run timestamp is what re-arms it: a recovery clears `lastSyncErrorAt`, so the next failure gets a new value that no longer matches `syncErrorNotifiedAt`.
 
 Two days, not two hours: a phone in Doze over a weekend, a router reboot, and a flight all produce multi-hour gaps that are not faults. Two days of total failure is not one of those, and one week is when Supabase pauses the project — this has to fire before that, not after.
 
-The body names the actual remedy: *"Usage sharing hasn't reached the family server since {date}. Open the app on a paired device, or check the project isn't paused."*
+The body names the actual remedy: _"Usage sharing hasn't reached the family server since {date}. Open the app on a paired device, or check the project isn't paused."_
 
 - [ ] **Step 7: Verify on the device**
 
@@ -769,20 +822,20 @@ The first phase with a two-device round trip. Tasks 28-29 are not new logic; the
 The trust boundary of this whole feature. Do not defer the disclosure banner or the delete path to "polish" — they are the reason the feature is shippable.
 
 **Files:**
+
 - Create: `src/features/family/useFamily.ts`
 - Create: `src/features/family/PairingCard.tsx`
-- Create: `src/features/family/SharingBanner.tsx`
 - Modify: `src/app/(tabs)/settings.tsx`, `src/app/(tabs)/index.tsx`, `src/app/_layout.tsx`
 - Modify: `src/i18n/en.ts`, `src/i18n/ar.ts`
 
 **Interfaces:**
+
 - Consumes: `newPairToken`, `newDeviceId`, `pairLink`, `parsePairLink`, `forgetPair`
 - Produces:
   - `useFamily(): { role, token, deviceLabel, becomeParent(label), joinAsChild(token, label), unpair(): Promise<void> }`
   - `<PairingCard />` — the settings section
-  - `<SharingBanner />` — the child's persistent disclosure
 
-**Design note — why no QR scanner.** A QR would need `expo-camera` plus the `CAMERA` permission for a one-time exchange. The app already registers the `nettrack://` scheme, and React Native's built-in `Share` API costs nothing: the parent taps *Send pairing link*, picks a chat app, the child taps the link, and the app pairs itself. Zero new dependencies and no typing.
+**Design note — why no QR scanner.** A QR would need `expo-camera` plus the `CAMERA` permission for a one-time exchange. The app already registers the `nettrack://` scheme, and React Native's built-in `Share` API costs nothing: the parent taps _Send pairing link_, picks a chat app, the child taps the link, and the app pairs itself. Zero new dependencies and no typing.
 
 `ponytail: share-sheet pairing means the token sits in a chat thread forever. Unpair rotates it, which is the mitigation. Add QR (expo-camera) if a token ever needs to not exist off-device.`
 
@@ -798,11 +851,11 @@ A thin hook over `settings.ts` — no new storage. Three transitions:
 
 Rendered inside the existing settings `Card` stack, styled like the limits section. Three states:
 
-| State | Shows |
-|---|---|
-| `role === null` | Two buttons: *This is a parent device* / *This is a child device*. The child button opens a paste field for a link, for when the share sheet is not an option. |
+| State               | Shows                                                                                                                                                              |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `role === null`     | Two buttons: _This is a parent device_ / _This is a child device_. The child button opens a paste field for a link, for when the share sheet is not an option.     |
 | `role === 'parent'` | Device label field, **Send pairing link** (`Share.share({ message: pairLink(token, label) })`), a list of paired children with last-seen, and **Unpair everyone**. |
-| `role === 'child'` | *"Sharing usage with {parentLabel}"*, the full list of what is shared (verbatim from §Privacy), and **Stop sharing and delete my data**. |
+| `role === 'child'`  | _"Sharing usage with {parentLabel}"_, the full list of what is shared (verbatim from §Privacy), and **Stop sharing and delete my data**.                           |
 
 Both unpair buttons go through `Alert.alert` confirmation naming what will be deleted. Deletion is not reversible and the copy says so.
 
@@ -811,45 +864,42 @@ Both unpair buttons go through `Alert.alert` confirmation naming what will be de
 In `src/app/_layout.tsx`, alongside the existing OTA effect. `expo-linking`'s `useURL()` covers both the cold start and the already-running case:
 
 ```tsx
-  const url = Linking.useURL();
-  useEffect(() => {
-    if (!url) return;
-    const pairing = parsePairLink(url);
-    if (!pairing) return;
-    // Never pair silently: a link can arrive from anyone, and the whole point
-    // of this feature is that the person being monitored knows about it.
-    Alert.alert(
-      i18n.t('family.joinTitle'),
-      i18n.t('family.joinBody', { label: pairing.label }),
-      [
-        { text: i18n.t('common.cancel'), style: 'cancel' },
-        { text: i18n.t('family.join'), onPress: () => joinAsChild(pairing.token, pairing.label) },
-      ]
-    );
-  }, [url]);
+const url = Linking.useURL();
+useEffect(() => {
+	if (!url) return;
+	const pairing = parsePairLink(url);
+	if (!pairing) return;
+	// Never pair silently: a link can arrive from anyone, and the whole point
+	// of this feature is that the person being monitored knows about it.
+	Alert.alert(
+		i18n.t("family.joinTitle"),
+		i18n.t("family.joinBody", { label: pairing.label }),
+		[
+			{ text: i18n.t("common.cancel"), style: "cancel" },
+			{
+				text: i18n.t("family.join"),
+				onPress: () => joinAsChild(pairing.token, pairing.label),
+			},
+		],
+	);
+}, [url]);
 ```
 
-- [ ] **Step 4: Write `SharingBanner.tsx` and mount it**
-
-Renders `null` unless `role === 'child'`. Otherwise a permanent, non-dismissible strip at the top of `src/app/(tabs)/index.tsx`: *"Usage on this device is shared with {parentLabel}"* plus a **Details** link into settings.
-
-There is no prop, setting, or build flag that hides it. If a future task adds one, that task is wrong.
-
-- [ ] **Step 5: Amend the privacy card**
+- [ ] **Step 4: Amend the privacy card**
 
 `settings.tsx` already has a `settings.privacyTitle` card whose text says data never leaves the device. That statement is now conditional. Rewrite it to state the unpaired case and the paired case separately, and keep §Privacy's "what leaves / what never leaves" list as the paired text. Update both `en.ts` and `ar.ts` — `en.ts` is the key list and `ar.ts` is checked against it.
 
-- [ ] **Step 6: Verify on two devices**
+- [ ] **Step 5: Verify on two devices**
 
 - [ ] Parent mints a link, shares it to the child over any chat app; the child taps it and sees the join prompt naming the parent's label.
 - [ ] Cancelling the prompt leaves the child unpaired and pushes nothing.
 - [ ] Accepting pairs it, and the banner appears on the child's home screen and cannot be dismissed.
 - [ ] The same link tapped twice does not create a second pairing or a second device id.
 - [ ] A link with a mangled token shows nothing at all — no prompt, no error.
-- [ ] Child taps *Stop sharing and delete my data*; `family_pull` afterwards returns zero rows.
+- [ ] Child taps _Stop sharing and delete my data_; `family_pull` afterwards returns zero rows.
 - [ ] Unpair with the device in airplane mode: the app reports the failure and stays paired. Re-run online: it succeeds.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add -A
@@ -863,6 +913,7 @@ git commit -m "feat: device pairing, sharing disclosure and data deletion"
 Almost no new rendering code. The pulled payload maps to `AppUsage[]`, which `TotalsCard`, `AppRow` and `UsageChart` already take.
 
 **Files:**
+
 - Create: `src/features/family/useChildren.ts`
 - Create: `src/features/family/cache.ts`
 - Create: `src/features/family/fromPayload.ts`
@@ -872,6 +923,7 @@ Almost no new rendering code. The pulled payload maps to `AppUsage[]`, which `To
 - Modify: `src/app/(tabs)/settings.tsx` (entry point), `src/i18n/*`
 
 **Interfaces:**
+
 - Consumes: `pullSnapshots`, `TotalsCard`, `AppRow`, `UsageChart`, `formatBytes`
 - Produces:
   - `toAppUsage(payload): AppUsage[]` in `fromPayload.ts` — inverse of `dailyPayload`
@@ -886,44 +938,50 @@ Almost no new rendering code. The pulled payload maps to `AppUsage[]`, which `To
 import { fromPayload } from "./fromPayload";
 
 const payload = {
-  apps: [
-    { uid: 1, name: "YouTube", pkg: "com.google.android.youtube", dl: 900, ul: 100 },
-    { uid: 2, name: "Chrome", pkg: "com.android.chrome", dl: 300, ul: 0 },
-  ],
-  otherBytes: 200,
+	apps: [
+		{
+			uid: 1,
+			name: "YouTube",
+			pkg: "com.google.android.youtube",
+			dl: 900,
+			ul: 100,
+		},
+		{ uid: 2, name: "Chrome", pkg: "com.android.chrome", dl: 300, ul: 0 },
+	],
+	otherBytes: 200,
 };
 
 describe("fromPayload", () => {
-  it("restores the AppUsage shape the existing components take", () => {
-    const [first] = fromPayload(payload);
-    expect(first.name).toBe("YouTube");
-    expect(first.download).toBe(900);
-    expect(first.total).toBe(1000);
-  });
+	it("restores the AppUsage shape the existing components take", () => {
+		const [first] = fromPayload(payload);
+		expect(first.name).toBe("YouTube");
+		expect(first.download).toBe(900);
+		expect(first.total).toBe(1000);
+	});
 
-  it("computes percentages against the true total, trimmed apps included", () => {
-    // 1000 + 300 + 200 = 1500. Ignoring otherBytes would inflate every row.
-    expect(fromPayload(payload)[0].percentage).toBeCloseTo(1000 / 1500 * 100);
-  });
+	it("computes percentages against the true total, trimmed apps included", () => {
+		// 1000 + 300 + 200 = 1500. Ignoring otherBytes would inflate every row.
+		expect(fromPayload(payload)[0].percentage).toBeCloseTo((1000 / 1500) * 100);
+	});
 
-  it("surfaces the trimmed tail as a row rather than hiding it", () => {
-    const rows = fromPayload(payload);
-    expect(rows.at(-1)?.total).toBe(200);
-  });
+	it("surfaces the trimmed tail as a row rather than hiding it", () => {
+		const rows = fromPayload(payload);
+		expect(rows.at(-1)?.total).toBe(200);
+	});
 
-  it("adds no tail row when nothing was trimmed", () => {
-    expect(fromPayload({ apps: payload.apps, otherBytes: 0 })).toHaveLength(2);
-  });
+	it("adds no tail row when nothing was trimmed", () => {
+		expect(fromPayload({ apps: payload.apps, otherBytes: 0 })).toHaveLength(2);
+	});
 
-  it("reports no foreground/background split rather than inventing one", () => {
-    // Same reason `readArchive` returns zeros: the payload does not carry it.
-    expect(fromPayload(payload)[0].foreground).toBe(0);
-  });
+	it("reports no foreground/background split rather than inventing one", () => {
+		// Same reason `readArchive` returns zeros: the payload does not carry it.
+		expect(fromPayload(payload)[0].foreground).toBe(0);
+	});
 
-  it("survives a payload from an older or malformed push", () => {
-    expect(fromPayload({} as any)).toEqual([]);
-    expect(fromPayload({ apps: null } as any)).toEqual([]);
-  });
+	it("survives a payload from an older or malformed push", () => {
+		expect(fromPayload({} as any)).toEqual([]);
+		expect(fromPayload({ apps: null } as any)).toEqual([]);
+	});
 });
 ```
 
@@ -934,7 +992,7 @@ Expected: FAIL — module not found.
 
 - [ ] **Step 3: Implement `fromPayload.ts`**
 
-The trimmed tail becomes a synthetic row named by `i18n.t('family.otherApps')`, using a UID that cannot collide with a real one (`-100`). Percentages divide by the grand total *including* `otherBytes` — dividing by the visible rows only would quietly inflate every percentage on the parent's screen, which is exactly the class of fabricated accuracy this project does not ship.
+The trimmed tail becomes a synthetic row named by `i18n.t('family.otherApps')`, using a UID that cannot collide with a real one (`-100`). Percentages divide by the grand total _including_ `otherBytes` — dividing by the visible rows only would quietly inflate every percentage on the parent's screen, which is exactly the class of fabricated accuracy this project does not ship.
 
 - [ ] **Step 4: Run the tests**
 
@@ -951,16 +1009,16 @@ Put the cache itself in `src/features/family/cache.ts` as two plain functions �
 
 - [ ] **Step 6: Write the two screens**
 
-`src/app/family/index.tsx` — one row per child: label, last-seen ("2 hours ago", `src/i18n/format.ts`), today's mobile/Wi-Fi totals from the `recent` payload. An empty list says *"No child devices have checked in yet"* and links to the pairing card, never a spinner that never resolves.
+`src/app/family/index.tsx` — one row per child: label, last-seen ("2 hours ago", `src/i18n/format.ts`), today's mobile/Wi-Fi totals from the `recent` payload. An empty list says _"No child devices have checked in yet"_ and links to the pairing card, never a spinner that never resolves.
 
 **Two staleness signals, never conflated.** They are different faults with different remedies, and showing only one of them produces a screen that lies:
 
-| Signal | Source | Means | Says |
-|---|---|---|---|
-| Child last-seen | newest `updatedAt` among that child's rows | that child's device is not reporting | *"Leo's phone hasn't checked in since 14:20"* |
-| Parent last sync | `lastSyncOkAt` / `lastSyncErrorAt` from Task 27 | **this** device cannot reach the backend at all | *"Not synced since Tuesday"*, screen-level, above the list |
+| Signal           | Source                                          | Means                                           | Says                                                       |
+| ---------------- | ----------------------------------------------- | ----------------------------------------------- | ---------------------------------------------------------- |
+| Child last-seen  | newest `updatedAt` among that child's rows      | that child's device is not reporting            | _"Leo's phone hasn't checked in since 14:20"_              |
+| Parent last sync | `lastSyncOkAt` / `lastSyncErrorAt` from Task 27 | **this** device cannot reach the backend at all | _"Not synced since Tuesday"_, screen-level, above the list |
 
-A paused Supabase project makes *every* child look stale simultaneously, which reads as "all three kids turned their phones off" unless the screen-level banner says the pull itself is failing. Show that banner whenever `lastSyncErrorAt` is set, with the same remedy text as the notification.
+A paused Supabase project makes _every_ child look stale simultaneously, which reads as "all three kids turned their phones off" unless the screen-level banner says the pull itself is failing. Show that banner whenever `lastSyncErrorAt` is set, with the same remedy text as the notification.
 
 `src/app/family/[deviceId].tsx` — a `RangePicker` (reused), then `TotalsCard` and the `AppRow` list built from the `daily` payloads in range, plus `UsageChart` over the daily totals.
 
@@ -969,7 +1027,7 @@ Two rules that make this screen honest, and are the reason it is not just the ho
 1. **A header line stating the child's last check-in.** Always visible, never below the fold.
 2. **Days with no `daily` row render as a gap, not as zero.** The child may simply have been offline. `UsageChart` must skip them; the totals line must say how many days in the selected range are missing.
 
-Entry point: a *Family* row in the settings card stack when `role === 'parent'`. **Not a sixth native tab** — there are already five, one of which is the debug probe.
+Entry point: a _Family_ row in the settings card stack when `role === 'parent'`. **Not a sixth native tab** — there are already five, one of which is the debug probe.
 
 - [ ] **Step 7: Verify on two devices**
 
@@ -992,17 +1050,19 @@ git commit -m "feat: parent-side family list and per-child usage screens"
 
 ### Task 30: Background pull and parent-side alerts
 
-**Why this is in Phase 9 and not an optional later phase.** Tasks 28-29 give the parent a screen. A screen is only read when someone opens the app, and a monitoring feature the parent has to remember to check has not told them anything. This task is what makes the answer to *"does the app have to be open?"* **no**.
+**Why this is in Phase 9 and not an optional later phase.** Tasks 28-29 give the parent a screen. A screen is only read when someone opens the app, and a monitoring feature the parent has to remember to check has not told them anything. This task is what makes the answer to _"does the app have to be open?"_ **no**.
 
 What it is not: it is not live. The parent learns of a child's usage on the same 15-minute `USAGE_CHECK_TASK` floor both devices already run on, so the true end-to-end latency is **one child cycle plus one parent cycle - 15 to 45 minutes in practice, longer under Doze**. Every string in this task is written for that number. Nothing here says "now".
 
 Reuses `limitStatus`, `detectSpike`, `decideAlert` and `notify` unchanged. The new code is: fetching someone else's numbers on the existing schedule, and namespacing the alert keys.
 
 **Files:**
+
 - Modify: `src/features/limits/backgroundCheck.ts`, `src/features/limits/alerts.ts`
 - Modify: `src/features/family/sync.ts`, `src/features/usage/settings.ts` (per-child limits), `src/i18n/*`
 
 **Interfaces:**
+
 - Consumes: `syncRun`, `pullSnapshots`, `mergeCache`, `readCache`, `limitStatus`, `notify`
 - Produces:
   - `pullFromParent(now: number): Promise<void>` in `sync.ts`
@@ -1020,13 +1080,13 @@ The mirror of `syncFromChild`, and the same shape:
 
 ```ts
 export async function pullFromParent(now: number): Promise<void> {
-  const s = await loadSettings();
-  if (s.familyRole !== "parent" || !s.pairToken) return;
-  await syncRun(async () => {
-    const cached = await readCache();
-    const since = Math.max(0, ...cached.map((r) => r.updatedAt));
-    await mergeCache(await pullSnapshots(since));
-  });
+	const s = await loadSettings();
+	if (s.familyRole !== "parent" || !s.pairToken) return;
+	await syncRun(async () => {
+		const cached = await readCache();
+		const since = Math.max(0, ...cached.map((r) => r.updatedAt));
+		await mergeCache(await pullSnapshots(since));
+	});
 }
 ```
 
@@ -1034,19 +1094,19 @@ export async function pullFromParent(now: number): Promise<void> {
 
 - [ ] **Step 3: Call it in `runUsageCheck`, and check the children**
 
-In `backgroundCheck.ts`, beside the existing `syncFromChild` call and with the same swallow-and-continue posture - a failed pull must never cost the parent's *own* alerts or archive snapshot. Then, for each child with a configured limit, sum its `daily` payloads across the current cycle plus its `recent` total for today and run the existing `limitStatus` against it.
+In `backgroundCheck.ts`, beside the existing `syncFromChild` call and with the same swallow-and-continue posture - a failed pull must never cost the parent's _own_ alerts or archive snapshot. Then, for each child with a configured limit, sum its `daily` payloads across the current cycle plus its `recent` total for today and run the existing `limitStatus` against it.
 
 Three honesty rules:
 
 1. **Never alert on data older than 3 hours.** A child that has not checked in has not necessarily stopped using data; alerting from stale totals says something false about the present.
 2. **Notify when a child goes quiet for 24 hours**, once. That is the honest version of the wishlist's "tamper watchdog" - it reports an observation ("no check-in since yesterday"), not an accusation, and it does not fire on the ordinary overnight Doze gap.
-3. **Every notification names the child's check-in time, not the delivery time.** *"Leo passed 2 GB - as of 14:05"*. The parent is being told about a 15-to-45-minute-old fact and the notification must not read as a live one.
+3. **Every notification names the child's check-in time, not the delivery time.** _"Leo passed 2 GB - as of 14:05"_. The parent is being told about a 15-to-45-minute-old fact and the notification must not read as a live one.
 
 - [ ] **Step 4: Per-child limit UI**
 
 A limit field on the child's detail screen, storing into `childLimits[deviceId]`. Reuse `LimitCard`.
 
-**The copy must not imply enforcement.** *"Notify me when Leo passes 2 GB"* - never *"Limit Leo to 2 GB"*. Nothing in this app can stop the child's traffic, and a settings screen that suggests otherwise is the single worst outcome of this plan.
+**The copy must not imply enforcement.** _"Notify me when Leo passes 2 GB"_ - never _"Limit Leo to 2 GB"_. Nothing in this app can stop the child's traffic, and a settings screen that suggests otherwise is the single worst outcome of this plan.
 
 - [ ] **Step 5: Verify on two devices**
 
@@ -1081,17 +1141,19 @@ Skip this phase entirely if the parent only cares about byte totals. Phase 9 is 
 Three small reads through APIs the app already has permission for. No new manifest permission, and deliberately none of the ones that would need one.
 
 **Files:**
+
 - Modify: `modules/network-usage/android/src/main/java/expo/modules/networkusage/LiveProbe.kt`
 - Modify: `.../NetworkUsageModule.kt`
 - Modify: `modules/network-usage/src/NetworkUsage.types.ts`
 - Modify: `modules/network-usage/index.web.ts`, `index.ios.ts`
 
 **Interfaces:**
+
 - Produces: `NetworkUsage.getDeviceContext(): { foregroundPackage: string | null; batteryPercent: number | null; connection: 'MOBILE' | 'WIFI' | 'NONE' }`
 
 **Not built here, on purpose:**
 
-- **Wi-Fi SSID.** Needs `ACCESS_FINE_LOCATION` and location services switched on from Android 10. A home SSID is a geolocator, and asking a child for location permission to display a network name is a bad trade. The connection *type* is what the parent actually needs.
+- **Wi-Fi SSID.** Needs `ACCESS_FINE_LOCATION` and location services switched on from Android 10. A home SSID is a geolocator, and asking a child for location permission to display a network name is a bad trade. The connection _type_ is what the parent actually needs.
 - **Carrier name.** `READ_PHONE_STATE`, same reasoning, less value.
 
 - [ ] **Step 1: Extend `LiveProbe.kt`**
@@ -1174,6 +1236,7 @@ git commit -m "feat: foreground app, battery and connection type probe"
 ### Task 32: Heartbeat payload and its honest rendering
 
 **Files:**
+
 - Modify: `src/features/limits/backgroundCheck.ts`, `src/features/family/sync.ts`
 - Modify: `src/app/family/[deviceId].tsx`, `src/app/family/index.tsx`
 - Modify: `src/features/usage/AppIcon.tsx` (accept a package name with no local install)
@@ -1184,7 +1247,7 @@ git commit -m "feat: foreground app, battery and connection type probe"
 In `backgroundCheck.ts`, pass it through — inside the existing `try`, so a probe failure costs the sync nothing:
 
 ```ts
-    await syncFromChild(now, NetworkUsage.getDeviceContext());
+await syncFromChild(now, NetworkUsage.getDeviceContext());
 ```
 
 - [ ] **Step 2: Render it, with the check-in time attached to every value**
@@ -1193,7 +1256,7 @@ On the child's card and detail screen:
 
 > **Last check-in 12 minutes ago** — was using YouTube · 64% battery · on mobile data
 
-The wording is the requirement, not a suggestion. **"Leo is currently using YouTube" is forbidden copy**: the reading is up to 15 minutes old and the app cannot know what is on screen right now. Use the past tense and name the check-in time. If the heartbeat is older than 45 minutes (three missed cycles), render *"No check-in since {time}"* instead of a stale app name.
+The wording is the requirement, not a suggestion. **"Leo is currently using YouTube" is forbidden copy**: the reading is up to 15 minutes old and the app cannot know what is on screen right now. Use the past tense and name the check-in time. If the heartbeat is older than 45 minutes (three missed cycles), render _"No check-in since {time}"_ instead of a stale app name.
 
 - [ ] **Step 3: Resolve the foreground app's name**
 
@@ -1226,6 +1289,7 @@ Optional, and the only genuinely optional phase left: parent-side notification m
 The wishlist framed this as the child requesting more of an enforced quota. There is no enforced quota. What is real: the child has a **local** limit from Phase 3, and the parent can raise it remotely. That is the version worth building.
 
 **Files:**
+
 - Modify: `src/features/family/sync.ts`, `src/features/limits/backgroundCheck.ts`
 - Create: `src/features/family/RequestCard.tsx`
 - Modify: `src/app/family/[deviceId].tsx`, `src/i18n/*`
@@ -1236,7 +1300,7 @@ A button on the child's `LimitCard`, enabled when the local limit is in `warn` o
 
 - [ ] **Step 2: Parent sees and answers it**
 
-`runUsageCheck` on the parent notifies on a new `request`. The child's detail screen shows *Grant* / *Decline*, writing `kind: 'grant'` with `{ grantedBytes, at, requestAt }`. `requestAt` is what makes an old grant identifiable as stale.
+`runUsageCheck` on the parent notifies on a new `request`. The child's detail screen shows _Grant_ / _Decline_, writing `kind: 'grant'` with `{ grantedBytes, at, requestAt }`. `requestAt` is what makes an old grant identifiable as stale.
 
 - [ ] **Step 3: Child applies it**
 
@@ -1266,7 +1330,6 @@ Everything in the Phase 3–7 release checklist still applies. These are additio
 
 - [ ] **The unpaired app makes zero network calls for this feature.** Watch the traffic on a fresh install through a full background cycle. If a request goes out before pairing, the feature is not shippable.
 - [ ] **Delete works from both sides.** Unpair from the child, then from the parent, and confirm `family_pull` returns nothing after each. Confirm the token is rotated, not reused, if the same device pairs again.
-- [ ] **The disclosure banner cannot be hidden.** Search the codebase for any prop, setting, or flag that suppresses `SharingBanner`. There must not be one.
 - [ ] **No screen claims enforcement.** Read every family string in `en.ts` and `ar.ts`. Nothing may say block, pause, restrict, or limit-as-a-verb. Alerting is what this ships.
 - [ ] **No screen claims live.** Every value from a `recent` payload carries a check-in time, and nothing says "currently" or "now".
 - [ ] **Stale data never becomes a zero.** Missing days are gaps; a missing heartbeat is "no check-in", not 0 MB.
