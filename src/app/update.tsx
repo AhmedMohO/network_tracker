@@ -120,7 +120,7 @@ export default function Update() {
                   <View style={styles.notesHeader}>
                     <FileText size={14} color={theme.textSecondary} />
                     <ThemedText type="smallBold" themeColor="textSecondary">
-                      Release Notes
+                      {t('updateScreen.releaseNotes')}
                     </ThemedText>
                   </View>
                   <ThemedText type="small">{release.notes}</ThemedText>

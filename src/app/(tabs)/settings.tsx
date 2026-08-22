@@ -426,21 +426,6 @@ export default function SettingsScreen() {
 					{/* Family Sharing Card */}
 					<PairingCard />
 
-					{/* Updates Card */}
-					<Card style={styles.card}>
-						<SectionHeader
-							icon={<DownloadCloud size={16} color={theme.accent} />}
-							title={t("updateScreen.title")}
-						/>
-						<Button
-							variant="secondary"
-							icon={<DownloadCloud size={16} color={theme.text} />}
-							title={t("updateScreen.check")}
-							onPress={() => router.push("/update")}
-							accessibilityLabel={t("updateScreen.check")}
-						/>
-					</Card>
-
 					{/* Family list entry point — parent devices only. Not a sixth
               native tab: there are already five. */}
 					{familyRole === "parent" && (
@@ -458,6 +443,21 @@ export default function SettingsScreen() {
 							/>
 						</Card>
 					)}
+
+					{/* Updates Card */}
+					<Card style={styles.card}>
+						<SectionHeader
+							icon={<DownloadCloud size={16} color={theme.accent} />}
+							title={t("updateScreen.title")}
+						/>
+						<Button
+							variant="secondary"
+							icon={<DownloadCloud size={16} color={theme.text} />}
+							title={t("updateScreen.check")}
+							onPress={() => router.push("/update")}
+							accessibilityLabel={t("updateScreen.check")}
+						/>
+					</Card>
 
 					{/* System Apps Toggle Card */}
 					<Card style={styles.card}>
