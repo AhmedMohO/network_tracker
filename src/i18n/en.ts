@@ -55,6 +55,19 @@ export const en = {
     permissionBody:
       'Your phone requires this permission to identify Wi-Fi network names (like Home or Office). Your location is never tracked or shared.',
     permissionDenied: 'Permission is needed to tell Wi-Fi networks apart.',
+    permissionBlocked:
+      'Your phone will not ask again. Opening settings — turn Location on there to use this.',
+    permissionBackground:
+      'One more step: set location access to "Allow all the time". Your phone only reveals the Wi-Fi network name while the app is open otherwise, so networks would go unrecorded whenever you are using another app.',
+    // Named after the codes `wifiWatchProblem` returns, so the settings screen
+    // can look the message up instead of branching three ways.
+    problemPermission:
+      'Not recording: location access is off, or set to Approximate. Tap to set it to Allow all the time, with Precise on.',
+    problemLocationOff:
+      'Not recording: your phone\'s location switch is off. Your phone will not reveal Wi-Fi network names while it is. Tap to turn it on.',
+    problemBackground:
+      'Only recording while the app is open. Tap to set location access to "Allow all the time" so networks are recognized in the background too.',
+    problemFix: 'Open settings',
   },
   range: {
     today: 'Today',
@@ -300,8 +313,6 @@ export const en = {
     bannerDetails: 'Details',
     whatIsShared:
       'What is shared: Daily total internet usage per app (Wi-Fi and mobile data), battery level, currently active app, and connection type.',
-    whatNeverLeaves:
-      'What is NEVER shared: Your exact location, messages, photos, browser history, passwords, or screen contents.',
     wifiNamesShared:
       'Wi-Fi network names are only shared when “Break down by Wi-Fi network” is turned on in Settings.',
     joinTitle: 'Join family sharing?',

@@ -21,8 +21,28 @@
          the connected network's name has required ACCESS_FINE_LOCATION *and*
          location services switched on since Android 10; without it WifiInfo
          reports UNKNOWN_SSID. The user opts in from Settings, and everything
-         else in the app works with the permission denied. -->
+         else in the app works with the permission denied.
+
+         COARSE is declared and requested alongside FINE because it has to be:
+         from Android 12 a runtime request for ACCESS_FINE_LOCATION on its own
+         is ignored outright ("ACCESS_FINE_LOCATION must be requested with
+         ACCESS_COARSE_LOCATION" in logcat). Only FINE lifts the redaction — a
+         user who picks "Approximate" is granted COARSE and still reads
+         UNKNOWN_SSID — so COARSE is here to make the dialog appear at all, not
+         because it answers anything.
+
+         BACKGROUND is what makes the watch a watch. A while-in-use grant lets
+         the app read an SSID only while one of its own activities is visible,
+         so without this the service records the user's foreground sessions and
+         books every other byte as unattributed — silently, because that bucket
+         renders as an ordinary row. The other way out is a foreground service
+         typed `location` instead of `specialUse`, deliberately not taken: that
+         type cannot be started from the background without this same
+         permission, so WifiWatchBootReceiver would fail after every reboot.
+         See WifiWatchService.problem. -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />

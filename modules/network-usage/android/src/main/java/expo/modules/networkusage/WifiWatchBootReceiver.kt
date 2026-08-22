@@ -25,8 +25,7 @@ class WifiWatchBootReceiver : BroadcastReceiver() {
             // device died holding before the service opens a new one.
             WifiSessions.record(context, null, System.currentTimeMillis())
         }
-        if (SyncKeepAlive.isEnabled(context)) SyncKeepAlive.schedule(context)
-
+        // Re-arms the alarm a reboot cleared, as well as starting the service.
         // No-ops when neither switch is on, so an unenrolled device does
         // nothing at boot but read two booleans.
         runCatching { WifiWatchService.sync(context) }

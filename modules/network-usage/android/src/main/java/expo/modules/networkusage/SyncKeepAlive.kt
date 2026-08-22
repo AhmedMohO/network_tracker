@@ -62,9 +62,15 @@ object SyncKeepAlive {
     fun isEnabled(context: Context): Boolean =
         prefs(context).getBoolean(KEY_ENABLED, false)
 
+    /**
+     * Writes the flag and nothing else. Arming the alarm is
+     * `WifiWatchService.sync`'s job, because the alarm now serves two switches
+     * — the Wi-Fi watch uses its firing as a proof of life (`WifiSessions.seen`)
+     * — and switching this one off must not cancel the alarm out from under the
+     * other. Every caller that flips either flag already calls `sync`.
+     */
     fun setEnabled(context: Context, enabled: Boolean) {
         prefs(context).edit().putBoolean(KEY_ENABLED, enabled).apply()
-        if (enabled) schedule(context) else cancel(context)
     }
 
     private fun alarmManager(context: Context): AlarmManager? =

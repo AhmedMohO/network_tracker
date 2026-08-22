@@ -9,6 +9,7 @@ import {
 	Globe,
 	Languages,
 	Lock,
+	MapPin,
 	Percent,
 	RefreshCw,
 	Router,
@@ -61,7 +62,13 @@ import {
 	enableWifiWatch,
 	isWifiWatchEnabled,
 	knownWifiNetworks,
+	openWifiWatchSettings,
+	wifiWatchProblem,
 } from "@/features/usage/wifiNetworks";
+import {
+	WIFI_PROBLEM_KEY,
+	type WifiWatchProblem,
+} from "@/features/usage/wifiProblem";
 import { useTheme } from "@/hooks/use-theme";
 import { LANGUAGES, setLanguage, type Language } from "@/i18n";
 import { formatDateTime } from "@/i18n/format";
@@ -145,20 +152,38 @@ export default function SettingsScreen() {
 	// process with no JS running, so `WifiSessions` owns it and this mirrors it.
 	const [wifiWatch, setWifiWatch] = useState(isWifiWatchEnabled);
 	const [seenNetworks, setSeenNetworks] = useState<string[]>(knownWifiNetworks);
+	// The switch says the user asked for this; this says whether Android is
+	// actually letting it happen. They disagree the moment a permission is
+	// revoked or the location switch goes off — silently, since the bytes just
+	// move to the "Other networks" row.
+	const [wifiProblem, setWifiProblem] = useState<WifiWatchProblem | null>(
+		wifiWatchProblem,
+	);
 
 	const toggleWifiWatch = async (value: boolean) => {
 		if (!value) {
 			disableWifiWatch();
 			setWifiWatch(false);
+			setWifiProblem(null);
 			return;
 		}
 		// Reading a network's name is a location read as far as Android is
 		// concerned, so a decline here is an ordinary outcome, not a failure:
 		// the switch goes back to off and everything else keeps working.
-		const granted = await enableWifiWatch();
-		setWifiWatch(granted);
+		const result = await enableWifiWatch();
+		setWifiWatch(result === "on");
 		setSeenNetworks(knownWifiNetworks());
-		if (!granted) toast(t("wifiNetworks.permissionDenied"));
+		// Declining only the *background* half still enables the watch, so this
+		// is where the user is told the feature is running at half strength.
+		setWifiProblem(result === "on" ? wifiWatchProblem() : null);
+		if (result === "blocked") {
+			// Android will not show the dialog again, so the toast alone would
+			// leave the switch permanently unusable with no hint why.
+			toast(t("wifiNetworks.permissionBlocked"));
+			openWifiWatchSettings();
+		} else if (result === "denied") {
+			toast(t("wifiNetworks.permissionDenied"));
+		}
 	};
 
 	// Same reason `wifiWatch` above is native state: `SyncKeepAlive` has to be
@@ -184,6 +209,9 @@ export default function SettingsScreen() {
 			setBatteryOptimized(isBatteryOptimized());
 			setKeepAlive(isSyncKeepAliveEnabled());
 			setWifiWatch(isWifiWatchEnabled());
+			// The only moment this can be learned: all three causes are changed
+			// on a system screen the app is not running behind.
+			setWifiProblem(wifiWatchProblem());
 		});
 		return () => sub.remove();
 	}, []);
@@ -516,6 +544,24 @@ export default function SettingsScreen() {
 						<ThemedText type="small" themeColor="textSecondary">
 							{t("wifiNetworks.settingCaveat")}
 						</ThemedText>
+						{/* The switch on its own cannot say this. All three causes are
+						    revoked from a system screen, and every one of them turns the
+						    whole breakdown into a single "Other networks" row that looks
+						    exactly like a working feature with nothing to show. */}
+						{wifiWatch && wifiProblem ? (
+							<>
+								<ThemedText type="small" themeColor="warning">
+									{t(WIFI_PROBLEM_KEY[wifiProblem])}
+								</ThemedText>
+								<Button
+									variant="secondary"
+									icon={<MapPin size={16} color={theme.text} />}
+									title={t("wifiNetworks.problemFix")}
+									onPress={openWifiWatchSettings}
+									accessibilityLabel={t("wifiNetworks.problemFix")}
+								/>
+							</>
+						) : null}
 						{/* A child's network names go to the parent with every sync, so
 						    the person whose networks they are is told here — on the
 						    switch that starts it — not only in the pairing disclosure. */}

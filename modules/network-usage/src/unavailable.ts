@@ -23,6 +23,8 @@ export const unavailableNetworkUsage: NetworkUsageModule = {
   getWifiNetworkUsage: unavailable,
   isWifiWatchEnabled: unavailable,
   setWifiWatchEnabled: unavailable,
+  wifiWatchProblem: unavailable,
+  openWifiWatchSettings: unavailable,
   getKnownWifiNetworks: unavailable,
   clearWifiSessions: unavailable,
   isSyncKeepAliveEnabled: unavailable,

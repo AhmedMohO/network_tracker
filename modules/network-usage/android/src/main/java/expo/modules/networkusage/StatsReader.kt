@@ -169,10 +169,14 @@ class StatsReader(private val context: Context) {
                     assigned += overlap
                 }
                 // Whatever the log has no opinion about — before tracking was
-                // switched on, or a gap where the watch was not running. It is
-                // reported as its own unattributed bucket rather than being
-                // dropped, so the per-network figures always add up to the
-                // Wi-Fi total the rest of the app shows.
+                // switched on, a gap where the watch was not running, or the
+                // tail of a session nothing was left alive to close
+                // (`WifiSessions.openSessionEnd`). It is reported as its own
+                // unattributed bucket rather than being dropped, so the
+                // per-network figures add up to the Wi-Fi total the rest of the
+                // app shows — to within the truncation in `add`, which is under
+                // a byte per bucket per session and invisible beside a
+                // megabyte.
                 if (assigned < span) {
                     add(null, b.uid, b, (span - assigned).toDouble() / span)
                 }

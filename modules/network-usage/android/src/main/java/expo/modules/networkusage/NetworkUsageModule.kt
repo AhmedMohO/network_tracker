@@ -82,6 +82,16 @@ class NetworkUsageModule : Module() {
             WifiWatchService.sync(context)
         }
 
+        /**
+         * Null when the watch is actually recording, otherwise which of the
+         * three things the user can revoke is stopping it. The switch alone
+         * cannot answer this — see `WifiWatchService.problem`.
+         */
+        Function("wifiWatchProblem") { WifiWatchService.problem(context) }
+
+        /** Opens the system screen that fixes `wifiWatchProblem`. */
+        Function("openWifiWatchSettings") { WifiWatchService.openFix(context) }
+
         Function("isSyncKeepAliveEnabled") { SyncKeepAlive.isEnabled(context) }
 
         /**

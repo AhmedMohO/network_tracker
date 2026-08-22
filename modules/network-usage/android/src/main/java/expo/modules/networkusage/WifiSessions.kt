@@ -26,12 +26,25 @@ object WifiSessions {
     private const val PREFS = "network-usage-wifi-sessions"
     private const val KEY_LOG = "transitions"
     private const val KEY_ENABLED = "watch-enabled"
+    private const val KEY_SEEN = "last-seen"
 
     /** Comfortably past the archive's own 80-day cutoff (`archive/merge.ts`). */
     private const val RETENTION_MS = 120L * 24 * 60 * 60 * 1000
 
     /** A log this long is already ~2 transitions an hour for four months. */
     private const val MAX_ENTRIES = 20_000
+
+    /**
+     * How long past the last proof of life the still-open session is believed.
+     *
+     * The stamp comes from `SyncKeepAlive`'s 15-minute alarm, which
+     * `setAndAllowWhileIdle` is free to defer — Doze rate-limits it to roughly
+     * one firing every nine minutes and a sleeping phone can land several
+     * minutes late on top of that. An hour is four missed ticks: long enough
+     * never to cut a session that is merely quiet, short enough that a
+     * force-stop costs one hour of attribution instead of three days of it.
+     */
+    private const val LIVENESS_GRACE_MS = 60L * 60 * 1000
 
     private fun prefs(context: Context) =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -55,6 +68,27 @@ object WifiSessions {
     }
 
     /**
+     * "The process that writes this log was alive at `at`."
+     *
+     * The log records transitions, and the last one has no closing entry — it
+     * is read as running to the present. That is only true while something is
+     * still watching for the next transition. Force-stop the app, or let an
+     * OEM task killer have it, and the last network recorded goes on being
+     * credited with every byte until the user next opens the app: a phone
+     * force-stopped on the home network gets a week of café traffic booked to
+     * "Home", stated as fact.
+     *
+     * Written from `record` (a transition is its own proof) and from
+     * `SyncKeepAlive`'s alarm tick, which is the part that matters: it is the
+     * only clock in this app that survives Doze, and Android cancels it in the
+     * same breath as it force-stops the app, so the stamp stops exactly when
+     * the watch does. `sessions` clamps to it.
+     */
+    fun seen(context: Context, at: Long) {
+        prefs(context).edit().putLong(KEY_SEEN, at).apply()
+    }
+
+    /**
      * Appends a transition, unless it repeats the network already recorded —
      * `onCapabilitiesChanged` fires for signal-strength changes too, and a log
      * of those would be thousands of identical entries a day.
@@ -63,6 +97,11 @@ object WifiSessions {
      */
     @Synchronized
     fun record(context: Context, ssid: String?, at: Long) {
+        // Before the early return below, not after: a callback that reports the
+        // network we already knew about says nothing new about the log and
+        // everything about the watch still running.
+        seen(context, at)
+
         val next = ssid?.takeIf { it.isNotBlank() } ?: ""
         val log = readLog(context)
 
@@ -106,22 +145,48 @@ object WifiSessions {
     data class Session(val start: Long, val end: Long, val ssid: String?)
 
     /**
+     * How far the last, unclosed transition is allowed to run.
+     *
+     * `now` while the watch is alive, and `seen + LIVENESS_GRACE_MS` once it
+     * has stopped being — after which the log has no opinion about the network
+     * and the caller books the rest as unattributed, which is the honest
+     * answer. Anything else invents a fact: the last network recorded is a
+     * guess the moment nothing is left watching for the next one.
+     *
+     * No stamp at all means a log written before this existed, or a watch
+     * switched on and read within the same minute. `now` there, which is what
+     * the reader did before the stamp — the alternative would retroactively
+     * unattribute every existing user's history on the first launch after the
+     * update.
+     */
+    private fun openSessionEnd(context: Context, now: Long): Long {
+        val seen = prefs(context).getLong(KEY_SEEN, 0L)
+        if (seen <= 0L) return now
+        return minOf(now, seen + LIVENESS_GRACE_MS)
+    }
+
+    /**
      * The sessions overlapping `[start, end)`, clipped to it, in order.
      *
      * The span before the first transition is deliberately absent rather than
      * reported as a null-ssid session: "we were not watching" and "Wi-Fi was
      * off" are different facts, and the caller books unattributed bytes
      * against the difference between these sessions and the range as a whole.
+     * The span after the watch stopped being alive is absent for exactly the
+     * same reason — see `openSessionEnd`.
      */
     fun sessions(context: Context, start: Long, end: Long, now: Long): List<Session> {
         val log = readLog(context)
+        val openEnd = openSessionEnd(context, now)
         val out = ArrayList<Session>()
         for (i in 0 until log.length()) {
             val entry = log.optJSONObject(i) ?: continue
             val from = entry.optLong("at")
-            // The last transition runs to the present, not to the range end:
-            // a range asking about the future still only ever gets observed time.
-            val to = log.optJSONObject(i + 1)?.optLong("at") ?: now
+            // The last transition runs to `openEnd` — the present, or as far
+            // as the watch is known to have been alive — and never to the range
+            // end: a range asking about the future still only ever gets
+            // observed time.
+            val to = log.optJSONObject(i + 1)?.optLong("at") ?: openEnd
             val clippedStart = maxOf(from, start)
             val clippedEnd = minOf(to, end)
             if (clippedEnd <= clippedStart) continue
@@ -149,6 +214,6 @@ object WifiSessions {
 
     @Synchronized
     fun clear(context: Context) {
-        prefs(context).edit().remove(KEY_LOG).apply()
+        prefs(context).edit().remove(KEY_LOG).remove(KEY_SEEN).apply()
     }
 }

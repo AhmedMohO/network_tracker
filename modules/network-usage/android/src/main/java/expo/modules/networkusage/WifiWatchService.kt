@@ -1,5 +1,6 @@
 package expo.modules.networkusage
 
+import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -7,17 +8,24 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
+import android.location.LocationManager
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
+import android.net.Uri
 import android.net.wifi.WifiInfo
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
+import android.provider.Settings
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
+import androidx.core.content.ContextCompat
+import androidx.core.location.LocationManagerCompat
 
 /**
  * Keeps `WifiSessions` honest.
@@ -72,18 +80,27 @@ class WifiWatchService : Service() {
         }
 
         /**
-         * Starts or stops the service to match the two switches that need it —
-         * the Wi-Fi watch and `SyncKeepAlive` — rather than either one deciding
-         * alone. Turning the Wi-Fi watch off while keep-alive is on must not
-         * take the service (and with it the `active` standby bucket the alarm
-         * depends on) away from the other feature, and vice versa. Every caller
-         * that flips either flag calls this instead of `start`/`stop`.
+         * Starts or stops the service *and the alarm* to match the two switches
+         * that need them — the Wi-Fi watch and `SyncKeepAlive` — rather than
+         * either one deciding alone. Turning the Wi-Fi watch off while
+         * keep-alive is on must not take the service (and with it the `active`
+         * standby bucket the alarm depends on) away from the other feature, and
+         * vice versa. Every caller that flips either flag calls this instead of
+         * `start`/`stop`.
+         *
+         * The alarm is here for the same reason, and it is not only
+         * keep-alive's any more: its firing is the one Doze-proof proof of life
+         * the Wi-Fi watch has, so a watch-only user needs it armed too. What
+         * the tick then *does* still depends on which switch asked for it —
+         * see `SyncTickReceiver`.
          */
         fun sync(context: Context) {
             if (WifiSessions.isEnabled(context) || SyncKeepAlive.isEnabled(context)) {
                 start(context)
+                SyncKeepAlive.schedule(context)
             } else {
                 stop(context)
+                SyncKeepAlive.cancel(context)
             }
         }
 
@@ -108,6 +125,67 @@ class WifiWatchService : Service() {
             val ssid = info?.ssid?.trim(QUOTE) ?: return null
             if (ssid.isEmpty() || ssid == WifiManager.UNKNOWN_SSID.trim(QUOTE)) return null
             return ssid
+        }
+
+        /**
+         * Why the watch is recording nothing, or null when nothing is wrong.
+         *
+         * The switch being on says only that the user asked for this once.
+         * Three things they can change afterwards make every SSID read come
+         * back as `UNKNOWN_SSID`, and all three fail the same silent way: the
+         * log fills with "no Wi-Fi", the bytes land in the unattributed bucket,
+         * and that bucket renders as an ordinary row — so the feature looks
+         * like it is working and reports "Other networks" for everything.
+         * Settings asks this on every foreground and says which one it is.
+         *
+         * Ordered by how fundamental each one is, not how likely: a device with
+         * no permission at all has nothing to say about location services.
+         */
+        fun problem(context: Context): String? {
+            if (ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.ACCESS_FINE_LOCATION
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                // Covers "Approximate" too: that grants COARSE only, and COARSE
+                // does not lift the redaction.
+                return "permission"
+            }
+
+            val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+            if (lm == null || !LocationManagerCompat.isLocationEnabled(lm)) return "locationOff"
+
+            // The one that matters most and is hardest to see. Before Android 10
+            // there is no such permission and no such restriction.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+                ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.ACCESS_BACKGROUND_LOCATION
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                return "background"
+            }
+
+            return null
+        }
+
+        /**
+         * Opens whichever system screen fixes the current `problem`.
+         *
+         * The routing lives here rather than in the caller because the two
+         * destinations are not interchangeable — the location master switch is
+         * a device setting, the permission is an app setting — and the caller
+         * already has to ask `problem` to decide whether to offer this at all.
+         */
+        fun openFix(context: Context) {
+            val intent = if (problem(context) == "locationOff") {
+                Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)
+            } else {
+                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                    .setData(Uri.fromParts("package", context.packageName, null))
+            }
+            runCatching { context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                .onFailure { Log.w("WifiWatch", "No settings screen: ${it.message}") }
         }
     }
 
@@ -171,10 +249,11 @@ class WifiWatchService : Service() {
      * recorded appears to run until the log's next entry, which on a device
      * where the user turned the watch off could be days later.
      *
-     * ponytail: covers a graceful stop only — a process killed outright never
-     * runs this, and that session stays open until the next transition.
-     * Upgrade path if it bites: a periodic liveness stamp that the reader
-     * clamps open sessions to.
+     * Covers a graceful stop only — a process killed outright never runs this.
+     * That case is no longer a hole: `WifiSessions.seen` is stamped by the
+     * alarm tick and `sessions` clamps the still-open session to it, so a
+     * force-stopped watch costs an hour of attribution rather than every day
+     * until the app is next opened.
      */
     private fun unregister() {
         val cb = callback ?: return
@@ -191,15 +270,35 @@ class WifiWatchService : Service() {
         // Any Wi-Fi network, not just the default one: NetworkStatsManager
         // attributes bytes by transport, so Wi-Fi traffic counts as Wi-Fi even
         // while mobile happens to be the default route.
+        //
+        // NET_CAPABILITY_INTERNET does narrow it, though, and has to. A phone
+        // can hold more than one TRANSPORT_WIFI network at once — a local-only
+        // network another app requested with a `WifiNetworkSpecifier`, a
+        // local-only hotspot — and those carry a different SSID or none at all.
+        // Without this the log alternates between the two several times a
+        // minute. Captive portals keep the capability (it is what the network
+        // offers, not what it has proven), so this does not drop them.
         val request = NetworkRequest.Builder()
             .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
             .build()
 
         val cb = object : ConnectivityManager.NetworkCallback() {
+            /**
+             * The network whose name is in the log right now, so `onLost` can
+             * tell "the one we were reporting went away" from "some other Wi-Fi
+             * network went away". Android 12's make-before-break roaming brings
+             * the replacement up *before* dropping the old one, and without
+             * this the old one's `onLost` overwrites the new name with "no
+             * Wi-Fi" and leaves it there until the next transition.
+             */
+            private var reported: Network? = null
+
             override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
                 // Fires on every signal-strength change too; `record` collapses
                 // the repeats rather than this callback trying to guess which
                 // changes matter.
+                reported = network
                 WifiSessions.record(
                     this@WifiWatchService,
                     currentSsid(this@WifiWatchService, caps),
@@ -208,6 +307,8 @@ class WifiWatchService : Service() {
             }
 
             override fun onLost(network: Network) {
+                if (network != reported) return
+                reported = null
                 WifiSessions.record(this@WifiWatchService, null, System.currentTimeMillis())
             }
         }

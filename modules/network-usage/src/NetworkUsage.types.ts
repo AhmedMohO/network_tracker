@@ -100,6 +100,21 @@ export type NetworkUsageModule = {
    * watch still runs and simply records every network as unknown.
    */
   setWifiWatchEnabled(enabled: boolean): void;
+  /**
+   * Why the watch is recording nothing, or null when it is working. The switch
+   * being on is not the same question: all three of these are revoked from
+   * system screens, behind the app's back, and each one silently turns every
+   * network into the unattributed bucket.
+   *
+   * - `permission` — no `ACCESS_FINE_LOCATION` (including "Approximate", which
+   *   grants only `ACCESS_COARSE_LOCATION` and does not lift the redaction).
+   * - `locationOff` — the device's location master switch is off.
+   * - `background` — location is "while using the app", so the name is
+   *   readable only while the app is on screen.
+   */
+  wifiWatchProblem(): "permission" | "locationOff" | "background" | null;
+  /** Opens the system screen that fixes `wifiWatchProblem`. */
+  openWifiWatchSettings(): void;
   /** Network names seen so far, newest first. */
   getKnownWifiNetworks(): string[];
   clearWifiSessions(): void;

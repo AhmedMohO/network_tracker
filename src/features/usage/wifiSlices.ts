@@ -4,8 +4,9 @@ import { sumUsage, type AppUsage } from "./aggregate";
  * One Wi-Fi network's share of a range.
  *
  * `ssid` is `null` for bytes that cannot be attributed: everything before
- * per-network tracking was switched on, plus any gap where the watch was not
- * running. Callers render that as its own row rather than hiding it — the
+ * per-network tracking was switched on, any gap where the watch was not
+ * running, and the tail of a session the watch was force-stopped in the middle
+ * of. Callers render that as its own row rather than hiding it — the
  * per-network rows have to add up to the Wi-Fi total the rest of the app
  * shows, or two screens contradict each other.
  */
