@@ -1,6 +1,10 @@
 import * as Device from "expo-device";
 import { useCallback, useState } from "react";
 
+import {
+  isBatteryOptimized,
+  requestIgnoreBatteryOptimizations,
+} from "@/features/limits/keepAlive";
 import { loadSettings, saveSettings, type Settings } from "@/features/usage/settings";
 import { useUsageContext } from "@/features/usage/useUsageContext";
 import i18n from "@/i18n";
@@ -64,6 +68,14 @@ export async function becomeParent(label: string): Promise<Settings> {
  * demotes it to a child while its own children keep pushing to a token no
  * device reads anymore. The guard lives here, not in each caller, so the
  * deep-link handler and the settings paste field both inherit it.
+ *
+ * This is also where the battery-optimization exemption is asked for, rather
+ * than on first launch: a child that Android is free to defer for hours is a
+ * child whose parent sees stale numbers, and this is the first moment the ask
+ * has a reason the user can see. Every join path — deep link, QR scan, pasted
+ * link — routes through here, so none of them can miss it. Asked once per
+ * join and never repeated; Settings › Background updates keeps the button for
+ * a user who declined.
  */
 export async function joinAsChild(token: string, parentLabel: string): Promise<Settings> {
   const s = await loadSettings();
@@ -76,6 +88,11 @@ export async function joinAsChild(token: string, parentLabel: string): Promise<S
     pairedLabel: parentLabel,
     deviceLabel: s.deviceLabel ?? defaultDeviceLabel(),
   });
+  // Skipped when Android has already exempted us — some OEM ROMs grant it
+  // outright, and a dialog saying "you already allowed this" is pure noise.
+  // The system dialog is its own activity, so the deep-link path's
+  // `reloadAppAsync` right after this reloads behind it rather than killing it.
+  if (isBatteryOptimized()) requestIgnoreBatteryOptimizations();
   // Same reasoning as `becomeParent`. The deep-link path reloads the app
   // straight after this, which would register on the next start anyway — but
   // the settings paste field does not, and a child is the device that most

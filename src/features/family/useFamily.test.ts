@@ -7,12 +7,20 @@ jest.mock("@/features/usage/settings", () => ({
   loadSettings: jest.fn(),
   saveSettings: jest.fn(),
 }));
+jest.mock("@/features/limits/keepAlive", () => ({
+  isBatteryOptimized: jest.fn(),
+  requestIgnoreBatteryOptimizations: jest.fn(),
+}));
 jest.mock("./sync", () => ({ forgetPair: jest.fn(), pullSnapshots: jest.fn() }));
 jest.mock("expo-device", () => ({ deviceName: null }));
 jest.mock("@/i18n", () => ({ __esModule: true, default: { t: (key: string) => key } }));
 
 import * as Device from "expo-device";
 
+import {
+  isBatteryOptimized,
+  requestIgnoreBatteryOptimizations,
+} from "@/features/limits/keepAlive";
 import { loadSettings, saveSettings } from "@/features/usage/settings";
 
 import { newPairToken } from "./pair";
@@ -25,6 +33,8 @@ beforeEach(() => {
   asMock(loadSettings).mockReset();
   asMock(saveSettings).mockReset().mockImplementation(async (patch: Record<string, unknown>) => patch);
   asMock(forgetPair).mockReset().mockResolvedValue(undefined);
+  asMock(isBatteryOptimized).mockReset().mockReturnValue(true);
+  asMock(requestIgnoreBatteryOptimizations).mockReset();
 });
 
 describe("defaultDeviceLabel", () => {
@@ -77,11 +87,27 @@ describe("joinAsChild", () => {
     );
   });
 
+  // A child Android is free to defer for hours is a child whose parent reads
+  // stale numbers — this is the moment the exemption has a visible reason.
+  it("asks for the battery exemption on a real join", async () => {
+    asMock(loadSettings).mockResolvedValue({ pairToken: null, deviceLabel: null });
+    await joinAsChild(newPairToken(), "Dad's phone");
+    expect(requestIgnoreBatteryOptimizations).toHaveBeenCalled();
+  });
+
+  it("skips the battery dialog when Android already exempted the app", async () => {
+    asMock(isBatteryOptimized).mockReturnValue(false);
+    asMock(loadSettings).mockResolvedValue({ pairToken: null, deviceLabel: null });
+    await joinAsChild(newPairToken(), "Dad's phone");
+    expect(requestIgnoreBatteryOptimizations).not.toHaveBeenCalled();
+  });
+
   it("is idempotent: retapping the same link makes no write and mints no second device id", async () => {
     const token = "a".repeat(32);
     asMock(loadSettings).mockResolvedValue({ pairToken: token, deviceId: "existing-device" });
     await joinAsChild(token, "Dad's phone");
     expect(saveSettings).not.toHaveBeenCalled();
+    expect(requestIgnoreBatteryOptimizations).not.toHaveBeenCalled();
   });
 
   it("keeps an existing device label rather than overwriting it with the default", async () => {

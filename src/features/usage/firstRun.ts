@@ -1,17 +1,20 @@
 import { Platform } from "react-native";
 
-import {
-  isBatteryOptimized,
-  requestIgnoreBatteryOptimizations,
-  setSyncKeepAliveEnabled,
-} from "@/features/limits/keepAlive";
+import { setSyncKeepAliveEnabled } from "@/features/limits/keepAlive";
 
 import { hasUsageAccess } from "./api";
 import { loadSettings, saveSettings } from "./settings";
 
 /**
- * Turns on the background updates the app is useless without, and asks for the
- * exemption they need, once per install.
+ * Turns on the background updates the app is useless without, once per install.
+ *
+ * The battery-optimization exemption those updates need is deliberately *not*
+ * asked for here. On a fresh install nothing has explained why the app wants
+ * to be exempt, and a system dialog with no context is one that gets denied.
+ * It is asked at the moment it is both explicable and actually needed — when
+ * this device joins a parent as a child (`family/useFamily.ts`, `joinAsChild`),
+ * which is when missed background pushes start costing the user something —
+ * and stays available forever from Settings › Background updates.
  *
  * Per-network Wi-Fi tracking is deliberately *not* here. It is the one feature
  * that costs a location permission, and a location prompt on first launch —
@@ -27,10 +30,8 @@ import { loadSettings, saveSettings } from "./settings";
  * someone had turned off on the next launch. Doing it here, once, behind a
  * stamp, means a user who switches it off in Settings keeps it off forever.
  *
- * Runs after usage access is granted, not before: on a fresh install the
- * `PermissionGate` screen is what the user is looking at, and stacking a
- * battery dialog on top of a screen that is itself asking for a permission is
- * how both get dismissed.
+ * Runs after usage access is granted, not before: until it is, the background
+ * task this switch schedules has nothing it is allowed to read.
  */
 export async function runFirstTimeSetup(): Promise<void> {
   if (Platform.OS !== "android") return;
@@ -43,15 +44,5 @@ export async function runFirstTimeSetup(): Promise<void> {
 
   setSyncKeepAliveEnabled(true);
 
-  // Last, because it leaves the app. Skipped when Android has already
-  // exempted us — some OEM ROMs grant it to sideloaded apps outright, and a
-  // dialog that says "you already allowed this" is pure noise.
-  if (isBatteryOptimized()) requestIgnoreBatteryOptimizations();
-
-  // Stamped even when the user declines the dialog. This is a one-time
-  // *offer*, not a demand: Settings › Background updates keeps the switch and
-  // the battery row available for as long as the app is installed, and an app
-  // that re-prompts every launch is one that gets its permissions denied
-  // permanently.
   await saveSettings({ firstRunDoneAt: Date.now() });
 }

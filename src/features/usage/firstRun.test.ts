@@ -37,10 +37,9 @@ beforeEach(() => {
 });
 
 describe("runFirstTimeSetup", () => {
-  it("turns background updates on, asks for the exemption, and stamps", async () => {
+  it("turns background updates on and stamps", async () => {
     await runFirstTimeSetup();
     expect(setSyncKeepAliveEnabled).toHaveBeenCalledWith(true);
-    expect(requestIgnoreBatteryOptimizations).toHaveBeenCalled();
     expect(saveSettings).toHaveBeenCalledWith(
       expect.objectContaining({ firstRunDoneAt: expect.any(Number) }),
     );
@@ -70,8 +69,9 @@ describe("runFirstTimeSetup", () => {
     expect(saveSettings).not.toHaveBeenCalled();
   });
 
-  it("skips the battery dialog when Android already exempted the app", async () => {
-    asMock(isBatteryOptimized).mockReturnValue(false);
+  // The point of this one: a battery dialog on a fresh install has no reason
+  // the user can see yet. It belongs to `joinAsChild` now — see useFamily.test.
+  it("never asks for the battery exemption on install", async () => {
     await runFirstTimeSetup();
     expect(requestIgnoreBatteryOptimizations).not.toHaveBeenCalled();
     expect(saveSettings).toHaveBeenCalled();
