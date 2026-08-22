@@ -56,6 +56,7 @@ class WifiWatchService : Service() {
         private const val CHANNEL_ID = "wifi-watch"
         private const val NOTIFICATION_ID = 4711
         private const val QUOTE = '"'
+        private const val TAG = "WifiWatch"
 
         /**
          * `theme.accent`, matching the `color` handed to the
@@ -169,23 +170,52 @@ class WifiWatchService : Service() {
             return null
         }
 
+        private fun launch(context: Context, intent: Intent) {
+            context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }
+
         /**
          * Opens whichever system screen fixes the current `problem`.
          *
-         * The routing lives here rather than in the caller because the two
+         * The routing lives here rather than in the caller because the
          * destinations are not interchangeable — the location master switch is
          * a device setting, the permission is an app setting — and the caller
          * already has to ask `problem` to decide whether to offer this at all.
+         *
+         * App info is the *last* resort, not the first. Landing there leaves
+         * the user to find Permissions › Location themselves, which is two
+         * taps and a guess after a sentence that told them exactly which
+         * setting to change. `MANAGE_APP_PERMISSION` opens this app's Location
+         * page directly and `MANAGE_APP_PERMISSIONS` its permission list, but
+         * both are `@SystemApi` rather than public: PermissionController guards
+         * them on some builds and OEM ROMs replace the screen outright, so a
+         * `SecurityException` or `ActivityNotFoundException` from either is an
+         * expected outcome and falls through to the next. App info exists
+         * everywhere and ends the chain.
          */
         fun openFix(context: Context) {
-            val intent = if (problem(context) == "locationOff") {
-                Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)
-            } else {
-                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-                    .setData(Uri.fromParts("package", context.packageName, null))
+            if (problem(context) == "locationOff") {
+                runCatching { launch(context, Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)) }
+                    .onFailure { Log.w(TAG, "No location settings screen: ${it.message}") }
+                return
             }
-            runCatching { context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
-                .onFailure { Log.w("WifiWatch", "No settings screen: ${it.message}") }
+
+            val pkg = context.packageName
+            val locationPage = Intent("android.intent.action.MANAGE_APP_PERMISSION")
+                .putExtra("android.intent.extra.PACKAGE_NAME", pkg)
+                .putExtra(
+                    "android.intent.extra.PERMISSION_GROUP_NAME",
+                    Manifest.permission_group.LOCATION
+                )
+            val permissionList = Intent("android.intent.action.MANAGE_APP_PERMISSIONS")
+                .putExtra("android.intent.extra.PACKAGE_NAME", pkg)
+            val appInfo = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                .setData(Uri.fromParts("package", pkg, null))
+
+            runCatching { launch(context, locationPage) }
+                .recoverCatching { launch(context, permissionList) }
+                .recoverCatching { launch(context, appInfo) }
+                .onFailure { Log.w(TAG, "No settings screen: ${it.message}") }
         }
     }
 

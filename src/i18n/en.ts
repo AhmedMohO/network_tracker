@@ -51,6 +51,10 @@ export const en = {
     settingCaveat:
       'Requires permission to recognize Wi-Fi network names. Your location is never tracked or shared. Tracking starts from when this is turned on.',
     settingSeen: 'Connected networks: {{names}}.',
+    settingSeenNoneYet:
+      'Connected to {{name}}',
+    settingSeenNone:
+      'No network name is visible right now. If you are on Wi-Fi, set location access to "Allow all the time" and Precise.',
     permissionTitle: 'Allow Wi-Fi name access?',
     permissionBody:
       'Your phone requires this permission to identify Wi-Fi network names (like Home or Office). Your location is never tracked or shared.',

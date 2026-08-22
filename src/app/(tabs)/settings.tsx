@@ -64,6 +64,7 @@ import {
 	knownWifiNetworks,
 	openWifiWatchSettings,
 	wifiWatchProblem,
+	currentWifiName,
 } from "@/features/usage/wifiNetworks";
 import {
 	WIFI_PROBLEM_KEY,
@@ -152,6 +153,11 @@ export default function SettingsScreen() {
 	// process with no JS running, so `WifiSessions` owns it and this mirrors it.
 	const [wifiWatch, setWifiWatch] = useState(isWifiWatchEnabled);
 	const [seenNetworks, setSeenNetworks] = useState<string[]>(knownWifiNetworks);
+	// Only ever shown while the log is still empty, to separate "recording, but
+	// you have not switched networks yet" from "will never record".
+	const [currentNetwork, setCurrentNetwork] = useState<string | null>(
+		currentWifiName,
+	);
 	// The switch says the user asked for this; this says whether Android is
 	// actually letting it happen. They disagree the moment a permission is
 	// revoked or the location switch goes off — silently, since the bytes just
@@ -173,6 +179,7 @@ export default function SettingsScreen() {
 		const result = await enableWifiWatch();
 		setWifiWatch(result === "on");
 		setSeenNetworks(knownWifiNetworks());
+		setCurrentNetwork(currentWifiName());
 		// Declining only the *background* half still enables the watch, so this
 		// is where the user is told the feature is running at half strength.
 		setWifiProblem(result === "on" ? wifiWatchProblem() : null);
@@ -212,6 +219,12 @@ export default function SettingsScreen() {
 			// The only moment this can be learned: all three causes are changed
 			// on a system screen the app is not running behind.
 			setWifiProblem(wifiWatchProblem());
+			// Read once at mount otherwise, which is exactly wrong for the one
+			// line that proves the watch is working: joining a network happens
+			// while the user is in the Wi-Fi settings, and they come back here
+			// to a list that still predates it.
+			setSeenNetworks(knownWifiNetworks());
+			setCurrentNetwork(currentWifiName());
 		});
 		return () => sub.remove();
 	}, []);
@@ -570,11 +583,23 @@ export default function SettingsScreen() {
 								{t("family.wifiNamesShared")}
 							</ThemedText>
 						) : null}
-						{wifiWatch && seenNetworks.length > 0 ? (
+						{/* An empty list used to render nothing at all, which is the
+						    same screen as a broken feature. It now says which of the
+						    two it is: the names recorded so far, or — while there are
+						    none — whether the app can read the name of the network it
+						    is on this second. Nothing recorded *and* nothing readable
+						    is the only combination that means something is wrong. */}
+						{wifiWatch ? (
 							<ThemedText type="small" themeColor="textSecondary">
-								{t("wifiNetworks.settingSeen", {
-									names: seenNetworks.join(", "),
-								})}
+								{seenNetworks.length > 0
+									? t("wifiNetworks.settingSeen", {
+											names: seenNetworks.join(", "),
+										})
+									: currentNetwork
+										? t("wifiNetworks.settingSeenNoneYet", {
+												name: currentNetwork,
+											})
+										: t("wifiNetworks.settingSeenNone")}
 							</ThemedText>
 						) : null}
 					</Card>

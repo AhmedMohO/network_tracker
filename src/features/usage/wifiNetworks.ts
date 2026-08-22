@@ -117,6 +117,19 @@ export function wifiWatchProblem(): WifiWatchProblem | null {
   }
 }
 
+/**
+ * The network name visible to the app right now, or null. Diagnostic: an empty
+ * log says nothing about whether the watch works, and this does.
+ */
+export function currentWifiName(): string | null {
+  if (Platform.OS !== "android") return null;
+  try {
+    return NetworkUsage.currentWifiName();
+  } catch {
+    return null;
+  }
+}
+
 export function openWifiWatchSettings(): void {
   if (Platform.OS !== "android") return;
   try {

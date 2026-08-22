@@ -92,6 +92,18 @@ class NetworkUsageModule : Module() {
         /** Opens the system screen that fixes `wifiWatchProblem`. */
         Function("openWifiWatchSettings") { WifiWatchService.openFix(context) }
 
+        /**
+         * The name of the network connected right now, read the same way the
+         * watch reads it. Null for "not on Wi-Fi" *or* "the OS withheld it",
+         * which are the same answer to the only question Settings asks with
+         * it: can this app see a network name at this moment?
+         *
+         * Diagnostic, not data. Nothing is recorded from it — it exists so a
+         * user whose log is still empty can tell a watch that is working and
+         * has nothing yet from one that will never record anything.
+         */
+        Function("currentWifiName") { WifiWatchService.currentSsid(context) }
+
         Function("isSyncKeepAliveEnabled") { SyncKeepAlive.isEnabled(context) }
 
         /**

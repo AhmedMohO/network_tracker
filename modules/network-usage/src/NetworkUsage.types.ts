@@ -115,6 +115,13 @@ export type NetworkUsageModule = {
   wifiWatchProblem(): "permission" | "locationOff" | "background" | null;
   /** Opens the system screen that fixes `wifiWatchProblem`. */
   openWifiWatchSettings(): void;
+  /**
+   * The connected network's name right now, or null when there is none or the
+   * OS is withholding it. Diagnostic only — nothing is recorded from it. It
+   * answers "can this app see a network name at this moment?", which is the
+   * one thing an empty log cannot say for itself.
+   */
+  currentWifiName(): string | null;
   /** Network names seen so far, newest first. */
   getKnownWifiNetworks(): string[];
   clearWifiSessions(): void;
