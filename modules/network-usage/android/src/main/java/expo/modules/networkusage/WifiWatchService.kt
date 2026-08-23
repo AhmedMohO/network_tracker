@@ -105,6 +105,13 @@ class WifiWatchService : Service() {
             }
         }
 
+        /** `<unknown ssid>` and `""` both mean "no name", never a network name. */
+        private fun name(info: WifiInfo?): String? {
+            val ssid = info?.ssid?.trim(QUOTE) ?: return null
+            if (ssid.isEmpty() || ssid == WifiManager.UNKNOWN_SSID.trim(QUOTE)) return null
+            return ssid
+        }
+
         /**
          * The connected network's name, or null when there is none — or when
          * the OS is withholding it. From Android 10 `WifiInfo.getSSID()` is
@@ -112,20 +119,77 @@ class WifiWatchService : Service() {
          * `ACCESS_FINE_LOCATION` *and* location services are switched on, and
          * the redacted placeholder must read as "unknown", never as a network
          * literally named `<unknown ssid>`.
+         *
+         * Both sources, not one. The callback's `NetworkCapabilities` is the
+         * precise answer — it names the network *that callback is about* — but
+         * `transportInfo` is redacted and nulled by rules of its own, and a
+         * device that hands back a name through `WifiManager` while giving the
+         * service nothing through `transportInfo` recorded an empty log for a
+         * whole day looking exactly like a working feature. Whichever source
+         * can answer, answers; only "neither could" is null.
          */
         fun currentSsid(context: Context, caps: NetworkCapabilities? = null): String? {
-            val info: WifiInfo? =
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && caps != null) {
-                    caps.transportInfo as? WifiInfo
-                } else {
-                    @Suppress("DEPRECATION")
-                    (context.applicationContext
-                        .getSystemService(Context.WIFI_SERVICE) as? WifiManager)
-                        ?.connectionInfo
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                name(caps?.transportInfo as? WifiInfo)?.let { return it }
+            }
+            @Suppress("DEPRECATION")
+            val info = (context.applicationContext
+                .getSystemService(Context.WIFI_SERVICE) as? WifiManager)?.connectionInfo
+            return name(info)
+        }
+
+        /**
+         * Whether *some* Wi-Fi network carrying internet is connected right
+         * now, regardless of whether its name can be read.
+         *
+         * This is what separates the two reasons `currentSsid` returns null:
+         * "Wi-Fi is off" is a fact worth recording, "on Wi-Fi but the name came
+         * back blank" is not — writing the second as a transition would end a
+         * real session and book the rest of it as unattributed. Only the
+         * network callback, which is told which of the two happened, may record
+         * a null without asking this first.
+         */
+        fun onWifi(context: Context): Boolean {
+            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE)
+                as? ConnectivityManager ?: return false
+            @Suppress("DEPRECATION")
+            return runCatching {
+                cm.allNetworks.any { network ->
+                    cm.getNetworkCapabilities(network)?.let {
+                        it.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) &&
+                            it.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                    } == true
                 }
-            val ssid = info?.ssid?.trim(QUOTE) ?: return null
-            if (ssid.isEmpty() || ssid == WifiManager.UNKNOWN_SSID.trim(QUOTE)) return null
-            return ssid
+            }.getOrDefault(false)
+        }
+
+        /**
+         * Writes down the network connected right now, from whatever process
+         * happens to be awake. Safe to call from anywhere: it no-ops when the
+         * user has not switched the watch on, and `record` collapses repeats.
+         *
+         * The service's network callback is the accurate recorder — it catches
+         * the switch at the second it happens — but it is also the fragile one:
+         * it records nothing at all if the service was never started, was
+         * killed by an OEM task manager, or registered before the location
+         * grant arrived. Every one of those failures produces the same empty
+         * log, and an empty log is indistinguishable from a feature that has
+         * simply seen nothing yet. So the callback is no longer the only
+         * recorder: the 15-minute alarm and every foreground of the app call
+         * this too, which costs a `getConnectionInfo` and gives the log a floor
+         * of 15-minute resolution that survives the service dying entirely.
+         */
+        fun sample(context: Context) {
+            if (!WifiSessions.isEnabled(context)) return
+            val at = System.currentTimeMillis()
+            val ssid = currentSsid(context)
+            // A blank name while Wi-Fi is plainly connected is the OS
+            // withholding it, not a network change — see `onWifi`.
+            if (ssid != null || !onWifi(context)) {
+                WifiSessions.record(context, ssid, at)
+            } else {
+                WifiSessions.seen(context, at)
+            }
         }
 
         /**

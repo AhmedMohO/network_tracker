@@ -63,6 +63,10 @@ class NetworkUsageModule : Module() {
         }
 
         AsyncFunction("getWifiNetworkUsage") { q: WifiUsageQuery ->
+            // Before the read, not after: the app being open is itself an
+            // observation, and it is the one that survives an OEM task manager
+            // having killed the service and cancelled its alarm hours ago.
+            WifiWatchService.sample(context)
             StatsReader(context).appUsageByWifiNetwork(q)
         }
 
@@ -98,11 +102,15 @@ class NetworkUsageModule : Module() {
          * which are the same answer to the only question Settings asks with
          * it: can this app see a network name at this moment?
          *
-         * Diagnostic, not data. Nothing is recorded from it — it exists so a
-         * user whose log is still empty can tell a watch that is working and
-         * has nothing yet from one that will never record anything.
+         * Diagnostic for the caller, and a recording opportunity on the way
+         * past: Settings asks this on every foreground, which makes it one of
+         * the three places the log gets written from — see
+         * `WifiWatchService.sample`.
          */
-        Function("currentWifiName") { WifiWatchService.currentSsid(context) }
+        Function("currentWifiName") {
+            WifiWatchService.sample(context)
+            WifiWatchService.currentSsid(context)
+        }
 
         Function("isSyncKeepAliveEnabled") { SyncKeepAlive.isEnabled(context) }
 
