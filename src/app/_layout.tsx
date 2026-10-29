@@ -6,18 +6,19 @@ import { useEffect } from 'react';
 import { Alert, AppState, Platform, useColorScheme } from 'react-native';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
-import { parsePairLink } from '@/features/family/pair';
-import { registerPushToken } from '@/features/family/pushToken';
-import { backfillFromChild, syncFromChild } from '@/features/family/sync';
-import { joinAsChild } from '@/features/family/useFamily';
+import { parsePairLink } from '@/features/family/utils/pair';
+import { registerPushToken } from '@/features/family/services/pushToken';
+import { backfillFromChild, syncFromChild } from '@/features/family/services/sync';
+import { joinAsChild } from '@/features/family/hooks/useFamily';
 // Importing this at module scope registers the TaskManager task on load.
-import { registerBackgroundCheck } from '@/features/limits/backgroundCheck';
-import { ensureNotificationSetup } from '@/features/limits/notify';
-import { applyOtaUpdate, checkForOtaUpdate } from '@/features/updates/ota';
-import { PermissionGate } from '@/features/usage/PermissionGate';
-import { runFirstTimeSetup } from '@/features/usage/firstRun';
-import { loadSettings } from '@/features/usage/settings';
-import { UsageProvider } from '@/features/usage/useUsageContext';
+import { registerBackgroundCheck } from '@/features/limits/services/backgroundCheck';
+import { ensureNotificationSetup } from '@/features/limits/services/notify';
+import { restoreBackgroundWork } from '@/features/limits/services/keepAlive';
+import { applyOtaUpdate, checkForOtaUpdate } from '@/features/updates/services/ota';
+import { PermissionGate } from '@/features/usage/components/PermissionGate';
+import { runFirstTimeSetup } from '@/features/usage/services/firstRun';
+import { loadSettings } from '@/features/usage/services/settings';
+import { UsageProvider } from '@/features/usage/hooks/useUsageContext';
 import i18n, { syncLayoutDirection } from '@/i18n';
 
 SplashScreen.preventAutoHideAsync();
@@ -80,6 +81,7 @@ export default function RootLayout() {
     // own stamp makes every later call a single settings read. Unthrottled,
     // unlike `push`, because it is that read and nothing else once done.
     const setUp = () => {
+      restoreBackgroundWork();
       runFirstTimeSetup().catch((e) => { console.warn('[setup] first run failed:', e); });
     };
     push();

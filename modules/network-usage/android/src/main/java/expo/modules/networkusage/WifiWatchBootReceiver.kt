@@ -18,9 +18,10 @@ import android.content.Intent
  */
 class WifiWatchBootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
+        if (intent.action != Intent.ACTION_BOOT_COMPLETED &&
+            intent.action != Intent.ACTION_MY_PACKAGE_REPLACED) return
 
-        if (WifiSessions.isEnabled(context)) {
+        if (intent.action == Intent.ACTION_BOOT_COMPLETED && WifiSessions.isEnabled(context)) {
             // The boot itself is a gap in observation, so close the session the
             // device died holding before the service opens a new one.
             WifiSessions.record(context, null, System.currentTimeMillis())

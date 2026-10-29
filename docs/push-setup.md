@@ -1,8 +1,9 @@
 # Making background sync actually happen
 
 Three independent mechanisms, weakest first. They all trigger the same
-`runUsageCheck`, and every one of them is idempotent, so having all three
-costs nothing but makes it very unlikely that none fires.
+`runUsageCheck`. Simultaneous alarm, worker, and push triggers share one running
+check. Alert identifiers are stable, so retrying a post replaces its tray entry
+instead of stacking another copy.
 
 | # | Mechanism | Needs | Reliability |
 |---|-----------|-------|-------------|
@@ -99,7 +100,7 @@ To stop it: `select cron.unschedule('family-ping');`
 A data-only message with no title and no body, so nothing is shown to the user.
 The app ignores the payload entirely — it is a knock on the door, not an
 instruction — which is what stops a spoofed push from being able to steer the
-device. See `PUSH_SYNC_TASK` in `src/features/limits/backgroundCheck.ts`.
+device. See `PUSH_SYNC_TASK` in `src/features/limits/services/backgroundCheck.ts`.
 
 `family_ping_stale` only wakes devices whose `recent` row is between 20 minutes
 and 7 days old: a device syncing on its own is never pinged, and a device that
@@ -124,3 +125,27 @@ select device_id, kind, count(*)
 
 Frozen at 30 `daily` + 1 `recent` means the pairing backfill ran and nothing
 since.
+
+## Release-only background startup failures
+
+If logcat reports `ClassNotFoundException` for
+`expo.modules.adapters.react.apploader.RNHeadlessAppLoader`, Android is reaching
+the task but the release shrinker removed Expo's background loader. Keep it in
+`modules/network-usage/android/consumer-rules.pro`; the local module exports
+those rules to every release build. A JavaScript-only update cannot repair an
+installed APK with this missing class.
+
+`index.js` imports the task definitions before Expo Router. Keep that import
+at the application entry point: a headless launch never mounts `_layout.tsx`,
+so layout-only task registration leaves a cold background job with no executor.
+
+Test a minified release with the app in the background, including a job that
+starts before any Activity has opened. Debug builds do not exercise shrinking.
+The boot receiver also handles app replacement so installing an update restores
+enabled background work. Foregrounding the app reconciles the service with its
+saved switches without changing the user's preference.
+
+Family check-ins run before the slower local archive and spike scans. Current
+usage and pending grants run before yesterday's archive; a history failure can
+still be reported without losing today's heartbeat. A family HTTP request has
+a 15-second deadline so a stalled connection does not block all later syncs.

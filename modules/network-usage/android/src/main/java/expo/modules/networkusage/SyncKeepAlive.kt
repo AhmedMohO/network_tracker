@@ -169,7 +169,7 @@ object SyncKeepAlive {
         val noop = TaskExecutionCallback { }
         consumers.forEach { consumer ->
             runCatching { execute.invoke(consumer, noop) }
-                .onFailure { Log.w(TAG, "Task failed: ${it.message}") }
+                .onFailure { Log.w(TAG, "Task failed", it.cause ?: it) }
         }
     }
 

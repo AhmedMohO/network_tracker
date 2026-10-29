@@ -17,15 +17,15 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { MaxContentWidth, Radius, Spacing, TextEnd } from '@/constants/theme';
-import { AppIcon } from '@/features/usage/AppIcon';
-import { TotalsCard } from '@/features/usage/TotalsCard';
-import { UsageChartCard } from '@/features/usage/UsageChart';
-import { openAppDataUsageSettings } from '@/features/usage/api';
-import { formatBytes } from '@/features/usage/format';
-import { useUsage } from '@/features/usage/useUsage';
-import { useUsageContext } from '@/features/usage/useUsageContext';
-import { useWifiNetworks } from '@/features/usage/useWifiNetworks';
-import { AppWifiNetworks } from '@/features/usage/WifiNetworksCard';
+import { AppIcon } from '@/features/usage/components/AppIcon';
+import { TotalsCard } from '@/features/usage/components/TotalsCard';
+import { UsageChartCard } from '@/features/usage/components/UsageChart';
+import { openAppDataUsageSettings } from '@/features/usage/services/api';
+import { formatBytes } from '@/features/usage/utils/format';
+import { useUsage } from '@/features/usage/hooks/useUsage';
+import { useUsageContext } from '@/features/usage/hooks/useUsageContext';
+import { useWifiNetworks } from '@/features/usage/hooks/useWifiNetworks';
+import { AppWifiNetworks } from '@/features/usage/components/WifiNetworksCard';
 import { useTheme } from '@/hooks/use-theme';
 
 function LegendRow({

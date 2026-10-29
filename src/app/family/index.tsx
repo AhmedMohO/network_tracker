@@ -9,16 +9,18 @@ import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { BottomTabInset, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
-import { isTodayHeartbeat, TodayTotals } from '@/features/family/TodayTotals';
-import type { ChildDevice } from '@/features/family/useChildren';
-import { useChildren } from '@/features/family/useChildren';
-import { useFamily } from '@/features/family/useFamily';
-import { useUsageContext } from '@/features/usage/useUsageContext';
+import { isTodayHeartbeat, TodayTotals } from '@/features/family/components/TodayTotals';
+import type { ChildDevice } from '@/features/family/hooks/useChildren';
+import { useChildren } from '@/features/family/hooks/useChildren';
+import { useFamily } from '@/features/family/hooks/useFamily';
+import { useUsageContext } from '@/features/usage/hooks/useUsageContext';
 import { useTheme } from '@/hooks/use-theme';
+import { useNow } from '@/hooks/use-now';
 import { formatDateTime, formatDay } from '@/i18n/format';
 
 function ChildRow({ child, onPress }: { child: ChildDevice; onPress: () => void }) {
   const theme = useTheme();
+  const now = useNow();
   const { t } = useTranslation();
   const when = child.lastSeen > 0 ? formatDateTime(child.lastSeen) : t('family.neverCheckedIn');
 
@@ -39,7 +41,7 @@ function ChildRow({ child, onPress }: { child: ChildDevice; onPress: () => void 
         <ThemedText type="small" themeColor="textSecondary">
           {child.lastSeen > 0 ? t('family.lastSeen', { when }) : when}
         </ThemedText>
-        {child.recent && isTodayHeartbeat(child.recent.at) ? (
+        {child.recent && isTodayHeartbeat(child.recent.at, now) ? (
           <TodayTotals recent={child.recent} serverAt={child.recentServerAt} />
         ) : null}
       </View>

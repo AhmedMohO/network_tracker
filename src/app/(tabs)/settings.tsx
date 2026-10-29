@@ -44,19 +44,19 @@ import {
 	Radius,
 	Spacing,
 } from "@/constants/theme";
-import { PairingCard } from "@/features/family/PairingCard";
-import { useFamily } from "@/features/family/useFamily";
-import { LimitCard } from "@/features/limits/LimitCard";
+import { PairingCard } from "@/features/family/components/PairingCard";
+import { useFamily } from "@/features/family/hooks/useFamily";
+import { LimitCard } from "@/features/limits/components/LimitCard";
 import {
 	isBatteryOptimized,
 	isSyncKeepAliveEnabled,
 	requestIgnoreBatteryOptimizations,
 	setSyncKeepAliveEnabled,
-} from "@/features/limits/keepAlive";
-import type { LimitNetwork } from "@/features/limits/limits";
-import { useLimitStatus } from "@/features/limits/useLimitStatus";
-import { saveSettings } from "@/features/usage/settings";
-import { useUsageContext } from "@/features/usage/useUsageContext";
+} from "@/features/limits/services/keepAlive";
+import type { LimitNetwork } from "@/features/limits/utils/limits";
+import { useLimitStatus } from "@/features/limits/hooks/useLimitStatus";
+import { saveSettings } from "@/features/usage/services/settings";
+import { useUsageContext } from "@/features/usage/hooks/useUsageContext";
 import {
 	disableWifiWatch,
 	enableWifiWatch,
@@ -65,11 +65,11 @@ import {
 	openWifiWatchSettings,
 	wifiWatchProblem,
 	currentWifiName,
-} from "@/features/usage/wifiNetworks";
+} from "@/features/usage/services/wifiNetworks";
 import {
 	WIFI_PROBLEM_KEY,
 	type WifiWatchProblem,
-} from "@/features/usage/wifiProblem";
+} from "@/features/usage/utils/wifiProblem";
 import { useTheme } from "@/hooks/use-theme";
 import { LANGUAGES, setLanguage, type Language } from "@/i18n";
 import { formatDateTime } from "@/i18n/format";
@@ -117,28 +117,16 @@ export default function SettingsScreen() {
 	const isWifi = activeTab === "WIFI";
 	const limitStatus = useLimitStatus(activeTab);
 
-	const [mobileLimitGb, setMobileLimitGb] = useState("");
-	const [mobileWarnPercent, setMobileWarnPercent] = useState("80");
-
-	const [wifiLimitGb, setWifiLimitGb] = useState("");
-	const [wifiWarnPercent, setWifiWarnPercent] = useState("80");
-
-	const [cycleDay, setCycleDay] = useState("1");
-
-	useEffect(() => {
-		if (!settings) return;
-		setMobileLimitGb(
-			settings.mobileLimitBytes ? String(settings.mobileLimitBytes / GB) : "",
-		);
-		setMobileWarnPercent(String(settings.mobileWarnAtPercent));
-
-		setWifiLimitGb(
-			settings.wifiLimitBytes ? String(settings.wifiLimitBytes / GB) : "",
-		);
-		setWifiWarnPercent(String(settings.wifiWarnAtPercent));
-
-		setCycleDay(String(settings.cycleStartDay));
-	}, [settings]);
+	const [mobileLimitDraft, setMobileLimitGb] = useState<string | null>(null);
+	const [mobileWarnDraft, setMobileWarnPercent] = useState<string | null>(null);
+	const [wifiLimitDraft, setWifiLimitGb] = useState<string | null>(null);
+	const [wifiWarnDraft, setWifiWarnPercent] = useState<string | null>(null);
+	const [cycleDraft, setCycleDay] = useState<string | null>(null);
+	const mobileLimitGb = mobileLimitDraft ?? (settings?.mobileLimitBytes ? String(settings.mobileLimitBytes / GB) : "");
+	const mobileWarnPercent = mobileWarnDraft ?? String(settings?.mobileWarnAtPercent ?? 80);
+	const wifiLimitGb = wifiLimitDraft ?? (settings?.wifiLimitBytes ? String(settings.wifiLimitBytes / GB) : "");
+	const wifiWarnPercent = wifiWarnDraft ?? String(settings?.wifiWarnAtPercent ?? 80);
+	const cycleDay = cycleDraft ?? String(settings?.cycleStartDay ?? 1);
 
 	const chooseLanguage = async (language: Language) => {
 		if (language === i18n.language) return;
@@ -257,6 +245,11 @@ export default function SettingsScreen() {
 				wifiWarnAtPercent: percent(wifiWarnPercent),
 				cycleStartDay: Number.isInteger(day) && day >= 1 && day <= 31 ? day : 1,
 			});
+			setMobileLimitGb(null);
+			setMobileWarnPercent(null);
+			setWifiLimitGb(null);
+			setWifiWarnPercent(null);
+			setCycleDay(null);
 			reloadSettings();
 			toast(t("limits.saved"));
 		} catch {

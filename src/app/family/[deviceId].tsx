@@ -1,6 +1,6 @@
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { AlertTriangle, BarChart3, BellRing, Clock, Gauge, Percent, Send, Smartphone, Wifi } from 'lucide-react-native';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FlatList, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -12,29 +12,30 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { BottomTabInset, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
-import { buildDailySeries } from '@/features/family/dailySeries';
-import { isTodayHeartbeat, TodayTotals } from '@/features/family/TodayTotals';
-import { useChildSnapshots, type RecentPayload } from '@/features/family/useChildren';
-import { summarizeChildren, useFamily } from '@/features/family/useFamily';
+import { buildDailySeries } from '@/features/family/utils/dailySeries';
+import { isTodayHeartbeat, TodayTotals } from '@/features/family/components/TodayTotals';
+import { useChildSnapshots, type RecentPayload } from '@/features/family/hooks/useChildren';
+import { summarizeChildren, useFamily } from '@/features/family/hooks/useFamily';
 // `childCycleUsedBytes` is `backgroundCheck.ts`'s own child-cycle math, reused
 // here so the number this card shows can never drift from the number that
 // decided whether the background task's notification fired. Importing it adds
 // no new native dependency: `_layout.tsx` already loads this module at app
 // start to register the background task.
-import { childCycleUsedBytes } from '@/features/limits/backgroundCheck';
-import { isStale } from '@/features/limits/alerts';
-import { cycleRanges, limitStatus } from '@/features/limits/limits';
-import { pushSnapshot } from '@/features/family/sync';
-import { AppRow } from '@/features/usage/AppRow';
-import { formatBytes } from '@/features/usage/format';
-import { NetworkFilterTabs } from '@/features/usage/NetworkFilterTabs';
-import { RangePicker } from '@/features/usage/RangePicker';
-import { saveSettings } from '@/features/usage/settings';
-import { TotalsCard } from '@/features/usage/TotalsCard';
-import { WifiNetworksCard } from '@/features/usage/WifiNetworksCard';
-import { UsageChart } from '@/features/usage/UsageChart';
-import { useUsageContext } from '@/features/usage/useUsageContext';
+import { childCycleUsedBytes } from '@/features/limits/services/backgroundCheck';
+import { isStale } from '@/features/limits/utils/alerts';
+import { cycleRanges, limitStatus } from '@/features/limits/utils/limits';
+import { pushSnapshot } from '@/features/family/services/sync';
+import { AppRow } from '@/features/usage/components/AppRow';
+import { formatBytes } from '@/features/usage/utils/format';
+import { NetworkFilterTabs } from '@/features/usage/components/NetworkFilterTabs';
+import { RangePicker } from '@/features/usage/components/RangePicker';
+import { saveSettings } from '@/features/usage/services/settings';
+import { TotalsCard } from '@/features/usage/components/TotalsCard';
+import { WifiNetworksCard } from '@/features/usage/components/WifiNetworksCard';
+import { UsageChart } from '@/features/usage/components/UsageChart';
+import { useUsageContext } from '@/features/usage/hooks/useUsageContext';
 import { useTheme } from '@/hooks/use-theme';
+import { useNow } from '@/hooks/use-now';
 import { formatDateTime } from '@/i18n/format';
 
 /** A GB-denominated limit stores as bytes; matches `settings.tsx`'s own conversion. */
@@ -49,17 +50,16 @@ export default function ChildUsageScreen() {
   const { range, network, settings, reloadSettings } = useUsageContext();
   const { snapshots, refresh: refreshSnapshots } = useChildSnapshots(deviceId);
   const router = useRouter();
+  const now = useNow();
 
-  const [limitGb, setLimitGb] = useState('');
-  const [warnPercent, setWarnPercent] = useState('80');
+  const [limitDraft, setLimitDraft] = useState<{ deviceId: string; value: string } | null>(null);
+  const [warnDraft, setWarnDraft] = useState<{ deviceId: string; value: string } | null>(null);
+  const existingLimit = settings?.childLimits[deviceId];
+  const limitGb = limitDraft?.deviceId === deviceId ? limitDraft.value : existingLimit?.mobileLimitBytes ? String(existingLimit.mobileLimitBytes / GB) : '';
+  const warnPercent = warnDraft?.deviceId === deviceId ? warnDraft.value : String(existingLimit?.warnAtPercent ?? 80);
+  const setLimitGb = (value: string) => setLimitDraft({ deviceId, value });
+  const setWarnPercent = (value: string) => setWarnDraft({ deviceId, value });
   const [answering, setAnswering] = useState(false);
-
-  useEffect(() => {
-    if (!settings || !deviceId) return;
-    const existing = settings.childLimits[deviceId];
-    setLimitGb(existing?.mobileLimitBytes ? String(existing.mobileLimitBytes / GB) : '');
-    setWarnPercent(existing ? String(existing.warnAtPercent) : '80');
-  }, [settings, deviceId]);
 
   const saveLimit = async () => {
     if (!deviceId) return;
@@ -75,6 +75,8 @@ export default function ChildUsageScreen() {
           [deviceId]: { mobileLimitBytes, warnAtPercent },
         },
       });
+      setLimitDraft(null);
+      setWarnDraft(null);
       reloadSettings();
       toast(t('limits.saved'));
     } catch {
@@ -154,8 +156,8 @@ export default function ChildUsageScreen() {
   };
 
   const series = useMemo(
-    () => buildDailySeries(snapshots, range.start, range.end, t('family.otherApps'), Date.now(), network),
-    [snapshots, range.start, range.end, t, network]
+    () => buildDailySeries(snapshots, range.start, range.end, t('family.otherApps'), now, network),
+    [snapshots, range.start, range.end, t, network, now]
   );
 
   // The child's own newest `recent` heartbeat. `buildDailySeries` already
@@ -174,8 +176,8 @@ export default function ChildUsageScreen() {
       .sort((a, b) => b.updatedAt - a.updatedAt)[0];
     const payload: RecentPayload | undefined = row?.payload;
     if (!payload) return null;
-    return isTodayHeartbeat(payload.at) ? { payload, serverAt: row.updatedAt } : null;
-  }, [snapshots]);
+    return isTodayHeartbeat(payload.at, now) ? { payload, serverAt: row.updatedAt } : null;
+  }, [snapshots, now]);
 
   // Same figure `backgroundCheck.ts`'s `checkChild` alerts against, so this
   // card and the notification never disagree — and the same staleness rule:
@@ -189,7 +191,6 @@ export default function ChildUsageScreen() {
     if (!settings || !deviceId || !summary) return null;
     const configured = settings.childLimits[deviceId];
     if (!configured?.mobileLimitBytes) return null;
-    const now = Date.now();
     const when = recent?.payload.at ?? summary.lastSeen;
     if (isStale(summary.lastSeen, now)) return { stale: true as const, when };
     const usedBytes = childCycleUsedBytes(snapshots, settings.cycleStartDay, now);
@@ -202,7 +203,7 @@ export default function ChildUsageScreen() {
       configured.warnAtPercent
     );
     return { stale: false as const, status, when };
-  }, [settings, deviceId, snapshots, summary, recent]);
+  }, [settings, deviceId, snapshots, summary, recent, now]);
 
   if (role !== 'parent') {
     return (

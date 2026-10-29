@@ -7,8 +7,8 @@ import { Alert, StyleSheet, View } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
 import { Button } from '@/components/ui/button';
 import { Spacing } from '@/constants/theme';
-import { parsePairLink } from '@/features/family/pair';
-import { useFamily } from '@/features/family/useFamily';
+import { parsePairLink } from '@/features/family/utils/pair';
+import { useFamily } from '@/features/family/hooks/useFamily';
 import { useTheme } from '@/hooks/use-theme';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 

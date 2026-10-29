@@ -20,9 +20,9 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { BottomTabInset, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
-import { runUsageCheck } from '@/features/limits/backgroundCheck';
-import { ensureNotificationSetup, notify } from '@/features/limits/notify';
-import { loadSettings, saveSettings } from '@/features/usage/settings';
+import { runUsageCheck } from '@/features/limits/services/backgroundCheck';
+import { ensureNotificationSetup, notify } from '@/features/limits/services/notify';
+import { loadSettings, saveSettings } from '@/features/usage/services/settings';
 import { useTheme } from '@/hooks/use-theme';
 import NetworkUsage, {
   AppUsageRow,
@@ -77,11 +77,13 @@ export default function Probe() {
   const prevAppTotals = useRef<Map<number, number>>(new Map());
 
   useEffect(() => {
+    const deviceTimers = deviceProbeTimers.current;
+    const appTimers = appProbeTimers.current;
     return () => {
-      clearInterval(deviceProbeTimers.current.interval);
-      clearTimeout(deviceProbeTimers.current.timeout);
-      clearInterval(appProbeTimers.current.interval);
-      clearTimeout(appProbeTimers.current.timeout);
+      clearInterval(deviceTimers.interval);
+      clearTimeout(deviceTimers.timeout);
+      clearInterval(appTimers.interval);
+      clearTimeout(appTimers.timeout);
     };
   }, []);
 

@@ -28,21 +28,21 @@ import {
 	Radius,
 	Spacing,
 } from "@/constants/theme";
-import { toCsv, toJson } from "@/features/export/csv";
-import { shareExport } from "@/features/export/share";
-import { RequestCard } from "@/features/family/RequestCard";
-import { LimitCard } from "@/features/limits/LimitCard";
-import { useLimitStatus } from "@/features/limits/useLimitStatus";
-import { partitionApps } from "@/features/usage/aggregate";
-import { AppRow } from "@/features/usage/AppRow";
-import { NetworkFilterTabs } from "@/features/usage/NetworkFilterTabs";
-import { RangePicker } from "@/features/usage/RangePicker";
-import { TotalsCard } from "@/features/usage/TotalsCard";
-import { UsageChartCard } from "@/features/usage/UsageChart";
-import { useUsage } from "@/features/usage/useUsage";
-import { useUsageContext } from "@/features/usage/useUsageContext";
-import { useWifiNetworks } from "@/features/usage/useWifiNetworks";
-import { WifiNetworksCard } from "@/features/usage/WifiNetworksCard";
+import { toCsv, toJson } from "@/features/export/utils/csv";
+import { shareExport } from "@/features/export/services/share";
+import { RequestCard } from "@/features/family/components/RequestCard";
+import { LimitCard } from "@/features/limits/components/LimitCard";
+import { useLimitStatus } from "@/features/limits/hooks/useLimitStatus";
+import { partitionApps } from "@/features/usage/utils/aggregate";
+import { AppRow } from "@/features/usage/components/AppRow";
+import { NetworkFilterTabs } from "@/features/usage/components/NetworkFilterTabs";
+import { RangePicker } from "@/features/usage/components/RangePicker";
+import { TotalsCard } from "@/features/usage/components/TotalsCard";
+import { UsageChartCard } from "@/features/usage/components/UsageChart";
+import { useUsage } from "@/features/usage/hooks/useUsage";
+import { useUsageContext } from "@/features/usage/hooks/useUsageContext";
+import { useWifiNetworks } from "@/features/usage/hooks/useWifiNetworks";
+import { WifiNetworksCard } from "@/features/usage/components/WifiNetworksCard";
 import { useTheme } from "@/hooks/use-theme";
 
 export default function Dashboard() {
@@ -90,7 +90,6 @@ export default function Dashboard() {
 			<SafeAreaView edges={["top"]} style={styles.safeArea}>
 				<View style={styles.topBar}>
 					<NetworkFilterTabs style={{ flex: 1 }} />
-					{__DEV__ && (
 						<Button
 							size="sm"
 							variant="outline"
@@ -101,7 +100,6 @@ export default function Dashboard() {
 							accessibilityLabel={t("export.action")}
 							accessibilityHint={t("export.hint")}
 						/>
-					)}
 				</View>
 
 				<RangePicker />

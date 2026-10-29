@@ -20,7 +20,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { MaxContentWidth, Radius, Spacing } from '@/constants/theme';
-import { fetchLatestRelease, isNewerVersion, type ReleaseInfo } from '@/features/updates/apk';
+import { fetchLatestRelease, isNewerVersion, type ReleaseInfo } from '@/features/updates/utils/apk';
 import { useTheme } from '@/hooks/use-theme';
 
 /** The repository this app is released from. */

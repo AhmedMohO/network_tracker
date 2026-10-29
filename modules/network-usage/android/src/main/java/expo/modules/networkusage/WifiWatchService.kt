@@ -317,6 +317,11 @@ class WifiWatchService : Service() {
      * silent hole in the log; the restart re-runs this and re-registers.
      */
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (!WifiSessions.isEnabled(this) && !SyncKeepAlive.isEnabled(this)) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+            return START_NOT_STICKY
+        }
         // A keep-alive user who never opted into the location-gated Wi-Fi watch
         // must not have a log of which networks they joined written behind
         // their back — hence the switch, checked every time, in both
@@ -325,6 +330,7 @@ class WifiWatchService : Service() {
         // Re-posted because the title names whichever switch the service is
         // running for, and that is exactly what may have just changed.
         startForegroundNotice()
+        SyncKeepAlive.schedule(this)
         return START_STICKY
     }
 
@@ -477,6 +483,8 @@ class WifiWatchService : Service() {
             .setSmallIcon(smallIconRes())
             .setColor(NOTIFICATION_TINT)
             .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setSilent(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setContentIntent(open)
             .build()

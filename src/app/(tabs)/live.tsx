@@ -24,10 +24,10 @@ import {
 	Radius,
 	Spacing,
 } from "@/constants/theme";
-import { rateBetween, type Counters, type Sample } from "@/features/live/rate";
-import { useLiveApps } from "@/features/live/useLiveApps";
-import { AppIcon } from "@/features/usage/AppIcon";
-import { formatBytes, formatRate } from "@/features/usage/format";
+import { rateBetween, type Counters, type Sample } from "@/features/live/utils/rate";
+import { useLiveApps } from "@/features/live/hooks/useLiveApps";
+import { AppIcon } from "@/features/usage/components/AppIcon";
+import { formatBytes, formatRate } from "@/features/usage/utils/format";
 import { useTheme } from "@/hooks/use-theme";
 
 const INTERVAL_MS = 1000;
