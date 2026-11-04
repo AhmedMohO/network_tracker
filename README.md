@@ -258,6 +258,8 @@ libraries are stored uncompressed so Android can load them directly from the APK
 instead of extracting another copy during installation. This increases download
 size while reducing installed storage. Android also stores compiled code, app
 data, and caches, so the installed size will still exceed the APK size.
+The JavaScript bundle is compressed in production to reduce the APK and installed
+code size further; decompression can add some startup work.
 
 On Android startup, NetTrack removes a cached `update.apk` downloaded before the
 last app installation. Pending installers are kept. Usage history older than
