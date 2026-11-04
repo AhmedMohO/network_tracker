@@ -33,6 +33,7 @@ import java.io.File
 @Composable
 fun SettingsScreen(
     onNavigateToFamily: () -> Unit,
+    onNavigateToUpdate: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -295,6 +296,49 @@ fun SettingsScreen(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text("Export CSV Archive", color = AccentSecondary, fontSize = 13.sp)
+                    }
+                }
+            }
+
+            // App Updates Card
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = DarkSurface)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(18.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Software Updates",
+                            color = TextPrimary,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = "Check GitHub for new versions & release notes",
+                            color = TextMuted,
+                            fontSize = 12.sp
+                        )
+                    }
+                    Button(
+                        onClick = onNavigateToUpdate,
+                        colors = ButtonDefaults.buttonColors(containerColor = DarkSurfaceVariant),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.SystemUpdate,
+                            contentDescription = null,
+                            tint = AccentPrimary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Check", color = AccentPrimary, fontSize = 13.sp)
                     }
                 }
             }

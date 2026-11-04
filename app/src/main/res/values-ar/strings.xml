@@ -1,0 +1,45 @@
+<resources>
+    <string name="app_name">NetTrack</string>
+    <string name="tab_overview">الاستهلاك</string>
+    <string name="tab_live">مباشر</string>
+    <string name="tab_probe">الفحص</string>
+    <string name="tab_compare">مقارنة</string>
+    <string name="tab_settings">الإعدادات</string>
+
+    <string name="action_ok">موافق</string>
+    <string name="action_cancel">إلغاء</string>
+    <string name="action_retry">إعادة المحاولة</string>
+    <string name="action_close">إغلاق</string>
+    <string name="action_apply">تطبيق</string>
+
+    <string name="network_all">الكل</string>
+    <string name="network_mobile">بيانات الهاتف</string>
+    <string name="network_wifi">الواي فاي</string>
+
+    <string name="range_today">اليوم</string>
+    <string name="range_yesterday">أمس</string>
+    <string name="range_last24h">آخر 24 ساعة</string>
+    <string name="range_last7d">آخر 7 أيام</string>
+    <string name="range_last30d">آخر 30 يوماً</string>
+    <string name="range_this_cycle">الباقة الحالية</string>
+    <string name="range_last_cycle">الباقة السابقة</string>
+    <string name="range_custom">فترة مخصصة</string>
+
+    <string name="settings_title">الإعدادات</string>
+    <string name="settings_wifi_tracking">تفصيل الاستهلاك لكل شبكة واي فاي</string>
+    <string name="settings_wifi_hint">معرفة كمية البيانات المستهلكة على كل شبكة واي فاي (كالمنزل أو العمل).</string>
+    <string name="settings_keep_alive">تحديثات منتظمة</string>
+    <string name="settings_keep_alive_hint">تحديث بيانات الاستهلاك بانتظام حتى عند إغلاق التطبيق.</string>
+    <string name="settings_battery_exempt">السماح بالعمل في الخلفية (استثناء البطارية)</string>
+    <string name="settings_family">المشاركة العائلية والربط</string>
+    <string name="settings_family_hint">مزامنة الاستهلاك بين هواتف العائلة</string>
+    <string name="settings_export_csv">تصدير أرشيف الاستهلاك (CSV)</string>
+    <string name="settings_updates">تحديثات التطبيق</string>
+    <string name="settings_updates_hint">فحص GitHub للإصدارات وسجل التغييرات</string>
+
+    <string name="update_title">تحديثات التطبيق</string>
+    <string name="update_checking">جارٍ التحقق من التحديثات…</string>
+    <string name="update_up_to_date">أنت تستخدم أحدث إصدار!</string>
+    <string name="update_available">يوجد تحديث جديد</string>
+    <string name="update_download_install">تحميل وتثبيت</string>
+</resources>

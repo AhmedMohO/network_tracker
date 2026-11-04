@@ -53,12 +53,13 @@ fun MainAppHost() {
     var currentDestination by remember { mutableStateOf(AppDestination.OVERVIEW) }
     var selectedUidForDetail by remember { mutableStateOf<Int?>(null) }
     var isInFamilyScreen by remember { mutableStateOf(false) }
+    var isInUpdateScreen by remember { mutableStateOf(false) }
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         containerColor = DarkBackground,
         bottomBar = {
-            if (selectedUidForDetail == null && !isInFamilyScreen) {
+            if (selectedUidForDetail == null && !isInFamilyScreen && !isInUpdateScreen) {
                 NavigationBar(
                     containerColor = DarkSurface,
                     tonalElevation = 8.dp
@@ -104,6 +105,12 @@ fun MainAppHost() {
                     modifier = modifier
                 )
             }
+            isInUpdateScreen -> {
+                UpdateScreen(
+                    onBack = { isInUpdateScreen = false },
+                    modifier = modifier
+                )
+            }
             else -> {
                 when (currentDestination) {
                     AppDestination.OVERVIEW -> {
@@ -124,6 +131,7 @@ fun MainAppHost() {
                     AppDestination.SETTINGS -> {
                         SettingsScreen(
                             onNavigateToFamily = { isInFamilyScreen = true },
+                            onNavigateToUpdate = { isInUpdateScreen = true },
                             modifier = modifier
                         )
                     }
