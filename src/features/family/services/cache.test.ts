@@ -3,6 +3,7 @@
 // tiny in-memory fake stands in for it, same posture as `sync.test.ts` and
 // `useFamily.test.ts` mocking their own expo-native dependencies.
 import { loadSettings } from "@/features/usage/services/settings";
+import Storage from 'expo-sqlite/kv-store';
 
 import { mergeCache, readCache } from "./cache";
 import type { Snapshot } from "./sync";
@@ -12,10 +13,10 @@ jest.mock("expo-sqlite/kv-store", () => ({
   __esModule: true,
   default: {
     getItem: (key: string) => Promise.resolve(mockStore.get(key) ?? null),
-    setItem: (key: string, value: string) => {
+    setItem: jest.fn((key: string, value: string) => {
       mockStore.set(key, value);
       return Promise.resolve();
-    },
+    }),
   },
 }));
 jest.mock("@/features/usage/services/settings", () => ({ loadSettings: jest.fn() }));
@@ -31,10 +32,41 @@ const row = (
 
 beforeEach(() => {
   mockStore.clear();
+  jest.spyOn(Date, 'now').mockReturnValue(1000);
   asMock(loadSettings).mockReset().mockResolvedValue({ pairToken: "token1" });
 });
 
+afterEach(() => jest.restoreAllMocks());
+
 describe("readCache", () => {
+  it('does not treat a cleanup write failure as an empty or corrupt cache', async () => {
+    jest.mocked(Date.now).mockReturnValue(new Date(2026, 10, 4).getTime());
+    const saved = [row('d1', 'daily', 0, 1), row('d1', 'daily', Date.now(), Date.now())];
+    mockStore.set('family.cache.token1', JSON.stringify(saved));
+    jest.mocked(Storage.setItem).mockRejectedValueOnce(new Error('database busy'));
+    await expect(readCache()).rejects.toThrow('database busy');
+    expect(JSON.parse(mockStore.get('family.cache.token1')!)).toEqual(saved);
+  });
+  it('removes daily history older than seven months even without a fresh pull', async () => {
+    jest.mocked(Date.now).mockReturnValue(new Date(2026, 10, 4).getTime());
+    const cutoff = new Date(2026, 3, 4).getTime();
+    const retained = row('d1', 'daily', cutoff, 1);
+    mockStore.set('family.cache.token1', JSON.stringify([
+      row('d1', 'daily', cutoff - 1, Date.now()), retained,
+    ]));
+    expect(await readCache()).toEqual([retained]);
+    expect(JSON.parse(mockStore.get('family.cache.token1')!)).toEqual([retained]);
+  });
+
+  it('ages non-daily snapshots by update time rather than their zero day', async () => {
+    jest.mocked(Date.now).mockReturnValue(new Date(2026, 10, 4).getTime());
+    const cutoff = new Date(2026, 3, 4).getTime();
+    const retained = row('d1', 'recent', 0, Date.now());
+    mockStore.set('family.cache.token1', JSON.stringify([
+      row('d1', 'request', 0, cutoff - 1), retained,
+    ]));
+    expect(await readCache()).toEqual([retained]);
+  });
   it("returns [] when unpaired", async () => {
     asMock(loadSettings).mockResolvedValue({ pairToken: null });
     expect(await readCache()).toEqual([]);
@@ -46,6 +78,10 @@ describe("readCache", () => {
 });
 
 describe("mergeCache", () => {
+  it('does not reintroduce expired rows received from the server', async () => {
+    jest.mocked(Date.now).mockReturnValue(new Date(2026, 10, 4).getTime());
+    expect(await mergeCache([row('d1', 'daily', new Date(2026, 3, 3).getTime(), Date.now())])).toEqual([]);
+  });
   it("does nothing and returns [] when unpaired", async () => {
     asMock(loadSettings).mockResolvedValue({ pairToken: null });
     expect(await mergeCache([row("d1", "daily", 0, 100)])).toEqual([]);

@@ -1,5 +1,6 @@
 import Storage from "expo-sqlite/kv-store";
 
+import { historyCutoff } from '@/features/archive/utils/retention';
 import { loadSettings } from "@/features/usage/services/settings";
 
 import type { Snapshot } from "./sync";
@@ -16,6 +17,11 @@ function mergeKey(row: Snapshot): string {
   return `${row.deviceId}|${row.kind}|${row.day}`;
 }
 
+function retainedRows(rows: Snapshot[]): Snapshot[] {
+  const cutoff = historyCutoff();
+  return rows.filter((r) => (r.kind === 'daily' ? r.day : r.updatedAt) >= cutoff);
+}
+
 /**
  * Plain functions, no React: `useChildren` (this device's screens) and
  * Task 30's headless background pull both write and read this same cache,
@@ -26,12 +32,19 @@ export async function readCache(): Promise<Snapshot[]> {
   if (!s.pairToken) return [];
   const raw = await Storage.getItem(keyFor(s.pairToken));
   if (!raw) return [];
+  let saved: Snapshot[];
+  let retained: Snapshot[];
   try {
-    return JSON.parse(raw) as Snapshot[];
+    saved = JSON.parse(raw) as Snapshot[];
+    retained = retainedRows(saved);
   } catch {
     // Corrupt value is not worth crashing over; the next pull repopulates it.
     return [];
   }
+  if (retained.length < saved.length) {
+    await Storage.setItem(keyFor(s.pairToken), JSON.stringify(retained));
+  }
+  return retained;
 }
 
 /**
@@ -52,7 +65,7 @@ export async function mergeCache(rows: Snapshot[]): Promise<Snapshot[]> {
     if (!current || row.updatedAt >= current.updatedAt) byKey.set(key, row);
   }
 
-  const merged = Array.from(byKey.values());
+  const merged = retainedRows(Array.from(byKey.values()));
   await Storage.setItem(keyFor(s.pairToken), JSON.stringify(merged));
   return merged;
 }

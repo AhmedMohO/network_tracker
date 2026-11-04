@@ -1,5 +1,4 @@
-import { Image } from 'expo-image';
-import { StyleSheet, View } from 'react-native';
+import { Image, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { useTheme } from '@/hooks/use-theme';
@@ -29,7 +28,7 @@ export function AppIcon({
         <Image
           source={{ uri }}
           style={styles.image}
-          contentFit="contain"
+          resizeMode="contain"
           accessibilityElementsHidden
           importantForAccessibility="no"
         />

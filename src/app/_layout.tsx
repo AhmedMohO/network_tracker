@@ -6,6 +6,7 @@ import { useEffect } from 'react';
 import { Alert, AppState, Platform, useColorScheme } from 'react-native';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
+import { pruneArchive } from '@/features/archive/services/db';
 import { parsePairLink } from '@/features/family/utils/pair';
 import { registerPushToken } from '@/features/family/services/pushToken';
 import { backfillFromChild, syncFromChild } from '@/features/family/services/sync';
@@ -15,6 +16,7 @@ import { registerBackgroundCheck } from '@/features/limits/services/backgroundCh
 import { ensureNotificationSetup } from '@/features/limits/services/notify';
 import { restoreBackgroundWork } from '@/features/limits/services/keepAlive';
 import { applyOtaUpdate, checkForOtaUpdate } from '@/features/updates/services/ota';
+import { removeInstalledApk } from '@/features/updates/services/cleanup';
 import { PermissionGate } from '@/features/usage/components/PermissionGate';
 import { runFirstTimeSetup } from '@/features/usage/services/firstRun';
 import { loadSettings } from '@/features/usage/services/settings';
@@ -45,6 +47,8 @@ export default function RootLayout() {
   // — a granted one is what lets the alerts inside the task actually post.
   useEffect(() => {
     if (Platform.OS !== 'android') return;
+    removeInstalledApk().catch((e) => { console.warn('[updates] installer cleanup failed:', e); });
+    pruneArchive().catch((e) => { console.warn('[archive] cleanup failed:', e); });
     registerBackgroundCheck().catch(() => {});
     // Sequenced, not fired in parallel: a push token is only issued once the
     // notification permission is granted, and `ensureNotificationSetup` is

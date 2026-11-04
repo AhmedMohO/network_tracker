@@ -1,6 +1,8 @@
 import type { NetworkFilter } from "@modules/network-usage";
 import * as SQLite from "expo-sqlite";
 
+import { historyCutoff } from '../utils/retention';
+
 import type { AppUsage } from "@/features/usage/utils/aggregate";
 import { fetchUsage } from "@/features/usage/services/api";
 import { calendarDayRange } from "@/features/usage/utils/range";
@@ -24,7 +26,7 @@ let db: Promise<SQLite.SQLiteDatabase> | null = null;
 /**
  * One table, day-granular, per app, per network and per Wi-Fi network name.
  * That is enough for every screen in this app once a range is older than
- * Android's retention, and small enough to keep for years.
+ * Android's retention. Local history is kept for seven calendar months.
  */
 export async function openArchive(): Promise<SQLite.SQLiteDatabase> {
   if (!db) db = initializeArchive().catch((error) => {
@@ -149,6 +151,16 @@ export async function snapshotDay(dayStart: number): Promise<void> {
       await writeRows(transaction, dayStart, "WIFI", slice.ssid ?? NO_SSID, slice.apps);
     }
   });
+  await pruneArchive();
+}
+
+/** Retain the cutoff day in full, including across month ends and clock changes. */
+export async function pruneArchive(now = Date.now()): Promise<void> {
+  const archive = await openArchive();
+  const { changes } = await archive.runAsync(
+    'DELETE FROM daily_usage WHERE day_start < ?', historyCutoff(now),
+  );
+  if (changes > 0) await archive.execAsync('VACUUM;');
 }
 
 export async function readArchive(

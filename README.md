@@ -253,6 +253,20 @@ bun run build:preview
 
 Output APKs can be hosted directly on GitHub Releases to be distributed via the NetTrack Website.
 
+The production APK targets ARM64 and enables code and resource shrinking. Native
+libraries are stored uncompressed so Android can load them directly from the APK
+instead of extracting another copy during installation. This increases download
+size while reducing installed storage. Android also stores compiled code, app
+data, and caches, so the installed size will still exceed the APK size.
+
+On Android startup, NetTrack removes a cached `update.apk` downloaded before the
+last app installation. Pending installers are kept. Usage history older than
+seven calendar months is deleted on Android startup and after successful daily
+snapshots; SQLite then compacts the archive to reclaim disk space. The cutoff
+day is retained in full, and month ends are clamped to the last valid day.
+The active family cache applies the same limit when read or merged. Daily rows
+use their usage date; check-ins and requests use their last update time.
+
 ---
 
 ## 📄 License
