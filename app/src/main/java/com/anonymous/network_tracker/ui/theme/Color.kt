@@ -20,3 +20,4 @@ val WarningAmber = Color(0xFFF59E0B)
 val DangerRed = Color(0xFFEF4444)
 val WifiPurple = Color(0xFF8B5CF6)
 val MobileBlue = Color(0xFF0284C7)
+

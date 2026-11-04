@@ -278,3 +278,4 @@ class StatsReader(private val context: Context) {
         return SeriesResult(bins, coveredStart, coveredEnd)
     }
 }
+

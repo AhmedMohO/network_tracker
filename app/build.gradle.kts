@@ -13,7 +13,7 @@ android {
         applicationId = "com.anonymous.network_tracker"
         minSdk = 26
         targetSdk = 35
-        versionCode = 12
+        versionCode = 14
         versionName = "2.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

@@ -108,4 +108,20 @@ class RangeUtilsTest {
         val diffDays = (midnightNow - cutoff) / RangeUtils.DAY_MS
         assertEquals(80L, diffDays)
     }
+
+    @Test
+    fun testPreviousRangeForCycle() {
+        // March 15, 2026, cycle day 1
+        val cal = Calendar.getInstance().apply {
+            set(2026, Calendar.MARCH, 15, 12, 0, 0)
+        }
+        val now = cal.timeInMillis
+        val thisCycle = RangeUtils.billingCycleRange(cycleStartDay = 1, now = now, offset = 0)
+        val prevRange = RangeUtils.previousRange(thisCycle, cycleStartDay = 1, now = now)
+
+        val prevStartCal = Calendar.getInstance().apply { timeInMillis = prevRange.start }
+        assertEquals(Calendar.FEBRUARY, prevStartCal.get(Calendar.MONTH))
+        assertEquals(1, prevStartCal.get(Calendar.DAY_OF_MONTH))
+    }
 }
+

@@ -16,12 +16,22 @@ abstract class UsageDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: UsageDatabase? = null
 
+        fun getDatabasePath(context: Context): String {
+            val expoFile = java.io.File(context.filesDir, "SQLite/$DB_NAME")
+            if (expoFile.exists()) return expoFile.absolutePath
+            val standardFile = context.getDatabasePath(DB_NAME)
+            if (standardFile.exists()) return standardFile.absolutePath
+            expoFile.parentFile?.mkdirs()
+            return expoFile.absolutePath
+        }
+
         fun getInstance(context: Context): UsageDatabase {
             return INSTANCE ?: synchronized(this) {
+                val dbPath = getDatabasePath(context.applicationContext)
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     UsageDatabase::class.java,
-                    DB_NAME
+                    dbPath
                 )
                 .addCallback(object : RoomDatabase.Callback() {
                     override fun onOpen(db: SupportSQLiteDatabase) {
@@ -40,3 +50,4 @@ abstract class UsageDatabase : RoomDatabase() {
         }
     }
 }
+

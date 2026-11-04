@@ -227,3 +227,4 @@ fun AppDetailScreen(
         }
     }
 }
+

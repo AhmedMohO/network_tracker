@@ -42,3 +42,4 @@ data class UsageTotals(
     val upload: Long,
     val total: Long
 )
+

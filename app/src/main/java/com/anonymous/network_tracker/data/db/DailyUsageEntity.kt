@@ -19,3 +19,4 @@ data class DailyUsageEntity(
     @ColumnInfo(name = "download") val download: Long,
     @ColumnInfo(name = "upload") val upload: Long
 )
+

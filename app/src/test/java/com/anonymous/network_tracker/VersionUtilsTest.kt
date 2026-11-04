@@ -29,3 +29,4 @@ class VersionUtilsTest {
         assertFalse(VersionUtils.isNewerVersion("invalid", "2.0.0"))
     }
 }
+

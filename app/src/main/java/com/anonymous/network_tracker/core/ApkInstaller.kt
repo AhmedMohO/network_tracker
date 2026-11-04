@@ -39,3 +39,4 @@ object ApkInstaller {
         context.startActivity(intent)
     }
 }
+

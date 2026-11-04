@@ -1,16 +1,19 @@
 package com.anonymous.network_tracker.ui.screens
 
 import android.widget.Toast
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.DeviceHub
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -29,6 +32,7 @@ fun FamilyScreen(
     val context = LocalContext.current
     val settingsRepo = remember(context) { SettingsRepository.getInstance(context) }
     val scope = rememberCoroutineScope()
+    var settings by remember { mutableStateOf(settingsRepo.loadSettings()) }
     var isSyncing by remember { mutableStateOf(false) }
 
     val scanner = remember { GmsBarcodeScanning.getClient(context) }
@@ -39,6 +43,9 @@ fun FamilyScreen(
                 val code = barcode.rawValue
                 if (!code.isNullOrEmpty()) {
                     Toast.makeText(context, "Pairing token scanned: ${code.take(8)}...", Toast.LENGTH_SHORT).show()
+                    val updated = settings.copy(pairToken = code, familyRole = "child")
+                    settingsRepo.updateSettings(updated)
+                    settings = updated
                 }
             }
             .addOnFailureListener { e ->
@@ -67,32 +74,51 @@ fun FamilyScreen(
                 }
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "Family Sharing",
+                    text = "Family Sharing & Sync",
                     color = TextPrimary,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold
                 )
             }
 
+            // Status Card
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(containerColor = DarkSurface)
             ) {
                 Column(modifier = Modifier.padding(18.dp)) {
-                    Text(
-                        text = "Device Pairing",
-                        color = TextPrimary,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = "Pair this device with a parent or child phone to sync usage metrics remotely.",
-                        color = TextSecondary,
-                        fontSize = 13.sp
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(AccentPrimary.copy(alpha = 0.15f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.DeviceHub, contentDescription = null, tint = AccentPrimary)
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            val roleText = when (settings.familyRole) {
+                                "parent" -> "Parent Device"
+                                "child" -> "Child Device"
+                                else -> "Not Paired"
+                            }
+                            Text(roleText, color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            val subtext = if (settings.pairedLabel != null) {
+                                "Linked with: ${settings.pairedLabel}"
+                            } else if (settings.pairToken != null) {
+                                "Token: ${settings.pairToken?.take(12)}…"
+                            } else {
+                                "Pair with family members to synchronize quotas"
+                            }
+                            Text(subtext, color = TextMuted, fontSize = 12.sp)
+                        }
+                    }
+
                     Spacer(modifier = Modifier.height(16.dp))
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -114,10 +140,18 @@ fun FamilyScreen(
 
                         Button(
                             onClick = {
+                                val token = settings.pairToken
+                                if (token == null) {
+                                    Toast.makeText(context, "No pair token set. Scan a pairing QR first.", Toast.LENGTH_SHORT).show()
+                                    return@Button
+                                }
                                 isSyncing = true
                                 scope.launch {
                                     try {
-                                        SupabaseRpc.familyPull("test_token", 0)
+                                        SupabaseRpc.familyPull(token, 0)
+                                        val updated = settings.copy(lastSyncOkAt = System.currentTimeMillis())
+                                        settingsRepo.updateSettings(updated)
+                                        settings = updated
                                         Toast.makeText(context, "Family sync completed", Toast.LENGTH_SHORT).show()
                                     } catch (e: Exception) {
                                         Toast.makeText(context, "Sync: ${e.message}", Toast.LENGTH_SHORT).show()

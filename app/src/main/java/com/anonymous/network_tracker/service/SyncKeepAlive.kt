@@ -108,3 +108,4 @@ object SyncKeepAlive {
             .onFailure { Log.w(TAG, "No battery-optimisation screen: ${it.message}") }
     }
 }
+

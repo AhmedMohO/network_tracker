@@ -91,6 +91,28 @@ object RangeUtils {
         }
     }
 
+    fun previousRange(range: DateRange, cycleStartDay: Int, now: Long = System.currentTimeMillis()): DateRange {
+        if (range.preset == PresetId.THIS_CYCLE || range.preset == PresetId.LAST_CYCLE) {
+            val previous = billingCycleRange(
+                cycleStartDay = cycleStartDay,
+                now = now,
+                offset = if (range.preset == PresetId.THIS_CYCLE) -1 else -2
+            )
+            val elapsed = range.end - range.start
+            return DateRange(
+                start = previous.start,
+                end = minOf(previous.start + elapsed, previous.end),
+                preset = PresetId.CUSTOM
+            )
+        }
+        val span = range.end - range.start
+        return DateRange(
+            start = range.start - span,
+            end = range.start,
+            preset = PresetId.CUSTOM
+        )
+    }
+
     fun archiveCutoff(now: Long = System.currentTimeMillis()): Long {
         val cal = Calendar.getInstance().apply {
             timeInMillis = now
@@ -130,3 +152,4 @@ object RangeUtils {
         )
     }
 }
+

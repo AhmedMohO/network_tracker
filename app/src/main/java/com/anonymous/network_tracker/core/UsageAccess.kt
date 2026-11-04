@@ -41,3 +41,4 @@ object UsageAccess {
         context.startActivity(intent)
     }
 }
+

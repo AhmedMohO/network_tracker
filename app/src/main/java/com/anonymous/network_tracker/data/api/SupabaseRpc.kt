@@ -78,3 +78,4 @@ object SupabaseRpc {
         rpc("family_register_token", body)
     }
 }
+
