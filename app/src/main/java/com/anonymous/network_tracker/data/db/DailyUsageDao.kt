@@ -1,0 +1,76 @@
+package com.anonymous.network_tracker.data.db
+
+import androidx.room.Dao
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
+import androidx.room.Query
+
+data class AggregatedAppUsage(
+    val uid: Int,
+    val app_name: String?,
+    val package_name: String?,
+    val download: Long,
+    val upload: Long
+)
+
+data class WifiSliceUsage(
+    val ssid: String,
+    val uid: Int,
+    val app_name: String?,
+    val package_name: String?,
+    val download: Long,
+    val upload: Long
+)
+
+@Dao
+interface DailyUsageDao {
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(rows: List<DailyUsageEntity>)
+
+    @Query("DELETE FROM daily_usage WHERE day_start = :dayStart")
+    suspend fun deleteDay(dayStart: Long)
+
+    @Query("""
+        SELECT uid,
+               MAX(app_name)     AS app_name,
+               MAX(package_name) AS package_name,
+               SUM(download)     AS download,
+               SUM(upload)       AS upload
+          FROM daily_usage
+         WHERE day_start >= :start AND day_start < :end
+         GROUP BY uid
+    """)
+    suspend fun getUsageAllNetworks(start: Long, end: Long): List<AggregatedAppUsage>
+
+    @Query("""
+        SELECT uid,
+               MAX(app_name)     AS app_name,
+               MAX(package_name) AS package_name,
+               SUM(download)     AS download,
+               SUM(upload)       AS upload
+          FROM daily_usage
+         WHERE day_start >= :start AND day_start < :end AND network = :network
+         GROUP BY uid
+    """)
+    suspend fun getUsageByNetwork(start: Long, end: Long, network: String): List<AggregatedAppUsage>
+
+    @Query("""
+        SELECT ssid,
+               uid,
+               MAX(app_name)     AS app_name,
+               MAX(package_name) AS package_name,
+               SUM(download)     AS download,
+               SUM(upload)       AS upload
+          FROM daily_usage
+         WHERE day_start >= :start AND day_start < :end AND network = 'WIFI'
+         GROUP BY ssid, uid
+    """)
+    suspend fun getUsageByWifiNetwork(start: Long, end: Long): List<WifiSliceUsage>
+
+    @Query("DELETE FROM daily_usage WHERE day_start < :cutoff")
+    suspend fun pruneOlderThan(cutoff: Long): Int
+
+    @Query("SELECT MIN(day_start) FROM daily_usage")
+    suspend fun getEarliestDay(): Long?
+}
