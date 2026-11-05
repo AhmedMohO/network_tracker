@@ -646,5 +646,15 @@
   "Today: %s": "اليوم: %s",
   "Using %s": "يستخدم %s",
   "Waiting for %s to answer your request for %s, sent %s.": "في انتظار رد %s على طلب %s، أُرسل %s.",
-  "Wi-Fi Networks (%d)": "شبكات الواي فاي (%d)"
+  "Wi-Fi Networks (%d)": "شبكات الواي فاي (%d)",
+  "Billing cycle is renewing today": "دورة الفاتورة تتجدد اليوم",
+  "Cycle ends today: ~%s expected at current pace": "تنتهي الدورة اليوم: يُتوقع ~%s بالمعدل الحالي",
+  "Exceeded limit by %s (Projected total: %s)": "تم تجاوز الحد بمقدار %s (الإجمالي المتوقع: %s)",
+  "Finished cycle with ~%s remaining buffer": "انتهت الدورة مع فائض متبقٍ ~%s",
+  "No usage recorded yet this cycle": "لم يتم تسجيل أي استهلاك بعد في هذه الدورة",
+  "On track: ~%s buffer left (Projected total: %s)": "ضمن المعدل: متبقٍ فائض ~%s (الإجمالي المتوقع: %s)",
+  "Remaining %d days: ~%s expected at current pace (~%s/day)": "متبقٍ %d يوماً: يُتوقع ~%s بالمعدل الحالي (~%s/يومياً)",
+  "Remaining %d hours: ~%s expected at current pace (~%s/day)": "متبقٍ %d ساعة: يُتوقع ~%s بالمعدل الحالي (~%s/يومياً)",
+  "Safe pace: ~%s/day to stay within limit": "المعدل الآمن: ~%s/يومياً للبقاء ضمن الحد",
+  "Will exceed limit by ~%s (Projected: %s). Safe pace: ~%s/day": "سيتجاوز الحد بنحو ~%s (المتوقع: %s). المعدل الآمن: ~%s/يومياً"
 }

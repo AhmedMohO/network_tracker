@@ -38,4 +38,93 @@ class UsageUiTest {
         assertTrue(json.contains("\"network\":\"WIFI\""))
         assertTrue(json.contains("=SUM(1,2)\\\"\\n"))
     }
+
+    @Test fun cycleProjectionCalculatesRealisticPaceAndForecast() {
+        // Fix reference cycle start: day 1
+        val baseCycleStart = RangeUtils.cycleStart(1, 1772539200000L, 0)
+        val now = baseCycleStart + 10L * RangeUtils.DAY_MS // exactly 10 days into cycle
+        val cycleEnd = RangeUtils.nextCycleStart(1, now)
+        val remainingDaysFraction = (cycleEnd - now).toDouble() / RangeUtils.DAY_MS
+
+        val limit = 10_000_000_000L // 10 GB
+        val used = 2_000_000_000L  // 2 GB used in 10 days -> 200 MB/day
+
+        val projection = calculateCycleProjection(used, limit, 1, now)
+        assertEquals(used, projection.usedBytes)
+        assertEquals(limit, projection.limitBytes)
+        assertEquals(200_000_000L, projection.dailyPaceBytes)
+        val expectedRemaining = (200_000_000L * remainingDaysFraction).toLong()
+        assertEquals(expectedRemaining, projection.projectedRemainingBytes)
+        assertFalse(projection.willExceed)
+        assertFalse(projection.isOverLimit)
+        assertTrue(projection.bufferBytes > 0)
+        assertEquals(limit - projection.projectedTotalBytes, projection.bufferBytes)
+    }
+
+    @Test fun cycleProjectionCircadianDampingPreventsEarlyBurstExplosion() {
+        // 2 hours into a fresh cycle
+        val baseCycleStart = RangeUtils.cycleStart(1, 1772539200000L, 0)
+        val now = baseCycleStart + 2L * 3_600_000L // 2 hours into the cycle
+        val limit = 10_000_000_000L // 10 GB limit
+        val burstUsed = 100_000_000L // 100 MB burst in 2 hours
+
+        val projection = calculateCycleProjection(burstUsed, limit, 1, now)
+        // With circadian damping (effectiveElapsedDays = 1.0 day min):
+        // dailyPaceBytes is capped at 100 MB / 1.0 = 100 MB/day (instead of naive 1.2 GB/day)
+        assertEquals(burstUsed, projection.dailyPaceBytes)
+        // Projected total will be around 3 GB, safely within 10 GB limit!
+        assertFalse("Circadian damping should prevent false overage warning", projection.willExceed)
+        assertTrue(projection.projectedTotalBytes < 4_000_000_000L)
+    }
+
+    @Test fun cycleProjectionDetectsOverageAndProvidesSafeAllowance() {
+        // 15 days into cycle, user already burned 8 GB of 10 GB limit
+        val baseCycleStart = RangeUtils.cycleStart(1, 1772539200000L, 0)
+        val now = baseCycleStart + 15L * RangeUtils.DAY_MS
+        val limit = 10_000_000_000L
+        val used = 8_000_000_000L
+
+        val projection = calculateCycleProjection(used, limit, 1, now)
+        assertTrue("User will exceed at 8 GB in 15 days", projection.willExceed)
+        assertFalse("User is not yet over the hard limit", projection.isOverLimit)
+        assertTrue(projection.excessBytes > 0)
+        assertTrue(projection.safeDailyAllowanceBytes > 0)
+        // Safe pace must be lower than current burn rate
+        assertTrue(projection.safeDailyAllowanceBytes < projection.dailyPaceBytes)
+    }
+
+    @Test fun cycleProjectionHandlesZeroUsageAndHardOverage() {
+        val now = RangeUtils.midnight(1772539200000L) + 5L * RangeUtils.DAY_MS
+        val limit = 10_000_000_000L
+
+        // Zero usage
+        val zeroProj = calculateCycleProjection(0L, limit, 1, now)
+        assertEquals(0L, zeroProj.dailyPaceBytes)
+        assertEquals(0L, zeroProj.projectedRemainingBytes)
+        assertEquals(0L, zeroProj.projectedTotalBytes)
+        assertFalse(zeroProj.willExceed)
+
+        // Hard overage
+        val overProj = calculateCycleProjection(12_000_000_000L, limit, 1, now)
+        assertTrue(overProj.isOverLimit)
+        assertTrue(overProj.willExceed)
+        assertEquals(0L, overProj.remainingAllowanceBytes)
+        assertEquals(0L, overProj.safeDailyAllowanceBytes)
+        assertEquals(0L, overProj.bufferBytes)
+    }
+
+    @Test fun cycleProjectionScalesNearCycleEnd() {
+        // 6 hours before next cycle start
+        val cycleEnd = RangeUtils.nextCycleStart(1, 1772539200000L)
+        val now = cycleEnd - 6L * 3_600_000L // 6 hours left
+        val limit = 10_000_000_000L
+        val used = 5_000_000_000L // 5 GB used so far
+
+        val projection = calculateCycleProjection(used, limit, 1, now)
+        assertEquals(1, projection.remainingDays)
+        assertEquals(6, projection.remainingHours)
+        // In 6 hours (0.25 day), remaining projection must be a fraction of daily pace
+        val expected = (projection.dailyPaceBytes.toDouble() * (6.0 / 24.0)).toLong()
+        assertEquals(expected.toDouble(), projection.projectedRemainingBytes.toDouble(), 1000.0)
+    }
 }

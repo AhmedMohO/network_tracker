@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -40,6 +41,8 @@ import com.anonymous.network_tracker.ui.components.UsageChart
 import com.anonymous.network_tracker.ui.components.UsageError
 import com.anonymous.network_tracker.data.util.customRangeProblem
 import com.anonymous.network_tracker.data.util.quotaPercent
+import com.anonymous.network_tracker.data.util.calculateCycleProjection
+import com.anonymous.network_tracker.data.util.CycleProjection
 import java.text.DateFormat
 import java.util.Date
 import java.util.Calendar
@@ -249,6 +252,122 @@ fun OverviewScreen(
                             color = TextMuted,
                             fontSize = 12.sp
                         )
+
+                        val projection = remember(cycleTotal, activeLimitBytes, settings.cycleStartDay, usageState.now) {
+                            calculateCycleProjection(
+                                usedBytes = cycleTotal,
+                                limitBytes = activeLimitBytes,
+                                cycleStartDay = settings.cycleStartDay,
+                                now = usageState.now
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+                        HorizontalDivider(color = DarkSurfaceVariant, thickness = 1.dp)
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // Usage forecast in remaining time
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.Top,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (projection.isOverLimit || projection.willExceed) Icons.AutoMirrored.Filled.TrendingUp else Icons.Default.Schedule,
+                                contentDescription = null,
+                                tint = if (projection.isOverLimit) DangerRed else if (projection.willExceed) WarningAmber else AccentPrimary,
+                                modifier = Modifier
+                                    .size(16.dp)
+                                    .padding(top = 2.dp)
+                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                val remainingText = when {
+                                    projection.usedBytes == 0L -> {
+                                        tr("No usage recorded yet this cycle")
+                                    }
+                                    projection.remainingMs <= 0L -> {
+                                        tr("Billing cycle is renewing today")
+                                    }
+                                    projection.remainingDays > 1 -> {
+                                        tr(
+                                            "Remaining %d days: ~%s expected at current pace (~%s/day)",
+                                            projection.remainingDays,
+                                            repo.formatBytes(projection.projectedRemainingBytes),
+                                            repo.formatBytes(projection.dailyPaceBytes)
+                                        )
+                                    }
+                                    projection.remainingDays == 1 && projection.remainingHours > 1 -> {
+                                        tr(
+                                            "Remaining %d hours: ~%s expected at current pace (~%s/day)",
+                                            projection.remainingHours,
+                                            repo.formatBytes(projection.projectedRemainingBytes),
+                                            repo.formatBytes(projection.dailyPaceBytes)
+                                        )
+                                    }
+                                    else -> {
+                                        tr(
+                                            "Cycle ends today: ~%s expected at current pace",
+                                            repo.formatBytes(projection.projectedRemainingBytes)
+                                        )
+                                    }
+                                }
+
+                                Text(
+                                    text = remainingText,
+                                    color = TextPrimary,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+
+                                val outcomeText = when {
+                                    projection.isOverLimit -> {
+                                        tr(
+                                            "Exceeded limit by %s (Projected total: %s)",
+                                            repo.formatBytes(projection.usedBytes - projection.limitBytes),
+                                            repo.formatBytes(projection.projectedTotalBytes)
+                                        )
+                                    }
+                                    projection.willExceed -> {
+                                        tr(
+                                            "Will exceed limit by ~%s (Projected: %s). Safe pace: ~%s/day",
+                                            repo.formatBytes(projection.excessBytes),
+                                            repo.formatBytes(projection.projectedTotalBytes),
+                                            repo.formatBytes(projection.safeDailyAllowanceBytes)
+                                        )
+                                    }
+                                    projection.usedBytes == 0L -> {
+                                        tr(
+                                            "Safe pace: ~%s/day to stay within limit",
+                                            repo.formatBytes(projection.safeDailyAllowanceBytes)
+                                        )
+                                    }
+                                    projection.remainingMs <= 0L -> {
+                                        tr(
+                                            "Finished cycle with ~%s remaining buffer",
+                                            repo.formatBytes(projection.bufferBytes)
+                                        )
+                                    }
+                                    else -> {
+                                        tr(
+                                            "On track: ~%s buffer left (Projected total: %s)",
+                                            repo.formatBytes(projection.bufferBytes),
+                                            repo.formatBytes(projection.projectedTotalBytes)
+                                        )
+                                    }
+                                }
+
+                                Text(
+                                    text = outcomeText,
+                                    color = when {
+                                        projection.isOverLimit -> DangerRed
+                                        projection.willExceed -> WarningAmber
+                                        else -> SuccessGreen
+                                    },
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
                     }
                 }
             }
