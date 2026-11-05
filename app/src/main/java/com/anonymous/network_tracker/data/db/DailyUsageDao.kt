@@ -22,8 +22,20 @@ data class WifiSliceUsage(
     val upload: Long
 )
 
+data class ArchivedSeriesUsage(val day_start: Long, val download: Long, val upload: Long)
+
 @Dao
 interface DailyUsageDao {
+
+    @Query("""
+        SELECT day_start, SUM(download) AS download, SUM(upload) AS upload
+        FROM daily_usage
+        WHERE day_start >= :start AND day_start < :end
+          AND (:network = 'ALL' OR network = :network)
+          AND (:uid IS NULL OR uid = :uid)
+        GROUP BY day_start ORDER BY day_start
+    """)
+    suspend fun getSeries(start: Long, end: Long, network: String, uid: Int?): List<ArchivedSeriesUsage>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(rows: List<DailyUsageEntity>)

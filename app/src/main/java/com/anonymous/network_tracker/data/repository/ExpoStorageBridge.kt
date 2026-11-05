@@ -37,33 +37,35 @@ object ExpoStorageBridge {
     }
 
     fun getItem(context: Context, key: String): String? {
-        return try {
-            val file = getDatabaseFile(context)
-            if (!file.exists()) return null
-            openDb(context).use { db ->
-                db.rawQuery("SELECT value FROM storage WHERE key = ? LIMIT 1;", arrayOf(key)).use { cursor ->
-                    if (cursor.moveToFirst()) {
-                        cursor.getString(0)
-                    } else {
-                        null
-                    }
-                }
+        if (!getDatabaseFile(context).exists()) return null
+        return openDb(context).use { db ->
+            db.rawQuery("SELECT value FROM storage WHERE key = ? LIMIT 1;", arrayOf(key)).use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0) else null
             }
-        } catch (_: Exception) {
-            null
         }
     }
 
-    fun setItem(context: Context, key: String, value: String) {
-        try {
-            openDb(context).use { db ->
-                val cv = ContentValues().apply {
-                    put("key", key)
-                    put("value", value)
+    fun setItem(context: Context, key: String, value: String) = setItems(context, mapOf(key to value))
+
+    fun removeItem(context: Context, key: String) {
+        if (!getDatabaseFile(context).exists()) return
+        openDb(context).use { it.delete("storage", "key = ?", arrayOf(key)) }
+    }
+
+    fun setItems(context: Context, values: Map<String, String>) {
+        openDb(context).use { db ->
+            db.beginTransaction()
+            try {
+                for ((key, value) in values) {
+                    val cv = ContentValues().apply { put("key", key); put("value", value) }
+                    check(db.insertWithOnConflict("storage", null, cv, SQLiteDatabase.CONFLICT_REPLACE) != -1L) {
+                        "Could not persist $key"
+                    }
                 }
-                db.insertWithOnConflict("storage", null, cv, SQLiteDatabase.CONFLICT_REPLACE)
+                db.setTransactionSuccessful()
+            } finally {
+                db.endTransaction()
             }
-        } catch (_: Exception) {
         }
     }
 }

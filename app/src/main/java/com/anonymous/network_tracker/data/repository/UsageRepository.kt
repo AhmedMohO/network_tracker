@@ -1,5 +1,21 @@
 package com.anonymous.network_tracker.data.repository
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.util.Log
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
+import androidx.room.withTransaction
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import com.anonymous.network_tracker.data.family.FamilyRepository
+import com.anonymous.network_tracker.data.model.SeriesPoint
+import com.anonymous.network_tracker.data.model.SeriesQuery
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import com.anonymous.network_tracker.ui.theme.Translations
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
@@ -179,8 +195,10 @@ class UsageRepository(private val context: Context) {
             }
         }
 
-        dao.deleteDay(dayStart)
-        dao.insertAll(entities)
+        db.withTransaction {
+            dao.deleteDay(dayStart)
+            dao.insertAll(entities)
+        }
     }
 
     suspend fun pruneOldHistory(): Int = withContext(Dispatchers.IO) {
@@ -188,106 +206,118 @@ class UsageRepository(private val context: Context) {
         dao.pruneOlderThan(cutoff)
     }
 
+    suspend fun getTotals(range: DateRange, network: String = "ALL"): UsageTotals {
+        val apps = getUsage(range, network)
+        val rx = apps.sumOf { it.download }
+        val tx = apps.sumOf { it.upload }
+        return UsageTotals(rx, tx, rx + tx)
+    }
+
+    suspend fun getDayUsage(range: DateRange, network: String): List<AppUsageItem> = withContext(Dispatchers.IO) {
+        val saved = readArchive(range.start, range.end, network)
+        if (saved.isNotEmpty()) saved else getUsage(range, network)
+    }
+
+    suspend fun getSeries(range: DateRange, network: String = "ALL", uid: Int? = null): List<SeriesPoint> = withContext(Dispatchers.IO) {
+        require(range.start < range.end) { "Start must be before end" }
+        val split = RangeUtils.splitRange(range)
+        val archived = split.archived?.let { old ->
+            dao.getSeries(old.start, old.end, network, uid).map {
+                SeriesPoint(it.day_start, RangeUtils.midnight(it.day_start, 1), it.download, it.upload)
+            }
+        }.orEmpty()
+        val live = split.live
+        if (live == null || !UsageAccess.has(context)) return@withContext archived
+        val span = live.end - live.start
+        val ladder = when {
+            span <= 2 * RangeUtils.DAY_MS -> 3_600_000L
+            span <= 60 * RangeUtils.DAY_MS -> RangeUtils.DAY_MS
+            else -> 7 * RangeUtils.DAY_MS
+        }
+        val bucket = maxOf(ladder, 7_200_000L, (span + 1998) / 1999)
+        archived + statsReader.series(SeriesQuery(live.start, live.end, network, bucket, uid)).bins
+    }
+
     suspend fun performBackgroundCheck() = withContext(Dispatchers.IO) {
-        val now = System.currentTimeMillis()
-
-        // 1. Snapshot yesterday if not already snapshotted
-        val yesterdayMidnight = RangeUtils.midnight(now, -1)
-        snapshotDay(yesterdayMidnight)
-
-        // 2. Prune old history (> 7 months)
-        pruneOldHistory()
-
-        // 3. Evaluate limits and alert if needed
-        checkLimitsAndNotify(now)
+        backgroundMutex.withLock {
+            val now = System.currentTimeMillis()
+            val family = FamilyRepository.getInstance(context)
+            isolated("family sync") { family.sync(now) }
+            for (network in listOf("MOBILE", "WIFI")) {
+                isolated("$network alerts") { checkNetwork(network, now) }
+            }
+            isolated("archive") { snapshotDay(RangeUtils.midnight(now, -1)) }
+            isolated("prune") { pruneOldHistory() }
+            isolated("family alerts") { family.checkAlerts(now) }
+        }
     }
 
-    private suspend fun checkLimitsAndNotify(now: Long) {
+    private suspend fun isolated(name: String, block: suspend () -> Unit) {
+        try { block() }
+        catch (e: CancellationException) { throw e }
+        catch (e: Exception) { Log.w("UsageCheck", "$name failed", e) }
+    }
+
+    private fun dayKey(now: Long): String = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+        timeZone = java.util.TimeZone.getTimeZone("UTC")
+    }.format(Date(RangeUtils.midnight(now)))
+
+    private suspend fun checkNetwork(network: String, now: Long) {
+        if (!UsageAccess.has(context)) return
         val settings = settingsRepo.loadSettings()
-        if (settings.mobileLimitBytes == null && settings.wifiLimitBytes == null) return
-
-        val cycleRange = RangeUtils.billingCycleRange(settings.cycleStartDay, now)
-
-        if (settings.mobileLimitBytes != null) {
-            val usage = getUsage(cycleRange, "MOBILE")
-            val totalMobile = usage.sumOf { it.total }
-            evaluateThreshold(
-                network = "mobile",
-                usedBytes = totalMobile,
-                limitBytes = settings.mobileLimitBytes,
-                warnPercent = settings.mobileWarnAtPercent,
-                cycleStart = cycleRange.start,
-                settings = settings
-            )
+        val cycle = RangeUtils.billingCycleRange(settings.cycleStartDay, now)
+        val lower = network.lowercase(Locale.US)
+        val today = dayKey(now)
+        settingsRepo.update { it.copy(alertedKeys = AlertRules.liveKeys(it.alertedKeys, cycle.start, today)) }
+        val limit = if(network == "MOBILE") settings.mobileLimitBytes else settings.wifiLimitBytes
+        val warn = if(network == "MOBILE") settings.mobileWarnAtPercent else settings.wifiWarnAtPercent
+        if (limit != null && limit > 0) {
+            val used = getTotals(cycle, network).total
+            val percent = used.toDouble() / limit * 100
+            val state = if (used >= limit) "over" else if(percent >= warn) "warn" else null
+            if (state != null) {
+                val key = AlertRules.limitKey(lower, state, cycle.start, limit, warn)
+                alertOnce(key, if(network == "MOBILE") 1001 else 1002,
+                    localized(if(state == "over") "%s data limit reached" else "%s data warning", localized(network)),
+                    localized("You have used %s%% of your %s data limit.",percent.toInt(),formatBytes(limit)))
+                return
+            }
         }
-
-        if (settings.wifiLimitBytes != null) {
-            val usage = getUsage(cycleRange, "WIFI")
-            val totalWifi = usage.sumOf { it.total }
-            evaluateThreshold(
-                network = "wifi",
-                usedBytes = totalWifi,
-                limitBytes = settings.wifiLimitBytes,
-                warnPercent = settings.wifiWarnAtPercent,
-                cycleStart = cycleRange.start,
-                settings = settings
-            )
-        }
-    }
-
-    private fun evaluateThreshold(
-        network: String,
-        usedBytes: Long,
-        limitBytes: Long,
-        warnPercent: Int,
-        cycleStart: Long,
-        settings: AppSettings
-    ) {
-        if (limitBytes <= 0) return
-        val percent = (usedBytes.toDouble() / limitBytes.toDouble()) * 100.0
-
-        val warnKey = "limit-$network-$cycleStart-warn"
-        val reachedKey = "limit-$network-$cycleStart-reached"
-
-        if (percent >= 100.0 && !settings.alertedKeys.contains(reachedKey)) {
-            settingsRepo.markAlertKey(reachedKey)
-            sendNotification(
-                id = if (network == "mobile") 1001 else 1002,
-                title = if (network == "mobile") "Mobile Data Limit Reached" else "Wi-Fi Data Limit Reached",
-                body = "You have used 100% of your ${formatBytes(limitBytes)} $network data limit."
-            )
-        } else if (percent >= warnPercent && !settings.alertedKeys.contains(warnKey)) {
-            settingsRepo.markAlertKey(warnKey)
-            sendNotification(
-                id = if (network == "mobile") 1003 else 1004,
-                title = if (network == "mobile") "Mobile Data Warning" else "Wi-Fi Data Warning",
-                body = "You have used ${percent.toInt()}% of your ${formatBytes(limitBytes)} $network data limit."
-            )
+        if (network == "WIFI" && (limit == null || limit <= 0)) return
+        val spikeKey = "$lower:spike:$today"
+        if (settingsRepo.loadSettings().alertedKeys.contains(spikeKey)) return
+        val todayTotal = getTotals(DateRange(RangeUtils.midnight(now), now), network).total
+        val history = (1..14).map { getTotals(RangeUtils.calendarDayRange(now,-it),network).total }
+        if (AlertRules.detectSpike(history,todayTotal)) {
+            alertOnce(spikeKey, if(network == "MOBILE") 1003 else 1004,
+                localized("Unusual %s data usage", localized(network)),
+                localized("%s used today, at least 3 times your usual daily usage.",formatBytes(todayTotal)))
         }
     }
 
-    private fun sendNotification(id: Int, title: String, body: String) {
-        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
+    private fun alertOnce(key: String, id: Int, title: String, body: String) {
+        AlertRules.deliverOnce(settingsRepo.loadSettings().alertedKeys,key,
+            { sendNotification(id,title,body) }, settingsRepo::markAlertKey)
+    }
+
+    fun sendNotification(id: Int, title: String, body: String): Boolean {
+        if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context,Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return false
+        if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return false
+        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return false
+        if (Build.VERSION.SDK_INT >= 26 && nm.getNotificationChannel(NetTrackApplication.CHANNEL_ALERTS)?.importance == NotificationManager.IMPORTANCE_NONE) return false
         val openIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)?.let {
-            PendingIntent.getActivity(
-                context,
-                id,
-                it,
-                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-            )
+            PendingIntent.getActivity(context,id,it,PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         }
-
-        val notif = NotificationCompat.Builder(context, NetTrackApplication.CHANNEL_ALERTS)
-            .setContentTitle(title)
-            .setContentText(body)
-            .setSmallIcon(R.drawable.notification_icon)
-            .setAutoCancel(true)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setContentIntent(openIntent)
-            .build()
-
-        nm.notify(id, notif)
+        val notif = NotificationCompat.Builder(context,NetTrackApplication.CHANNEL_ALERTS)
+            .setContentTitle(localized(title)).setContentText(localized(body)).setSmallIcon(R.drawable.notification_icon)
+            .setAutoCancel(true).setPriority(NotificationCompat.PRIORITY_HIGH).setContentIntent(openIntent).build()
+        return try { nm.notify(id,notif); true }
+        catch (e: SecurityException) { false }
     }
+
+    fun localized(text: String, vararg args: Any?): String = Translations.text(
+        Translations.load(context), settingsRepo.loadSettings().language, text, *args
+    )
 
     fun formatBytes(bytes: Long): String {
         if (bytes < 1024) return "$bytes B"
@@ -345,11 +375,14 @@ class UsageRepository(private val context: Context) {
     }
 
     companion object {
+        private val backgroundMutex = Mutex()
+
         @Volatile
         private var INSTANCE: UsageRepository? = null
 
         fun getInstance(context: Context): UsageRepository {
             return INSTANCE ?: synchronized(this) {
+                INSTANCE?.let { return@synchronized it }
                 val instance = UsageRepository(context.applicationContext)
                 INSTANCE = instance
                 instance

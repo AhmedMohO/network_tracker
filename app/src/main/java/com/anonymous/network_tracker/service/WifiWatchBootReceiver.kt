@@ -10,9 +10,8 @@ class WifiWatchBootReceiver : BroadcastReceiver() {
             intent.action != Intent.ACTION_MY_PACKAGE_REPLACED
         ) return
         WifiWatchService.sync(context)
-        if (SyncKeepAlive.isEnabled(context)) {
-            SyncKeepAlive.arm(context)
-        }
+        com.anonymous.network_tracker.service.worker.UsageWork.schedule(context)
+        com.anonymous.network_tracker.service.worker.UsageWork.enqueue(context)
     }
 }
 

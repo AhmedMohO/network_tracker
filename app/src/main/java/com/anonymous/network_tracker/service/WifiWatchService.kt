@@ -52,8 +52,8 @@ class WifiWatchService : Service() {
 
         fun sync(context: Context) {
             if (WifiSessions.isEnabled(context) || SyncKeepAlive.isEnabled(context)) {
-                start(context)
                 SyncKeepAlive.arm(context)
+                runCatching { start(context) }.onFailure { Log.w(TAG, "Watch start deferred: ${it.message}") }
             } else {
                 stop(context)
                 SyncKeepAlive.cancel(context)

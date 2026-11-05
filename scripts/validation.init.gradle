@@ -1,0 +1,8 @@
+allprojects {
+    afterEvaluate { project ->
+        if (project.path == ':app') {
+            project.android.buildTypes.debug.applicationIdSuffix = '.validation20261105'
+            project.android.buildTypes.debug.versionNameSuffix = '-validation'
+        }
+    }
+}

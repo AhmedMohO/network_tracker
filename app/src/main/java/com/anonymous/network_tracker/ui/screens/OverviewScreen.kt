@@ -1,7 +1,10 @@
 package com.anonymous.network_tracker.ui.screens
 
 import android.app.DatePickerDialog
+import android.app.TimePickerDialog
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -30,80 +33,67 @@ import com.anonymous.network_tracker.data.util.PresetId
 import com.anonymous.network_tracker.data.util.RangeUtils
 import com.anonymous.network_tracker.ui.components.AppIconImage
 import com.anonymous.network_tracker.ui.theme.*
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
+import com.anonymous.network_tracker.ui.*
+import com.anonymous.network_tracker.ui.components.UsageRangePicker
+import com.anonymous.network_tracker.ui.components.UsageChart
+import com.anonymous.network_tracker.ui.components.UsageError
+import com.anonymous.network_tracker.data.util.customRangeProblem
+import com.anonymous.network_tracker.data.util.quotaPercent
+import java.text.DateFormat
+import java.util.Date
 import java.util.Calendar
 
 @Composable
 fun OverviewScreen(
     onNavigateToAppDetail: (uid: Int) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    usageState: UsageState = rememberUsageState(),
+    familyRequest: @Composable () -> Unit = {}
 ) {
     val context = LocalContext.current
     val repo = remember(context) { UsageRepository.getInstance(context) }
     val settingsRepo = remember(context) { SettingsRepository.getInstance(context) }
-    val scope = rememberCoroutineScope()
-
     var settings by remember { mutableStateOf(settingsRepo.loadSettings()) }
-
-    // React Native defaults to "MOBILE" because that is the network that costs money
-    var selectedPreset by remember { mutableStateOf(PresetId.TODAY) }
-    var selectedNetwork by remember { mutableStateOf("MOBILE") } // "MOBILE", "WIFI", "ALL"
-
-    var customRange by remember { mutableStateOf<DateRange?>(null) }
+    val selectedPreset = usageState.selectedPreset
+    val selectedNetwork = usageState.selectedNetwork
     var appList by remember { mutableStateOf<List<AppUsageItem>>(emptyList()) }
     var wifiSlices by remember { mutableStateOf<List<WifiNetworkSlice>>(emptyList()) }
     var isLoading by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var quotaError by remember { mutableStateOf<String?>(null) }
+    var cycleTotal by remember { mutableLongStateOf(0) }
     var hasPermission by remember { mutableStateOf(UsageAccess.has(context)) }
-
-    // Re-read settings whenever screen enters foreground/mounts
-    LaunchedEffect(Unit) {
+    LaunchedOnResumeEffect(usageState.now) {
+        hasPermission = UsageAccess.has(context)
         settings = settingsRepo.loadSettings()
     }
-
-    val activeRange = remember(selectedPreset, customRange, settings.cycleStartDay) {
-        if (selectedPreset == PresetId.CUSTOM && customRange != null) {
-            customRange!!
-        } else {
-            RangeUtils.presetRange(selectedPreset, cycleStartDay = settings.cycleStartDay)
-        }
-    }
-
-    fun loadData() {
-        if (!hasPermission) return
-        isLoading = true
-        scope.launch {
+    val activeRange = usageState.activeRange(settings.cycleStartDay)
+    LaunchedEffect(activeRange, selectedNetwork, hasPermission, usageState.now) {
+        appList = emptyList()
+        wifiSlices = emptyList()
+        error = null
+        if (hasPermission) {
+            isLoading = true
             try {
-                appList = repo.getUsage(activeRange, selectedNetwork)
-                if (selectedNetwork == "WIFI" || selectedNetwork == "ALL") {
-                    wifiSlices = repo.getUsageByWifiNetwork(activeRange)
-                } else {
-                    wifiSlices = emptyList()
-                }
-            } catch (_: Exception) {
-            } finally {
-                isLoading = false
-            }
+                val apps = repo.getUsage(activeRange, selectedNetwork)
+                val slices = if (selectedNetwork != "MOBILE") repo.getUsageByWifiNetwork(activeRange) else emptyList()
+                appList = apps
+                wifiSlices = slices
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) { error = e.message ?: e.javaClass.simpleName }
+            finally { isLoading = false }
         }
     }
-
-    LaunchedEffect(activeRange, selectedNetwork, hasPermission) {
-        loadData()
-    }
-
-    fun showCustomDatePicker() {
-        val cal = Calendar.getInstance()
-        val endYear = cal.get(Calendar.YEAR)
-        val endMonth = cal.get(Calendar.MONTH)
-        val endDay = cal.get(Calendar.DAY_OF_MONTH)
-
-        DatePickerDialog(context, { _, year, month, dayOfMonth ->
-            val startCal = Calendar.getInstance().apply {
-                set(year, month, dayOfMonth, 0, 0, 0)
-                set(Calendar.MILLISECOND, 0)
-            }
-            customRange = DateRange(startCal.timeInMillis, System.currentTimeMillis(), PresetId.CUSTOM)
-            selectedPreset = PresetId.CUSTOM
-        }, endYear, endMonth, endDay).show()
+    val cycleRange = RangeUtils.billingCycleRange(settings.cycleStartDay, usageState.now)
+    LaunchedEffect(cycleRange, selectedNetwork, hasPermission, settings.mobileLimitBytes, settings.wifiLimitBytes) {
+        cycleTotal = 0
+        quotaError = null
+        if (hasPermission && selectedNetwork != "ALL") {
+            try { cycleTotal = repo.getUsage(cycleRange, selectedNetwork).sumOf { it.total } }
+            catch (e: CancellationException) { throw e }
+            catch (e: Exception) { quotaError = e.message ?: e.javaClass.simpleName }
+        }
     }
 
     // Partition apps: hide low-level system apps (< 10000, except Tethering -5) if showSystemApps is false
@@ -130,6 +120,7 @@ fun OverviewScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .verticalScroll(rememberScrollState())
         ) {
             // Header bar
             Row(
@@ -141,20 +132,20 @@ fun OverviewScreen(
             ) {
                 Column {
                     Text(
-                        text = "NetTrack",
+                        text = tr("NetTrack"),
                         color = TextPrimary,
                         fontSize = 24.sp,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "Cycle renewal: Day ${settings.cycleStartDay}",
+                        text = tr("Cycle renewal: Day %d", settings.cycleStartDay),
                         color = TextMuted,
                         fontSize = 12.sp
                     )
                 }
 
                 IconButton(
-                    onClick = { loadData() },
+                    onClick = { usageState.refresh() },
                     modifier = Modifier
                         .size(38.dp)
                         .clip(RoundedCornerShape(10.dp))
@@ -162,7 +153,7 @@ fun OverviewScreen(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Refresh,
-                        contentDescription = "Refresh",
+                        contentDescription = tr("Refresh"),
                         tint = AccentPrimary,
                         modifier = Modifier.size(18.dp)
                     )
@@ -187,76 +178,34 @@ fun OverviewScreen(
             ) {
                 NetworkFilterTab(
                     icon = Icons.Default.PhoneAndroid,
-                    label = "Mobile",
+                    label = tr("Mobile"),
                     isSelected = selectedNetwork == "MOBILE",
-                    onClick = { selectedNetwork = "MOBILE" },
+                    onClick = { usageState.selectedNetwork = "MOBILE" },
                     modifier = Modifier.weight(1f)
                 )
                 NetworkFilterTab(
                     icon = Icons.Default.Wifi,
-                    label = "Wi-Fi",
+                    label = tr("Wi-Fi"),
                     isSelected = selectedNetwork == "WIFI",
-                    onClick = { selectedNetwork = "WIFI" },
+                    onClick = { usageState.selectedNetwork = "WIFI" },
                     modifier = Modifier.weight(1f)
                 )
                 NetworkFilterTab(
                     icon = Icons.Default.Language,
-                    label = "All Traffic",
+                    label = tr("All Traffic"),
                     isSelected = selectedNetwork == "ALL",
-                    onClick = { selectedNetwork = "ALL" },
+                    onClick = { usageState.selectedNetwork = "ALL" },
                     modifier = Modifier.weight(1f)
                 )
             }
 
-            // Interval chip selector (Today, Yesterday, 24h, 7d, 30d, This Cycle, Last Cycle, Custom)
-            LazyRow(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                val presets = listOf(
-                    PresetId.TODAY to "Today",
-                    PresetId.YESTERDAY to "Yesterday",
-                    PresetId.LAST_24H to "24 Hours",
-                    PresetId.LAST_7D to "7 Days",
-                    PresetId.LAST_30D to "30 Days",
-                    PresetId.THIS_CYCLE to "This Cycle (Day ${settings.cycleStartDay})",
-                    PresetId.LAST_CYCLE to "Last Cycle",
-                    PresetId.CUSTOM to "Custom Date…"
-                )
-                items(presets) { (preset, label) ->
-                    val isSelected = selectedPreset == preset
-                    FilterChip(
-                        selected = isSelected,
-                        onClick = {
-                            if (preset == PresetId.CUSTOM) {
-                                showCustomDatePicker()
-                            } else {
-                                selectedPreset = preset
-                            }
-                        },
-                        label = { Text(label, fontSize = 12.sp) },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = AccentPrimary,
-                            selectedLabelColor = TextPrimary,
-                            containerColor = DarkSurface,
-                            labelColor = TextSecondary
-                        ),
-                        border = FilterChipDefaults.filterChipBorder(
-                            borderColor = if (isSelected) AccentPrimary else DarkBorder,
-                            selectedBorderColor = AccentPrimary,
-                            enabled = true,
-                            selected = isSelected
-                        )
-                    )
-                }
-            }
+            UsageRangePicker(usageState, settings.cycleStartDay)
 
             // Data Limit Card (if limit is configured for the active network)
             if (activeLimitBytes != null && activeLimitBytes > 0) {
-                val usedPct = (totalBytes.toFloat() / activeLimitBytes.toFloat()).coerceIn(0f, 1f)
-                val isWarning = usedPct >= (warnPercent / 100f)
+                val percent = quotaPercent(cycleTotal, activeLimitBytes)
+                val usedPct = (percent / 100).toFloat().coerceIn(0f, 1f)
+                val isWarning = percent >= warnPercent
 
                 Card(
                     modifier = Modifier
@@ -272,13 +221,13 @@ fun OverviewScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "${if (selectedNetwork == "MOBILE") "Mobile" else "Wi-Fi"} Data Limit",
+                                text = if (selectedNetwork == "MOBILE") tr("Mobile Data Limit") else tr("Wi-Fi Data Limit"),
                                 color = if (isWarning) AccentSecondary else TextPrimary,
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = "%.1f%% used".format(usedPct * 100),
+                                text = tr("%.1f%% used", percent),
                                 color = if (isWarning) AccentSecondary else AccentPrimary,
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold
@@ -296,13 +245,16 @@ fun OverviewScreen(
                         )
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            text = "${repo.formatBytes(totalBytes)} of ${repo.formatBytes(activeLimitBytes)} limit",
+                            text = tr("%s of %s limit", repo.formatBytes(cycleTotal), repo.formatBytes(activeLimitBytes)),
                             color = TextMuted,
                             fontSize = 12.sp
                         )
                     }
                 }
             }
+
+            UsageError(quotaError) { usageState.refresh() }
+            familyRequest()
 
             // Totals Summary Card
             TotalsCard(
@@ -321,6 +273,9 @@ fun OverviewScreen(
                 )
             }
 
+            UsageChart(activeRange, selectedNetwork, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+            UsageError(error) { usageState.refresh() }
+
             // Apps List Header with System Apps counter
             Row(
                 modifier = Modifier
@@ -330,13 +285,13 @@ fun OverviewScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Applications (${visibleApps.size})",
+                    text = tr("Applications (%d)", visibleApps.size),
                     color = TextSecondary,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold
                 )
                 Text(
-                    text = "Sorted by Usage",
+                    text = tr("Sorted by Usage"),
                     color = TextMuted,
                     fontSize = 12.sp
                 )
@@ -350,9 +305,7 @@ fun OverviewScreen(
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 4.dp)
                         .clickable {
-                            val updated = settings.copy(showSystemApps = true)
-                            settingsRepo.updateSettings(updated)
-                            settings = updated
+                            settings = settingsRepo.update { it.copy(showSystemApps = true) }
                         },
                     shape = RoundedCornerShape(8.dp),
                     color = DarkSurface
@@ -363,12 +316,12 @@ fun OverviewScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "${hiddenApps.size} system apps hidden (${repo.formatBytes(hiddenTotal)})",
+                            text = tr("%d system apps hidden (%s)", hiddenApps.size, repo.formatBytes(hiddenTotal)),
                             color = TextMuted,
                             fontSize = 12.sp
                         )
                         Text(
-                            text = "Show",
+                            text = tr("Show"),
                             color = AccentPrimary,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold
@@ -387,7 +340,7 @@ fun OverviewScreen(
                 }
             } else {
                 LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp, max = 600.dp),
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
@@ -458,13 +411,13 @@ fun PermissionBanner(onGrantClick: () -> Unit) {
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Usage Access Required",
+                    text = tr("Usage Access Required"),
                     color = AccentSecondary,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "Permission is needed to query per-app network consumption from Android.",
+                    text = tr("Permission is needed to query per-app network consumption from Android."),
                     color = TextSecondary,
                     fontSize = 12.sp
                 )
@@ -475,7 +428,7 @@ fun PermissionBanner(onGrantClick: () -> Unit) {
                 colors = ButtonDefaults.buttonColors(containerColor = AccentSecondary),
                 shape = RoundedCornerShape(8.dp)
             ) {
-                Text("Grant", color = TextPrimary, fontSize = 12.sp)
+                Text(tr("Grant"), color = MaterialTheme.colorScheme.onSecondary, fontSize = 12.sp)
             }
         }
     }
@@ -495,7 +448,7 @@ fun TotalsCard(
     ) {
         Column(modifier = Modifier.padding(18.dp)) {
             Text(
-                text = "Total Consumption",
+                text = tr("Total Consumption"),
                 color = TextSecondary,
                 fontSize = 12.sp
             )
@@ -513,22 +466,22 @@ fun TotalsCard(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         imageVector = Icons.Default.ArrowDownward,
-                        contentDescription = "Download",
+                        contentDescription = tr("Download"),
                         tint = AccentPrimary,
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Download: $rxFormatted", color = TextSecondary, fontSize = 13.sp)
+                    Text(tr("Download: %s", rxFormatted), color = TextSecondary, fontSize = 13.sp)
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         imageVector = Icons.Default.ArrowUpward,
-                        contentDescription = "Upload",
+                        contentDescription = tr("Upload"),
                         tint = AccentSecondary,
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Upload: $txFormatted", color = TextSecondary, fontSize = 13.sp)
+                    Text(tr("Upload: %s", txFormatted), color = TextSecondary, fontSize = 13.sp)
                 }
             }
         }
@@ -556,7 +509,7 @@ fun WifiSlicesCard(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "Wi-Fi Networks Breakdown",
+                    text = tr("Wi-Fi Networks Breakdown"),
                     color = TextPrimary,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold
@@ -629,7 +582,7 @@ fun AppUsageRow(
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = "Down: ${formatBytes(item.download)} • Up: ${formatBytes(item.upload)}",
+                    text = tr("Down: %s • Up: %s", formatBytes(item.download), formatBytes(item.upload)),
                     color = TextMuted,
                     fontSize = 12.sp
                 )

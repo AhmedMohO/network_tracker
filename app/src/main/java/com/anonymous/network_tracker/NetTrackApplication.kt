@@ -15,7 +15,11 @@ class NetTrackApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        runCatching { com.anonymous.network_tracker.service.push.FamilyPushRegistration.configure(this) }
+            .onFailure { android.util.Log.w("FamilyPush", "Invalid Firebase configuration", it) }
         createNotificationChannels()
+        com.anonymous.network_tracker.service.worker.UsageWork.schedule(this)
+        com.anonymous.network_tracker.service.worker.UsageWork.enqueue(this)
         WifiWatchService.sync(this)
     }
 

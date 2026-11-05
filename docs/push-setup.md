@@ -1,151 +1,31 @@
-# Making background sync actually happen
+# Family push setup for the native Kotlin app
 
-Three independent mechanisms, weakest first. They all trigger the same
-`runUsageCheck`. Simultaneous alarm, worker, and push triggers share one running
-check. Alert identifiers are stable, so retrying a post replaces its tray entry
-instead of stacking another copy.
+The native app has three independent triggers for the same serialized usage/family check:
 
-| # | Mechanism | Needs | Reliability |
-|---|-----------|-------|-------------|
-| 1 | WorkManager (`expo-background-task`) | nothing, already shipped | poor — App Standby can defer it a day |
-| 2 | `AlarmManager` + foreground service (`SyncKeepAlive`) | user turns on one switch | good — fires in Doze |
-| 3 | Server push (`family_ping_stale` → Expo → device) | the setup below | best — independent of the device's own scheduling |
+1. Unique periodic WorkManager work, registered at application startup.
+2. The optional keep-alive foreground service and idle-capable alarm. Wi-Fi attribution shares this service/alarm; either enabled switch keeps it active.
+3. FCM data-only wake-ups from the existing Supabase → Expo delivery path.
 
-## Why WorkManager alone is not enough
+Foreground app use also requests a check every five minutes. Android can defer background work; physical-device idle/Doze tests are still necessary.
 
-`registerBackgroundCheck` asks for `minimumInterval: 15`. That is a request.
-The actual cadence is set by the App Standby bucket the device puts the app in:
+## Required external configuration
 
-| Bucket | Roughly |
-|--------|---------|
-| active | as requested |
-| working set | ~2 h |
-| frequent | ~8 h |
-| rare | ~24 h |
-| restricted | ~24 h+, often never |
+Neither project currently contains google-services.json. Push delivery cannot be tested or enabled without the app owner's configuration.
 
-A phone that is not opened daily falls to `rare` within days. This is the whole
-explanation for "the child paired, pushed 30 days of backfill plus one `recent`
-row, and then never pushed again" — 31 rows, frozen.
+- Register Firebase Android package com.anonymous.network_tracker and put its google-services.json in this native project root. The file is ignored by Git. The build copies it into generated APK assets; a later build without the file removes the generated copy.
+- Configure the Firebase project's FCM v1 service account in the existing EAS project dfff9ccc-34af-46da-bf48-88bf34995a5d. The private service account belongs in EAS, never in the APK or repository.
+- Keep the existing family_register_token function and family_ping_stale cron job from docs/family-schema.sql. Existing Expo devices remain compatible; no backend protocol change is required.
 
-The two device-side fixes are exposed in Settings › Background updates:
-"Allow background activity" (the battery-optimisation exemption, the single
-highest-value one) and "Keep updates on time" (mechanism 2).
+At startup, the app reads the public Firebase Android configuration and initializes FirebaseOptions directly, without a React Native runtime or google-services Gradle plugin. Automatic token registration is disabled while unpaired. A paired sync obtains an FCM token, exchanges it for an Expo token using the same endpoint/payload as the original Expo client, then registers that Expo token with the existing family RPC. Registration failures do not prevent ordinary family synchronization. Token changes enqueue another check.
 
-## Setting up mechanism 3
+Family shows “Push setup needed”, “Push registration pending”, or “Push ready”. Ready means a token was registered; it does not prove successful server delivery. Confirm the EAS credential and cron configuration separately.
 
-Two manual steps. Until both are done the app is unaffected — `registerPushToken`
-gives up quietly when no token can be issued, and the other two mechanisms carry
-the load.
+## Receiver behavior and privacy
 
-### 1. FCM credentials on the EAS project
+FamilyMessagingService treats every received data message as a wake-up signal and ignores its payload. It enqueues durable WorkManager work; a remote message cannot set limits, pairing, or arbitrary device behavior. Family operations and token registration share the same lock, so registration cannot recreate a pairing after unpairing. Unpair deletes the remote family first, clears the local family cache and pairing fields, and disables automatic FCM initialization. Local usage history is retained.
 
-Expo's push service delivers through FCM, so Android needs an FCM v1 key even
-though the app never talks to Firebase directly.
+## Verification
 
-1. Create a Firebase project and add an Android app with package
-   `com.anonymous.network_tracker` (must match `android.package` in `app.json`).
-2. Download `google-services.json`, put it at the repo root, and point
-   `app.json` at it:
-   ```json
-   "android": { "googleServicesFile": "./google-services.json" }
-   ```
-3. In Firebase console → Project settings → Service accounts → Generate new
-   private key. Upload it to EAS:
-   ```
-   eas credentials
-   # Android → production → Google Service Account → FCM V1
-   ```
-4. Rebuild. This is a native change; an OTA will not pick it up.
+Build and install an update in place, grant notification permission on Android 13+, pair old/new device combinations, and confirm an Expo-formatted row in family_push_tokens. Use the existing family_ping_stale function/cron to verify a sleeping paired child wakes, updates its recent snapshot, and does not produce a visible notification for the data-only message. Also test network loss, token rotation, unpairing, battery restrictions, reboot, and package replacement.
 
-Verify a token is issued: pair the device, then check that
-`family_push_tokens` has a row for it.
-
-### 2. Database side
-
-`docs/family-schema.sql` already contains `family_push_tokens`,
-`family_register_token` and `family_ping_stale`. Run the file, then, as the
-project owner in the Supabase SQL editor:
-
-```sql
-create extension if not exists pg_net  with schema extensions;
-create extension if not exists pg_cron with schema extensions;
-
-select cron.schedule('family-ping', '*/15 * * * *',
-                     $ping$ select family_ping_stale() $ping$);
-```
-
-Checking on it:
-
-```sql
--- did the job run, and what did it return
-select * from cron.job_run_details order by start_time desc limit 20;
-
--- what Expo said back (pg_net is async; responses land here)
-select * from net._http_response order by created desc limit 20;
-
--- who is currently considered stale
-select t.device_id, s.updated_at
-  from family_push_tokens t
-  join family_snapshots s
-    on s.pair_token = t.pair_token and s.device_id = t.device_id
-   and s.kind = 'recent' and s.day = 0
- order by s.updated_at;
-```
-
-To stop it: `select cron.unschedule('family-ping');`
-
-### What gets sent
-
-A data-only message with no title and no body, so nothing is shown to the user.
-The app ignores the payload entirely — it is a knock on the door, not an
-instruction — which is what stops a spoofed push from being able to steer the
-device. See `PUSH_SYNC_TASK` in `src/features/limits/services/backgroundCheck.ts`.
-
-`family_ping_stale` only wakes devices whose `recent` row is between 20 minutes
-and 7 days old: a device syncing on its own is never pinged, and a device that
-has been silent for a week is not coming back because of a notification, so its
-token stops being pushed to rather than being retried forever.
-
-## Checking whether any of it is working
-
-Settings › Background updates now shows the last successful sync. Before this,
-`lastSyncOkAt` was written on every run and read by nothing, and the only sign
-that sync had died was a notification two days later.
-
-Server-side, the row count is the giveaway. A healthy child gains one `daily`
-row per day:
-
-```sql
-select device_id, kind, count(*)
-  from family_snapshots
- where pair_token = '...'
- group by 1, 2;
-```
-
-Frozen at 30 `daily` + 1 `recent` means the pairing backfill ran and nothing
-since.
-
-## Release-only background startup failures
-
-If logcat reports `ClassNotFoundException` for
-`expo.modules.adapters.react.apploader.RNHeadlessAppLoader`, Android is reaching
-the task but the release shrinker removed Expo's background loader. Keep it in
-`modules/network-usage/android/consumer-rules.pro`; the local module exports
-those rules to every release build. A JavaScript-only update cannot repair an
-installed APK with this missing class.
-
-`index.js` imports the task definitions before Expo Router. Keep that import
-at the application entry point: a headless launch never mounts `_layout.tsx`,
-so layout-only task registration leaves a cold background job with no executor.
-
-Test a minified release with the app in the background, including a job that
-starts before any Activity has opened. Debug builds do not exercise shrinking.
-The boot receiver also handles app replacement so installing an update restores
-enabled background work. Foregrounding the app reconciles the service with its
-saved switches without changing the user's preference.
-
-Family check-ins run before the slower local archive and spike scans. Current
-usage and pending grants run before yesterday's archive; a history failure can
-still be reported without losing today's heartbeat. A family HTTP request has
-a 15-second deadline so a stalled connection does not block all later syncs.
+Without Firebase/EAS credentials the WorkManager and alarm paths still operate; live FCM delivery remains unverified.

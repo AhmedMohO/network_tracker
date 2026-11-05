@@ -1,6 +1,7 @@
 package com.anonymous.network_tracker.data.db
 
 import android.content.Context
+import android.database.sqlite.SQLiteDatabase
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
@@ -27,7 +28,9 @@ abstract class UsageDatabase : RoomDatabase() {
 
         fun getInstance(context: Context): UsageDatabase {
             return INSTANCE ?: synchronized(this) {
+                INSTANCE?.let { return@synchronized it }
                 val dbPath = getDatabasePath(context.applicationContext)
+                migrateLegacyArchive(dbPath)
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     UsageDatabase::class.java,
@@ -46,6 +49,26 @@ abstract class UsageDatabase : RoomDatabase() {
                 .build()
                 INSTANCE = instance
                 instance
+            }
+        }
+
+        private fun migrateLegacyArchive(path: String) {
+            val file = java.io.File(path)
+            if (!file.exists()) return
+            SQLiteDatabase.openDatabase(path, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+                val columns = db.rawQuery("PRAGMA table_info(daily_usage)", null).use { cursor ->
+                    buildSet { while (cursor.moveToNext()) add(cursor.getString(cursor.getColumnIndexOrThrow("name"))) }
+                }
+                if (columns.isEmpty() || "ssid" in columns) return
+                db.beginTransaction()
+                try {
+                    for (statement in ArchiveMigration.LEGACY_SQL.split(';')) {
+                        if (statement.isNotBlank()) db.execSQL(statement)
+                    }
+                    db.setTransactionSuccessful()
+                } finally {
+                    db.endTransaction()
+                }
             }
         }
     }

@@ -1,5 +1,17 @@
 package com.anonymous.network_tracker.ui.screens
 
+import android.Manifest
+import android.os.Build
+import android.provider.Settings
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import com.anonymous.network_tracker.ui.UsageState
+import com.anonymous.network_tracker.ui.rememberUsageState
+import com.anonymous.network_tracker.ui.LaunchedOnResumeEffect
+import com.anonymous.network_tracker.data.util.UsageExport
+import com.anonymous.network_tracker.data.util.parseLimitGb
 import android.content.Context
 import android.content.Intent
 import androidx.compose.foundation.background
@@ -18,6 +30,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -43,7 +57,9 @@ private const val GB_BYTES = 1024L * 1024L * 1024L
 fun SettingsScreen(
     onNavigateToFamily: () -> Unit,
     onNavigateToUpdate: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    usageState: UsageState = rememberUsageState(),
+    onAppearanceChanged: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val settingsRepo = remember(context) { SettingsRepository.getInstance(context) }
@@ -56,6 +72,63 @@ fun SettingsScreen(
     var wifiProblem by remember { mutableStateOf(WifiWatchService.problem(context)) }
     var isIgnoringBattery by remember { mutableStateOf(SyncKeepAlive.isIgnoringBatteryOptimizations(context)) }
 
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var isExporting by remember { mutableStateOf(false) }
+    LaunchedOnResumeEffect(context) {
+            settings = settingsRepo.loadSettings()
+            wifiWatchEnabled = WifiSessions.isEnabled(context)
+            keepAliveEnabled = SyncKeepAlive.isEnabled(context)
+            wifiProblem = WifiWatchService.problem(context)
+            isIgnoringBattery = SyncKeepAlive.isIgnoringBatteryOptimizations(context)
+            }
+    fun save(change: (AppSettings) -> AppSettings): Boolean = try {
+        settings = settingsRepo.update(change)
+        errorMessage = null
+        true
+    } catch (e: Exception) {
+        errorMessage = e.message ?: "Unable to save settings. Try again."
+        false
+    }
+    fun setWifiWatch(enabled: Boolean) {
+        try {
+            WifiSessions.setEnabled(context, enabled)
+            WifiWatchService.sync(context)
+            wifiWatchEnabled = enabled
+            wifiProblem = WifiWatchService.problem(context)
+        } catch (e: Exception) {
+            errorMessage = e.message ?: "Unable to start tracking. Try again."
+        }
+    }
+    val locationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
+        if (permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true) setWifiWatch(true)
+        else errorMessage = "Location access is needed to identify Wi-Fi networks."
+    }
+    val exportTitle = tr("Export Usage")
+    fun export(format: String) {
+        val range = usageState.activeRange(settings.cycleStartDay)
+        val network = usageState.selectedNetwork
+        isExporting = true
+        scope.launch {
+            try {
+                val apps = usageRepo.getUsage(range, network)
+                val file = withContext(Dispatchers.IO) {
+                    File(context.cacheDir, "network_usage_export.$format").apply {
+                        writeText(if (format == "csv") UsageExport.toCsv(apps, range, network) else UsageExport.toJson(apps, range, network))
+                    }
+                }
+                val uri = FileProvider.getUriForFile(context, "${context.packageName}.apkprovider", file)
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = if (format == "csv") "text/csv" else "application/json"
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                context.startActivity(Intent.createChooser(intent, exportTitle))
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e
+            } catch (e: Exception) { errorMessage = e.message ?: "Export failed. Try again."
+            } finally { isExporting = false }
+        }
+    }
+
     // Dialog state for Cycle Day
     var showCycleDialog by remember { mutableStateOf(false) }
     var cycleDayDraft by remember { mutableStateOf(settings.cycleStartDay.toString()) }
@@ -65,29 +138,16 @@ fun SettingsScreen(
     var limitGbDraft by remember { mutableStateOf("") }
     var warnPctDraft by remember { mutableStateOf("80") }
 
-    fun shareCsv(file: File) {
-        val uri = FileProvider.getUriForFile(
-            context,
-            "${context.packageName}.apkprovider",
-            file
-        )
-        val sendIntent = Intent(Intent.ACTION_SEND).apply {
-            type = "text/csv"
-            putExtra(Intent.EXTRA_STREAM, uri)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-        context.startActivity(Intent.createChooser(sendIntent, "Export Usage Archive"))
-    }
-
     // Cycle Day Dialog
     if (showCycleDialog) {
         AlertDialog(
             onDismissRequest = { showCycleDialog = false },
-            title = { Text("Monthly Plan Renewal Day", color = TextPrimary, fontWeight = FontWeight.Bold) },
+            title = { Text(tr("Monthly Plan Renewal Day"), color = TextPrimary, fontWeight = FontWeight.Bold) },
             text = {
                 Column {
+                    if (errorMessage != null) Text(tr(errorMessage!!), color = MaterialTheme.colorScheme.error)
                     Text(
-                        "Enter the day of the month (1 to 31) when your mobile bundle or billing cycle renews. This recalculates your 'This Cycle' and 'Last Cycle' usage.",
+                        tr("Enter the day of the month (1 to 31) when your mobile bundle or billing cycle renews. This recalculates your 'This Cycle' and 'Last Cycle' usage."),
                         color = TextSecondary,
                         fontSize = 13.sp
                     )
@@ -99,7 +159,7 @@ fun SettingsScreen(
                                 cycleDayDraft = input
                             }
                         },
-                        label = { Text("Renewal Day (1–31)") },
+                        label = { Text(tr("Renewal Day (1–31)")) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
@@ -115,20 +175,18 @@ fun SettingsScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        val parsed = cycleDayDraft.toIntOrNull()?.coerceIn(1, 31) ?: 1
-                        val updated = settings.copy(cycleStartDay = parsed)
-                        settingsRepo.updateSettings(updated)
-                        settings = updated
-                        showCycleDialog = false
+                        val parsed = cycleDayDraft.toIntOrNull()
+                        if (parsed == null || parsed !in 1..31) errorMessage = "Enter a renewal day from 1 to 31."
+                        else if (save { it.copy(cycleStartDay = parsed) }) showCycleDialog = false
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = AccentPrimary)
                 ) {
-                    Text("Save", color = TextPrimary)
+                    Text(tr("Save"), color = MaterialTheme.colorScheme.onPrimary)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showCycleDialog = false }) {
-                    Text("Cancel", color = TextMuted)
+                    Text(tr("Cancel"), color = TextMuted)
                 }
             },
             containerColor = DarkSurface
@@ -141,11 +199,12 @@ fun SettingsScreen(
         val networkTitle = if (isMobile) "Mobile Data Limit" else "Wi-Fi Data Limit"
         AlertDialog(
             onDismissRequest = { showLimitDialogFor = null },
-            title = { Text(networkTitle, color = TextPrimary, fontWeight = FontWeight.Bold) },
+            title = { Text(tr(networkTitle), color = TextPrimary, fontWeight = FontWeight.Bold) },
             text = {
                 Column {
+                    if (errorMessage != null) Text(tr(errorMessage!!), color = MaterialTheme.colorScheme.error)
                     Text(
-                        "Set a monthly data limit in GB and warning threshold. You will receive an alert notification when reaching the threshold.",
+                        tr("Set a monthly data limit in GB and warning threshold. You will receive an alert notification when reaching the threshold."),
                         color = TextSecondary,
                         fontSize = 13.sp
                     )
@@ -153,7 +212,7 @@ fun SettingsScreen(
                     OutlinedTextField(
                         value = limitGbDraft,
                         onValueChange = { limitGbDraft = it },
-                        label = { Text("Limit in GB (e.g. 20, 50)") },
+                        label = { Text(tr("Limit in GB (e.g. 20, 50)")) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
@@ -168,7 +227,7 @@ fun SettingsScreen(
                     OutlinedTextField(
                         value = warnPctDraft,
                         onValueChange = { warnPctDraft = it },
-                        label = { Text("Warning Threshold % (e.g. 80)") },
+                        label = { Text(tr("Warning Threshold % (e.g. 80)")) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
@@ -184,22 +243,16 @@ fun SettingsScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        val gb = limitGbDraft.toDoubleOrNull()
-                        val bytes = if (gb != null && gb > 0) (gb * GB_BYTES).toLong() else null
-                        val pct = warnPctDraft.toIntOrNull()?.coerceIn(1, 100) ?: 80
-
-                        val updated = if (isMobile) {
-                            settings.copy(mobileLimitBytes = bytes, mobileWarnAtPercent = pct)
-                        } else {
-                            settings.copy(wifiLimitBytes = bytes, wifiWarnAtPercent = pct)
-                        }
-                        settingsRepo.updateSettings(updated)
-                        settings = updated
-                        showLimitDialogFor = null
+                        val bytes = parseLimitGb(limitGbDraft)
+                        val pct = warnPctDraft.toIntOrNull()
+                        if (bytes == null || pct == null || pct !in 1..100) {
+                            errorMessage = "Enter a positive data limit and a warning percentage from 1 to 100."
+                        } else if (save { if (isMobile) it.copy(mobileLimitBytes = bytes, mobileWarnAtPercent = pct)
+                            else it.copy(wifiLimitBytes = bytes, wifiWarnAtPercent = pct) }) showLimitDialogFor = null
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = AccentPrimary)
                 ) {
-                    Text("Save", color = TextPrimary)
+                    Text(tr("Save"), color = MaterialTheme.colorScheme.onPrimary)
                 }
             },
             dismissButton = {
@@ -208,22 +261,15 @@ fun SettingsScreen(
                     if (hasExistingLimit) {
                         TextButton(
                             onClick = {
-                                val updated = if (isMobile) {
-                                    settings.copy(mobileLimitBytes = null)
-                                } else {
-                                    settings.copy(wifiLimitBytes = null)
-                                }
-                                settingsRepo.updateSettings(updated)
-                                settings = updated
-                                showLimitDialogFor = null
+                                if (save { if (isMobile) it.copy(mobileLimitBytes = null) else it.copy(wifiLimitBytes = null) }) showLimitDialogFor = null
                             }
                         ) {
-                            Text("Remove Limit", color = AccentSecondary)
+                            Text(tr("Remove Limit"), color = AccentSecondary)
                         }
                         Spacer(modifier = Modifier.width(8.dp))
                     }
                     TextButton(onClick = { showLimitDialogFor = null }) {
-                        Text("Cancel", color = TextMuted)
+                        Text(tr("Cancel"), color = TextMuted)
                     }
                 }
             },
@@ -245,17 +291,41 @@ fun SettingsScreen(
         ) {
             Column {
                 Text(
-                    text = "Settings",
+                    text = tr("Settings"),
                     color = TextPrimary,
                     fontSize = 24.sp,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "Tracking preferences, cycle & limits",
+                    text = tr("Tracking preferences, cycle & limits"),
                     color = TextSecondary,
                     fontSize = 14.sp
                 )
             }
+
+            if (errorMessage != null) {
+                Text(tr(errorMessage!!), color = MaterialTheme.colorScheme.error)
+                TextButton(onClick = { errorMessage = null }) { Text(tr("Dismiss")) }
+            }
+            Text(tr("Language"), style = MaterialTheme.typography.titleMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("en" to "English", "ar" to "العربية").forEach { (code, label) ->
+                    FilterChip(selected = settings.language == code, onClick = {
+                        if (save { it.copy(language = code) }) onAppearanceChanged()
+                    }, label = { Text(label) })
+                }
+            }
+            Text(tr("Appearance"), style = MaterialTheme.typography.titleMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("system" to "System", "light" to "Light", "dark" to "Dark").forEach { (mode, label) ->
+                    FilterChip(selected = settings.themeMode == mode, onClick = {
+                        if (save { it.copy(themeMode = mode) }) onAppearanceChanged()
+                    }, label = { Text(tr(label)) })
+                }
+            }
+            OutlinedButton(onClick = {
+                context.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName))
+            }) { Text(tr("Notification settings")) }
 
             // 1. Monthly Plan Renewal Day Card
             Card(
@@ -275,7 +345,7 @@ fun SettingsScreen(
                             Icon(Icons.Default.CalendarMonth, contentDescription = null, tint = AccentPrimary, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "Monthly Plan Renewal Day",
+                                text = tr("Monthly Plan Renewal Day"),
                                 color = TextPrimary,
                                 fontSize = 15.sp,
                                 fontWeight = FontWeight.SemiBold
@@ -283,7 +353,7 @@ fun SettingsScreen(
                         }
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "Renews on day ${settings.cycleStartDay} of each month. Drives 'This Cycle' date ranges.",
+                            text = tr("Renews on day %d of each month. Drives 'This Cycle' date ranges.", settings.cycleStartDay),
                             color = TextMuted,
                             fontSize = 12.sp
                         )
@@ -297,7 +367,7 @@ fun SettingsScreen(
                         colors = ButtonDefaults.buttonColors(containerColor = DarkSurfaceVariant),
                         shape = RoundedCornerShape(8.dp)
                     ) {
-                        Text("Day ${settings.cycleStartDay}", color = AccentPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Text(tr("Day %d", settings.cycleStartDay), color = AccentPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                     }
                 }
             }
@@ -310,14 +380,14 @@ fun SettingsScreen(
             ) {
                 Column(modifier = Modifier.padding(18.dp)) {
                     Text(
-                        text = "Data Limits & Alerts",
+                        text = tr("Data Limits & Alerts"),
                         color = TextPrimary,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.SemiBold
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "Get notified before exceeding your monthly package quota.",
+                        text = tr("Get notified before exceeding your monthly package quota."),
                         color = TextMuted,
                         fontSize = 12.sp
                     )
@@ -333,12 +403,12 @@ fun SettingsScreen(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Default.PhoneAndroid, contentDescription = null, tint = AccentPrimary, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Mobile Limit", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                Text(tr("Mobile Limit"), color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                             }
                             val mobileText = if (settings.mobileLimitBytes != null) {
-                                "%.1f GB (Warn at %d%%)".format(settings.mobileLimitBytes!! / (1024.0 * 1024.0 * 1024.0), settings.mobileWarnAtPercent)
+                                tr("%.1f GB (Warn at %d%%)", settings.mobileLimitBytes!! / (1024.0 * 1024.0 * 1024.0), settings.mobileWarnAtPercent)
                             } else {
-                                "No limit set"
+                                tr("No limit set")
                             }
                             Text(mobileText, color = TextMuted, fontSize = 12.sp)
                         }
@@ -351,7 +421,7 @@ fun SettingsScreen(
                             colors = ButtonDefaults.buttonColors(containerColor = DarkSurfaceVariant),
                             shape = RoundedCornerShape(8.dp)
                         ) {
-                            Text(if (settings.mobileLimitBytes != null) "Edit" else "Set Limit", color = AccentPrimary, fontSize = 12.sp)
+                            Text(if (settings.mobileLimitBytes != null) tr("Edit") else tr("Set Limit"), color = AccentPrimary, fontSize = 12.sp)
                         }
                     }
 
@@ -369,12 +439,12 @@ fun SettingsScreen(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Default.Wifi, contentDescription = null, tint = AccentPrimary, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Wi-Fi Limit", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                Text(tr("Wi-Fi Limit"), color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                             }
                             val wifiText = if (settings.wifiLimitBytes != null) {
-                                "%.1f GB (Warn at %d%%)".format(settings.wifiLimitBytes!! / (1024.0 * 1024.0 * 1024.0), settings.wifiWarnAtPercent)
+                                tr("%.1f GB (Warn at %d%%)", settings.wifiLimitBytes!! / (1024.0 * 1024.0 * 1024.0), settings.wifiWarnAtPercent)
                             } else {
-                                "No limit set"
+                                tr("No limit set")
                             }
                             Text(wifiText, color = TextMuted, fontSize = 12.sp)
                         }
@@ -387,7 +457,7 @@ fun SettingsScreen(
                             colors = ButtonDefaults.buttonColors(containerColor = DarkSurfaceVariant),
                             shape = RoundedCornerShape(8.dp)
                         ) {
-                            Text(if (settings.wifiLimitBytes != null) "Edit" else "Set Limit", color = AccentPrimary, fontSize = 12.sp)
+                            Text(if (settings.wifiLimitBytes != null) tr("Edit") else tr("Set Limit"), color = AccentPrimary, fontSize = 12.sp)
                         }
                     }
                 }
@@ -411,7 +481,7 @@ fun SettingsScreen(
                             Icon(Icons.Default.Layers, contentDescription = null, tint = AccentPrimary, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "Show System Apps",
+                                text = tr("Show System Apps"),
                                 color = TextPrimary,
                                 fontSize = 15.sp,
                                 fontWeight = FontWeight.SemiBold
@@ -419,17 +489,17 @@ fun SettingsScreen(
                         }
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "Include low-level Android OS services and root processes in usage lists",
+                            text = tr("Include low-level Android OS services and root processes in usage lists"),
                             color = TextMuted,
                             fontSize = 12.sp
                         )
                     }
+                    val switchLabel = tr("Show System Apps")
                     Switch(
+                        modifier = Modifier.semantics { contentDescription = switchLabel },
                         checked = settings.showSystemApps,
                         onCheckedChange = { checked ->
-                            val updated = settings.copy(showSystemApps = checked)
-                            settingsRepo.updateSettings(updated)
-                            settings = updated
+                            save { it.copy(showSystemApps = checked) }
                         },
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = TextPrimary,
@@ -458,7 +528,7 @@ fun SettingsScreen(
                                 Icon(Icons.Default.WifiTethering, contentDescription = null, tint = AccentPrimary, modifier = Modifier.size(18.dp))
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    text = "Wi-Fi Network Attribution",
+                                    text = tr("Wi-Fi Network Attribution"),
                                     color = TextPrimary,
                                     fontSize = 15.sp,
                                     fontWeight = FontWeight.SemiBold
@@ -466,22 +536,19 @@ fun SettingsScreen(
                             }
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = "Attribute Wi-Fi data usage by SSID network name (Home, Work, etc.)",
+                                text = tr("Attribute Wi-Fi data usage by SSID network name (Home, Work, etc.)"),
                                 color = TextMuted,
                                 fontSize = 12.sp
                             )
                         }
+                        val switchLabel = tr("Wi-Fi Network Attribution")
                         Switch(
+                            modifier = Modifier.semantics { contentDescription = switchLabel },
                             checked = wifiWatchEnabled,
                             onCheckedChange = { enabled ->
-                                WifiSessions.setEnabled(context, enabled)
-                                wifiWatchEnabled = enabled
-                                if (enabled) {
-                                    WifiWatchService.start(context)
-                                } else {
-                                    WifiWatchService.stop(context)
-                                }
-                                wifiProblem = WifiWatchService.problem(context)
+                                if (enabled && ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+                                    locationPermission.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+                                } else setWifiWatch(enabled)
                             },
                             colors = SwitchDefaults.colors(
                                 checkedThumbColor = TextPrimary,
@@ -494,17 +561,12 @@ fun SettingsScreen(
 
                     if (wifiProblem != null) {
                         Spacer(modifier = Modifier.height(10.dp))
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = AccentSecondary.copy(alpha = 0.12f)
-                        ) {
-                            Text(
-                                text = "Permission needed: ${wifiProblem}",
-                                color = AccentSecondary,
-                                fontSize = 12.sp,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                            )
-                        }
+                        Text(tr(when (wifiProblem) {
+                            "permission" -> "Location access is needed to identify Wi-Fi networks."
+                            "background" -> "Allow location all the time for background Wi-Fi tracking."
+                            else -> "Turn on device location to identify Wi-Fi networks."
+                        }), color = TextSecondary)
+                        TextButton(onClick = { WifiWatchService.openFix(context) }) { Text(tr("Open location settings")) }
                     }
                 }
             }
@@ -526,7 +588,7 @@ fun SettingsScreen(
                                 Icon(Icons.Default.Schedule, contentDescription = null, tint = AccentPrimary, modifier = Modifier.size(18.dp))
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    text = "Regular Background Sync",
+                                    text = tr("Regular Background Sync"),
                                     color = TextPrimary,
                                     fontSize = 15.sp,
                                     fontWeight = FontWeight.SemiBold
@@ -534,12 +596,14 @@ fun SettingsScreen(
                             }
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = "Keep usage tracking fresh and accurate even when the app is closed.",
+                                text = tr("Keep usage tracking fresh and accurate even when the app is closed."),
                                 color = TextMuted,
                                 fontSize = 12.sp
                             )
                         }
+                        val switchLabel = tr("Regular Background Sync")
                         Switch(
+                            modifier = Modifier.semantics { contentDescription = switchLabel },
                             checked = keepAliveEnabled,
                             onCheckedChange = { enabled ->
                                 SyncKeepAlive.setEnabled(context, enabled)
@@ -564,7 +628,7 @@ fun SettingsScreen(
                             colors = ButtonDefaults.buttonColors(containerColor = DarkSurfaceVariant),
                             shape = RoundedCornerShape(8.dp)
                         ) {
-                            Text("Exempt from Battery Optimization", color = AccentSecondary, fontSize = 12.sp)
+                            Text(tr("Exempt from Battery Optimization"), color = AccentSecondary, fontSize = 12.sp)
                         }
                     }
                 }
@@ -588,7 +652,7 @@ fun SettingsScreen(
                             Icon(Icons.Default.Group, contentDescription = null, tint = AccentPrimary, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "Family Sharing & Pairing",
+                                text = tr("Family Sharing & Pairing"),
                                 color = TextPrimary,
                                 fontSize = 15.sp,
                                 fontWeight = FontWeight.SemiBold
@@ -601,7 +665,7 @@ fun SettingsScreen(
                             else -> "Not paired yet"
                         }
                         Text(
-                            text = status,
+                            text = tr(status),
                             color = TextMuted,
                             fontSize = 12.sp
                         )
@@ -611,7 +675,7 @@ fun SettingsScreen(
                         colors = ButtonDefaults.buttonColors(containerColor = AccentPrimary),
                         shape = RoundedCornerShape(8.dp)
                     ) {
-                        Text("Open Family", color = TextPrimary, fontSize = 13.sp)
+                        Text(tr("Open Family"), color = MaterialTheme.colorScheme.onPrimary, fontSize = 13.sp)
                     }
                 }
             }
@@ -624,37 +688,21 @@ fun SettingsScreen(
             ) {
                 Column(modifier = Modifier.padding(18.dp)) {
                     Text(
-                        text = "Data Management",
+                        text = tr("Data Management"),
                         color = TextPrimary,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.SemiBold
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "Export your local network usage archive as a CSV file.",
+                        text = tr("Export the selected date range and network as CSV or JSON."),
                         color = TextMuted,
                         fontSize = 12.sp
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     Button(
-                        onClick = {
-                            scope.launch {
-                                val allUsage = usageRepo.getUsage(RangeUtils.presetRange(com.anonymous.network_tracker.data.util.PresetId.LAST_30D))
-                                withContext(Dispatchers.IO) {
-                                    val csvContent = buildString {
-                                        append("UID,Application,Package,DownloadBytes,UploadBytes,TotalBytes\n")
-                                        allUsage.forEach {
-                                            append("${it.uid},\"${it.name}\",\"${it.packageName ?: ""}\",${it.download},${it.upload},${it.total}\n")
-                                        }
-                                    }
-                                    val exportFile = File(context.cacheDir, "network_usage_export.csv")
-                                    exportFile.writeText(csvContent)
-                                    withContext(Dispatchers.Main) {
-                                        shareCsv(exportFile)
-                                    }
-                                }
-                            }
-                        },
+                        enabled = !isExporting,
+                        onClick = { export("csv") },
                         colors = ButtonDefaults.buttonColors(containerColor = DarkSurfaceVariant),
                         shape = RoundedCornerShape(8.dp)
                     ) {
@@ -665,10 +713,12 @@ fun SettingsScreen(
                             modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Export CSV Archive", color = AccentSecondary, fontSize = 13.sp)
+                        Text(tr("Export CSV"), color = AccentSecondary, fontSize = 13.sp)
                     }
                 }
             }
+
+            OutlinedButton(enabled = !isExporting, onClick = { export("json") }) { Text(tr("Export JSON")) }
 
             // 8. App Updates Card
             Card(
@@ -685,13 +735,13 @@ fun SettingsScreen(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Software Updates",
+                            text = tr("Software Updates"),
                             color = TextPrimary,
                             fontSize = 15.sp,
                             fontWeight = FontWeight.SemiBold
                         )
                         Text(
-                            text = "Check GitHub for new versions & release notes",
+                            text = tr("Check GitHub for new versions & release notes"),
                             color = TextMuted,
                             fontSize = 12.sp
                         )
@@ -708,7 +758,7 @@ fun SettingsScreen(
                             modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Check", color = AccentPrimary, fontSize = 13.sp)
+                        Text(tr("Check"), color = AccentPrimary, fontSize = 13.sp)
                     }
                 }
             }
@@ -721,7 +771,7 @@ fun SettingsScreen(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "NetTrack v2.0.0 (Native Kotlin)",
+                    text = tr("NetTrack v2.0.0 (Native Kotlin)"),
                     color = TextMuted,
                     fontSize = 13.sp
                 )

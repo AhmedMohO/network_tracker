@@ -25,7 +25,10 @@ import com.anonymous.network_tracker.data.util.PresetId
 import com.anonymous.network_tracker.data.util.RangeUtils
 import com.anonymous.network_tracker.ui.components.AppIconImage
 import com.anonymous.network_tracker.ui.theme.*
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
+import com.anonymous.network_tracker.ui.*
+import com.anonymous.network_tracker.ui.components.UsageError
+import com.anonymous.network_tracker.ui.components.UsageRangePicker
 
 data class AppComparison(
     val uid: Int,
@@ -38,45 +41,39 @@ data class AppComparison(
 )
 
 @Composable
-fun CompareScreen(modifier: Modifier = Modifier) {
+fun CompareScreen(modifier: Modifier = Modifier, usageState: UsageState = rememberUsageState()) {
     val context = LocalContext.current
     val repo = remember(context) { UsageRepository.getInstance(context) }
     val settingsRepo = remember(context) { SettingsRepository.getInstance(context) }
-    val scope = rememberCoroutineScope()
 
     var settings by remember { mutableStateOf(settingsRepo.loadSettings()) }
-    var selectedPreset by remember { mutableStateOf(PresetId.THIS_CYCLE) }
-    var selectedNetwork by remember { mutableStateOf("MOBILE") } // "MOBILE", "WIFI", "ALL"
+    val selectedPreset = usageState.selectedPreset
+    val selectedNetwork = usageState.selectedNetwork
 
     var comparisonList by remember { mutableStateOf<List<AppComparison>>(emptyList()) }
     var currentTotal by remember { mutableLongStateOf(0L) }
     var previousTotal by remember { mutableLongStateOf(0L) }
     var isLoading by remember { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) {
-        settings = settingsRepo.loadSettings()
-    }
-
-    val currentRange = remember(selectedPreset, settings.cycleStartDay) {
-        RangeUtils.presetRange(selectedPreset, cycleStartDay = settings.cycleStartDay)
-    }
-
-    val previousRange = remember(currentRange, settings.cycleStartDay) {
-        RangeUtils.previousRange(currentRange, cycleStartDay = settings.cycleStartDay)
-    }
-
-    fun loadComparison() {
+    var error by remember { mutableStateOf<String?>(null) }
+    LaunchedOnResumeEffect(usageState.now) { settings = settingsRepo.loadSettings() }
+    val currentRange = usageState.activeRange(settings.cycleStartDay)
+    val previousRange = RangeUtils.previousRange(currentRange, settings.cycleStartDay, usageState.now)
+    LaunchedEffect(currentRange, previousRange, selectedNetwork, settings.showSystemApps, usageState.now) {
         isLoading = true
-        scope.launch {
-            try {
+        error = null
+        comparisonList = emptyList()
+        currentTotal = 0
+        previousTotal = 0
+        try {
                 val currentApps = repo.getUsage(currentRange, selectedNetwork)
                 val previousApps = repo.getUsage(previousRange, selectedNetwork)
 
                 val (visibleCurrent, _) = if (settings.showSystemApps) currentApps to emptyList() else currentApps.partition { it.uid >= 10000 || it.uid == -5 }
                 val (visiblePrevious, _) = if (settings.showSystemApps) previousApps to emptyList() else previousApps.partition { it.uid >= 10000 || it.uid == -5 }
 
-                currentTotal = visibleCurrent.sumOf { it.total }
-                previousTotal = visiblePrevious.sumOf { it.total }
+                currentTotal = currentApps.sumOf { it.total }
+                previousTotal = previousApps.sumOf { it.total }
 
                 val currentMap = visibleCurrent.associateBy { it.uid }
                 val previousMap = visiblePrevious.associateBy { it.uid }
@@ -103,15 +100,9 @@ fun CompareScreen(modifier: Modifier = Modifier) {
                         deltaPercent = deltaPercent
                     )
                 }.sortedByDescending { it.usageCurrent }
-            } catch (_: Exception) {
-            } finally {
-                isLoading = false
-            }
-        }
-    }
-
-    LaunchedEffect(currentRange, previousRange, selectedNetwork, settings.showSystemApps) {
-        loadComparison()
+        } catch (e: CancellationException) { throw e }
+        catch (e: Exception) { error = e.message ?: e.javaClass.simpleName }
+        finally { isLoading = false }
     }
 
     val overallDeltaPercent = if (previousTotal > 0) {
@@ -139,20 +130,20 @@ fun CompareScreen(modifier: Modifier = Modifier) {
             ) {
                 Column {
                     Text(
-                        text = "Period Comparison",
+                        text = tr("Period Comparison"),
                         color = TextPrimary,
                         fontSize = 24.sp,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "Cycle renewal day: ${settings.cycleStartDay}",
+                        text = tr("Cycle renewal: Day %d", settings.cycleStartDay),
                         color = TextMuted,
                         fontSize = 12.sp
                     )
                 }
 
                 IconButton(
-                    onClick = { loadComparison() },
+                    onClick = { usageState.refresh() },
                     modifier = Modifier
                         .size(38.dp)
                         .clip(RoundedCornerShape(10.dp))
@@ -160,7 +151,7 @@ fun CompareScreen(modifier: Modifier = Modifier) {
                 ) {
                     Icon(
                         imageVector = Icons.Default.Refresh,
-                        contentDescription = "Refresh",
+                        contentDescription = tr("Refresh"),
                         tint = AccentPrimary,
                         modifier = Modifier.size(18.dp)
                     )
@@ -179,61 +170,30 @@ fun CompareScreen(modifier: Modifier = Modifier) {
             ) {
                 NetworkFilterTab(
                     icon = Icons.Default.PhoneAndroid,
-                    label = "Mobile",
+                    label = tr("Mobile"),
                     isSelected = selectedNetwork == "MOBILE",
-                    onClick = { selectedNetwork = "MOBILE" },
+                    onClick = { usageState.selectedNetwork = "MOBILE" },
                     modifier = Modifier.weight(1f)
                 )
                 NetworkFilterTab(
                     icon = Icons.Default.Wifi,
-                    label = "Wi-Fi",
+                    label = tr("Wi-Fi"),
                     isSelected = selectedNetwork == "WIFI",
-                    onClick = { selectedNetwork = "WIFI" },
+                    onClick = { usageState.selectedNetwork = "WIFI" },
                     modifier = Modifier.weight(1f)
                 )
                 NetworkFilterTab(
                     icon = Icons.Default.Language,
-                    label = "All Traffic",
+                    label = tr("All Traffic"),
                     isSelected = selectedNetwork == "ALL",
-                    onClick = { selectedNetwork = "ALL" },
+                    onClick = { usageState.selectedNetwork = "ALL" },
                     modifier = Modifier.weight(1f)
                 )
             }
 
-            // Period chip selector
-            LazyRow(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                val presets = listOf(
-                    PresetId.THIS_CYCLE to "This Cycle vs Last",
-                    PresetId.TODAY to "Today vs Yesterday",
-                    PresetId.LAST_7D to "7 Days vs Prior 7D",
-                    PresetId.LAST_30D to "30 Days vs Prior 30D"
-                )
-                items(presets) { (preset, label) ->
-                    val isSelected = selectedPreset == preset
-                    FilterChip(
-                        selected = isSelected,
-                        onClick = { selectedPreset = preset },
-                        label = { Text(label, fontSize = 12.sp) },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = AccentPrimary,
-                            selectedLabelColor = TextPrimary,
-                            containerColor = DarkSurface,
-                            labelColor = TextSecondary
-                        ),
-                        border = FilterChipDefaults.filterChipBorder(
-                            borderColor = if (isSelected) AccentPrimary else DarkBorder,
-                            selectedBorderColor = AccentPrimary,
-                            enabled = true,
-                            selected = isSelected
-                        )
-                    )
-                }
-            }
+            UsageRangePicker(usageState, settings.cycleStartDay)
+
+            UsageError(error) { usageState.refresh() }
 
             // Summary Comparison Card
             Card(
@@ -250,11 +210,11 @@ fun CompareScreen(modifier: Modifier = Modifier) {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column {
-                            Text("Current Period", color = TextSecondary, fontSize = 12.sp)
+                            Text(tr("Current Period"), color = TextSecondary, fontSize = 12.sp)
                             Text(repo.formatBytes(currentTotal), color = TextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                         }
                         Column(horizontalAlignment = Alignment.End) {
-                            Text("Previous Period", color = TextSecondary, fontSize = 12.sp)
+                            Text(tr("Previous Period"), color = TextSecondary, fontSize = 12.sp)
                             Text(repo.formatBytes(previousTotal), color = TextMuted, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                         }
                     }
@@ -268,14 +228,14 @@ fun CompareScreen(modifier: Modifier = Modifier) {
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Overall Period Change", color = TextSecondary, fontSize = 13.sp)
+                        Text(tr("Overall Period Change"), color = TextSecondary, fontSize = 13.sp)
                         val isUp = overallDeltaPercent > 0
                         Surface(
                             shape = RoundedCornerShape(8.dp),
                             color = if (isUp) AccentSecondary.copy(alpha = 0.15f) else Color(0xFF10B981).copy(alpha = 0.15f)
                         ) {
                             Text(
-                                text = "${if (isUp) "+" else ""}${"%.1f".format(overallDeltaPercent)}%",
+                                text = if (previousTotal == 0L) tr("No previous usage") else "${if (isUp) "+" else ""}${"%.1f".format(overallDeltaPercent)}%",
                                 color = if (isUp) AccentSecondary else Color(0xFF10B981),
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold,
@@ -331,7 +291,7 @@ fun CompareScreen(modifier: Modifier = Modifier) {
                                     )
                                     Spacer(modifier = Modifier.height(2.dp))
                                     Text(
-                                        text = "Now: ${repo.formatBytes(comp.usageCurrent)} • Before: ${repo.formatBytes(comp.usagePrevious)}",
+                                        text = tr("Now: %s • Before: %s", repo.formatBytes(comp.usageCurrent), repo.formatBytes(comp.usagePrevious)),
                                         color = TextMuted,
                                         fontSize = 11.sp
                                     )
@@ -343,7 +303,7 @@ fun CompareScreen(modifier: Modifier = Modifier) {
                                     color = if (isAppUp) AccentSecondary.copy(alpha = 0.15f) else Color(0xFF10B981).copy(alpha = 0.15f)
                                 ) {
                                     Text(
-                                        text = "${if (isAppUp) "+" else ""}${"%.0f".format(comp.deltaPercent)}%",
+                                        text = if (comp.usagePrevious == 0L) tr("New") else "${if (isAppUp) "+" else ""}${"%.0f".format(comp.deltaPercent)}%",
                                         color = if (isAppUp) AccentSecondary else Color(0xFF10B981),
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold,

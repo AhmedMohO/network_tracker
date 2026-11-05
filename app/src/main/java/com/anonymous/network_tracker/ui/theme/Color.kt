@@ -1,23 +1,22 @@
 package com.anonymous.network_tracker.ui.theme
 
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
-val DarkBackground = Color(0xFF0C101C)
-val DarkSurface = Color(0xFF141A2E)
-val DarkSurfaceVariant = Color(0xFF1E2640)
-val DarkBorder = Color(0xFF263252)
-
-val AccentPrimary = Color(0xFF0284C7)
-val AccentPrimaryVariant = Color(0xFF0369A1)
-val AccentSecondary = Color(0xFF38BDF8)
-
-val TextPrimary = Color(0xFFF8FAFC)
-val TextSecondary = Color(0xFF94A3B8)
-val TextMuted = Color(0xFF64748B)
-
+// Keep existing screen tokens while resolving them from the active theme.
+val DarkBackground: Color @Composable get() = MaterialTheme.colorScheme.background
+val DarkSurface: Color @Composable get() = MaterialTheme.colorScheme.surface
+val DarkSurfaceVariant: Color @Composable get() = MaterialTheme.colorScheme.surfaceVariant
+val DarkBorder: Color @Composable get() = MaterialTheme.colorScheme.outline
+val AccentPrimary: Color @Composable get() = MaterialTheme.colorScheme.primary
+val AccentPrimaryVariant: Color @Composable get() = MaterialTheme.colorScheme.primaryContainer
+val AccentSecondary: Color @Composable get() = MaterialTheme.colorScheme.secondary
+val TextPrimary: Color @Composable get() = MaterialTheme.colorScheme.onSurface
+val TextSecondary: Color @Composable get() = MaterialTheme.colorScheme.onSurfaceVariant
+val TextMuted: Color @Composable get() = MaterialTheme.colorScheme.onSurfaceVariant
 val SuccessGreen = Color(0xFF10B981)
 val WarningAmber = Color(0xFFF59E0B)
 val DangerRed = Color(0xFFEF4444)
 val WifiPurple = Color(0xFF8B5CF6)
 val MobileBlue = Color(0xFF0284C7)
-

@@ -1,0 +1,13 @@
+# Kotlin conversion repair implementation plan
+
+Goal: fix all 25 findings in docs/reviews/kotlin-conversion-review.md while preserving native Kotlin, existing data, package/signing identity, and the existing backend API.
+Architecture: retain Compose, Room, native stats, WorkManager and OkHttp. Restore original behavior in shared state and repositories rather than duplicate screen-only fixes. Work in the existing isolated network_tracker_kotlin worktree; preserve the four pre-existing whitespace edits. No publish, backend mutations, or commits are required.
+Spec: user approved all findings by requesting “fix all”; original mobile-app source is the parity reference.
+
+- [x] Storage/background: migrate legacy archive without deleting bytes; atomically replace days; preserve legacy settings; serialize settings patches; schedule periodic work; reconcile shared service/alarm and Wi-Fi liveness; restore deliverable-only alert identities, anomaly checks, error isolation and bounded keys. Tests: legacy schema/rollback, alert threshold/config/denied-delivery cases, legacy preferences.
+- [x] Family: restore established RPC arguments, valid pairing/deep links/consent/device IDs, role management/unpair, durable delta cache and child payload/backfill, request/grant idempotence, parent child/details/limits, and family notification paths. Inspect actual push prerequisites and preserve old/new interoperability. Tests: links, payload encoding, timestamps, merge/retention, request/grant and alert behavior.
+- [x] Usage UI: shared range/network/time state; resume permission checks; cancellable loads and visible errors; correct monthly and full comparison totals; detail context; validated date/time endpoints; charts/live history/per-app traffic and original diagnostics. Tests: selected range/context, intervals, comparisons and CSV formatting.
+- [x] Host/settings/theme: notification/location permission launchers, pairing intents, Android Back/saved navigation, language/RTL/light theme, safe selected-dataset CSV/JSON export, and screen integration.
+- [x] Verification: compile current Kotlin sources and tests, execute regressions, run full Gradle build/lint/tests when possible, inspect APK identity/signing, review combined diff and map each finding to its fix and checks. Record hardware or external-configuration limits precisely.
+
+Review focus: legacy version-zero databases; interrupted writes and process death; permissions denied then enabled; all combinations of background switches; old/new family protocol and push registration; stale settings overwriting newer sync state; timezone/DST/custom boundaries; filter races and system traffic totals; Arabic/RTL and selected export context.

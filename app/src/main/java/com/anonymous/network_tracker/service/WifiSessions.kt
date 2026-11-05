@@ -30,6 +30,7 @@ object WifiSessions {
 
     fun setEnabled(context: Context, enabled: Boolean) {
         prefs(context).edit().putBoolean(KEY_ENABLED, enabled).apply()
+        WifiWatchService.sync(context)
     }
 
     fun markSeen(context: Context, at: Long = System.currentTimeMillis()) {
@@ -41,12 +42,13 @@ object WifiSessions {
 
     @Synchronized
     fun record(context: Context, at: Long, ssid: String?) {
+        markSeen(context, at)
         val log = readLog(context)
-        val normalized = ssid?.takeIf { it.isNotEmpty() }
+        val normalized = ssid?.takeIf { it.isNotBlank() }
 
         if (log.length() > 0) {
             val last = log.getJSONObject(log.length() - 1)
-            val lastSsid = if (last.isNull("ssid")) null else last.getString("ssid")
+            val lastSsid = if (last.isNull("ssid")) null else last.getString("ssid").takeIf { it.isNotBlank() }
             val lastAt = last.getLong("at")
             if (lastSsid == normalized) return
             if (at <= lastAt) return
@@ -95,7 +97,7 @@ object WifiSessions {
         for (i in 0 until log.length()) {
             val entry = log.getJSONObject(i)
             val sStart = entry.getLong("at")
-            val ssid = if (entry.isNull("ssid")) null else entry.getString("ssid")
+            val ssid = if (entry.isNull("ssid")) null else entry.getString("ssid").takeIf { it.isNotBlank() }
 
             val sEnd = if (i + 1 < log.length()) {
                 log.getJSONObject(i + 1).getLong("at")
@@ -120,9 +122,7 @@ object WifiSessions {
         val seen = LinkedHashSet<String>()
         for (i in log.length() - 1 downTo 0) {
             val obj = log.getJSONObject(i)
-            if (!obj.isNull("ssid")) {
-                seen.add(obj.getString("ssid"))
-            }
+            if (!obj.isNull("ssid")) obj.getString("ssid").takeIf { it.isNotBlank() }?.let { seen.add(it) }
         }
         return seen.toList()
     }

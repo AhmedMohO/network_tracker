@@ -69,10 +69,12 @@ fun UpdateScreen(
     var isLoading by remember { mutableStateOf(true) }
     var release by remember { mutableStateOf<GithubRelease?>(null) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var errorArgs by remember { mutableStateOf<List<Any?>>(emptyList()) }
 
     var isDownloading by remember { mutableStateOf(false) }
     var downloadProgress by remember { mutableFloatStateOf(0f) }
     var downloadStatusText by remember { mutableStateOf("") }
+    var downloadArgs by remember { mutableStateOf<List<Any?>>(emptyList()) }
 
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
@@ -84,7 +86,8 @@ fun UpdateScreen(
                     .build()
                 client.newCall(req).execute().use { resp ->
                     if (!resp.isSuccessful) {
-                        errorMessage = "Failed to fetch updates (HTTP ${resp.code})"
+                        errorMessage = "Failed to fetch updates (HTTP %d)"
+                        errorArgs = listOf(resp.code)
                         isLoading = false
                         return@use
                     }
@@ -132,6 +135,7 @@ fun UpdateScreen(
         isDownloading = true
         downloadProgress = 0f
         downloadStatusText = "Connecting..."
+        downloadArgs = emptyList()
 
         scope.launch(Dispatchers.IO) {
             try {
@@ -156,7 +160,8 @@ fun UpdateScreen(
                                     val progress = downloaded.toFloat() / totalBytes.toFloat()
                                     withContext(Dispatchers.Main) {
                                         downloadProgress = progress
-                                        downloadStatusText = "Downloading: %.1f / %.1f MB (%.0f%%)".format(
+                                        downloadStatusText = "Downloading: %.1f / %.1f MB (%.0f%%)"
+                                        downloadArgs = listOf(
                                             downloaded / 1_048_576.0,
                                             totalBytes / 1_048_576.0,
                                             progress * 100f
@@ -172,12 +177,14 @@ fun UpdateScreen(
                 withContext(Dispatchers.Main) {
                     isDownloading = false
                     downloadStatusText = "Installing update..."
+                    downloadArgs = emptyList()
                     ApkInstaller.install(context, destFile.absolutePath)
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     isDownloading = false
-                    errorMessage = "Download error: ${e.message}"
+                    errorMessage = "Download error: %s"
+                    errorArgs = listOf(e.message ?: e.javaClass.simpleName)
                 }
             }
         }
@@ -188,10 +195,10 @@ fun UpdateScreen(
         containerColor = DarkBackground,
         topBar = {
             TopAppBar(
-                title = { Text("App Updates", color = TextPrimary, fontWeight = FontWeight.Bold) },
+                title = { Text(tr("App Updates"), color = TextPrimary, fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TextPrimary)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = tr("Back"), tint = TextPrimary)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = DarkSurface)
@@ -229,7 +236,7 @@ fun UpdateScreen(
                     }
                     Spacer(modifier = Modifier.width(14.dp))
                     Column {
-                        Text("Installed Version", color = TextMuted, fontSize = 12.sp)
+                        Text(tr("Installed Version"), color = TextMuted, fontSize = 12.sp)
                         Text("v$currentVersion", color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                     }
                 }
@@ -246,7 +253,7 @@ fun UpdateScreen(
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             CircularProgressIndicator(color = AccentPrimary)
                             Spacer(modifier = Modifier.height(12.dp))
-                            Text("Checking for updates...", color = TextMuted, fontSize = 14.sp)
+                            Text(tr("Checking for updates..."), color = TextMuted, fontSize = 14.sp)
                         }
                     }
                 }
@@ -260,10 +267,10 @@ fun UpdateScreen(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Default.Warning, contentDescription = null, tint = AccentSecondary)
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text("Check Failed", color = AccentSecondary, fontWeight = FontWeight.Bold)
+                                Text(tr("Check Failed"), color = AccentSecondary, fontWeight = FontWeight.Bold)
                             }
                             Spacer(modifier = Modifier.height(8.dp))
-                            Text(errorMessage!!, color = TextMuted, fontSize = 13.sp)
+                            Text(tr(errorMessage!!, *errorArgs.toTypedArray()), color = TextMuted, fontSize = 13.sp)
                         }
                     }
                 }
@@ -284,12 +291,12 @@ fun UpdateScreen(
                             ) {
                                 Column {
                                     Text(
-                                        text = if (hasUpdate) "Update Available" else "You're up to date!",
+                                        text = if (hasUpdate) tr("Update Available") else tr("You're up to date!"),
                                         color = if (hasUpdate) AccentPrimary else TextPrimary,
                                         fontSize = 17.sp,
                                         fontWeight = FontWeight.Bold
                                     )
-                                    Text("Latest: ${rel.tagName}", color = TextSecondary, fontSize = 13.sp)
+                                    Text(tr("Latest: %s", rel.tagName), color = TextSecondary, fontSize = 13.sp)
                                 }
                                 if (hasUpdate) {
                                     Surface(
@@ -297,7 +304,7 @@ fun UpdateScreen(
                                         color = AccentPrimary.copy(alpha = 0.2f)
                                     ) {
                                         Text(
-                                            "NEW",
+                                            tr("NEW"),
                                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
                                             color = AccentPrimary,
                                             fontSize = 12.sp,
@@ -309,7 +316,7 @@ fun UpdateScreen(
 
                             if (rel.body.isNotBlank()) {
                                 Spacer(modifier = Modifier.height(14.dp))
-                                Text("Release Notes", color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                                Text(tr("Release Notes"), color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                                 Spacer(modifier = Modifier.height(6.dp))
                                 Text(
                                     text = rel.body.trim(),
@@ -328,7 +335,7 @@ fun UpdateScreen(
                                     trackColor = DarkSurfaceVariant
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
-                                Text(downloadStatusText, color = TextMuted, fontSize = 12.sp)
+                                Text(tr(downloadStatusText, *downloadArgs.toTypedArray()), color = TextMuted, fontSize = 12.sp)
                             } else if (hasUpdate) {
                                 Spacer(modifier = Modifier.height(18.dp))
                                 Button(
@@ -337,11 +344,11 @@ fun UpdateScreen(
                                     colors = ButtonDefaults.buttonColors(containerColor = AccentPrimary),
                                     shape = RoundedCornerShape(10.dp)
                                 ) {
-                                    Icon(Icons.Default.Download, contentDescription = null, tint = TextPrimary)
+                                    Icon(Icons.Default.Download, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary)
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(
-                                        text = "Download & Install (${"%.1f MB".format(rel.apkSize / 1_048_576.0)})",
-                                        color = TextPrimary,
+                                        text = tr("Download & Install (%.1f MB)", rel.apkSize / 1_048_576.0),
+                                        color = MaterialTheme.colorScheme.onPrimary,
                                         fontWeight = FontWeight.Bold
                                     )
                                 }
@@ -358,7 +365,7 @@ fun UpdateScreen(
                             ) {
                                 Icon(Icons.Default.OpenInBrowser, contentDescription = null, tint = AccentSecondary)
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text("View on GitHub", color = AccentSecondary)
+                                Text(tr("View on GitHub"), color = AccentSecondary)
                             }
                         }
                     }

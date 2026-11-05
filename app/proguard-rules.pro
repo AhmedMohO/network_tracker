@@ -14,3 +14,4 @@
 # Keep models and entities
 -keep class com.anonymous.network_tracker.data.model.** { *; }
 -keep class com.anonymous.network_tracker.data.db.** { *; }
+

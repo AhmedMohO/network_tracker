@@ -10,6 +10,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
 import java.util.concurrent.TimeUnit
+import java.time.Instant
 
 object SupabaseRpc {
 
@@ -20,6 +21,7 @@ object SupabaseRpc {
     private val client = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
+        .callTimeout(15, TimeUnit.SECONDS)
         .build()
 
     private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
@@ -44,7 +46,7 @@ object SupabaseRpc {
     suspend fun familyPush(token: String, deviceId: String, label: String, kind: String, day: Long, payload: JSONObject) {
         val body = JSONObject().apply {
             put("p_token", token)
-            put("p_device_id", deviceId)
+            put("p_device", deviceId)
             put("p_label", label)
             put("p_kind", kind)
             put("p_day", day)
@@ -56,7 +58,7 @@ object SupabaseRpc {
     suspend fun familyPull(token: String, updatedAfter: Long = 0): JSONArray {
         val body = JSONObject().apply {
             put("p_token", token)
-            put("p_updated_after", updatedAfter)
+            put("p_since", Instant.ofEpochMilli(updatedAfter.coerceAtLeast(0)).toString())
         }
         val response = rpc("family_pull", body) ?: "[]"
         return JSONArray(response)
@@ -72,8 +74,8 @@ object SupabaseRpc {
     suspend fun registerPushToken(token: String, deviceId: String, pushToken: String) {
         val body = JSONObject().apply {
             put("p_token", token)
-            put("p_device_id", deviceId)
-            put("p_push_token", pushToken)
+            put("p_device", deviceId)
+            put("p_push", pushToken)
         }
         rpc("family_register_token", body)
     }

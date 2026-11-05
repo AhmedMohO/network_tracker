@@ -1,199 +1,152 @@
 package com.anonymous.network_tracker.ui.screens
 
-import androidx.compose.foundation.background
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import com.anonymous.network_tracker.core.*
+import com.anonymous.network_tracker.data.model.SeriesQuery
+import com.anonymous.network_tracker.data.repository.*
+import com.anonymous.network_tracker.data.util.*
+import com.anonymous.network_tracker.ui.LaunchedOnResumeEffect
 import com.anonymous.network_tracker.ui.theme.*
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.*
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Socket
 
-data class ProbeTarget(
-    val name: String,
-    val host: String,
-    val port: Int = 80
-)
-
-data class ProbeResult(
-    val name: String,
-    val host: String,
-    val isReachable: Boolean,
-    val latencyMs: Long,
-    val resolvedIp: String? = null
-)
-
 @Composable
 fun ProbeScreen(modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val repo = remember(context) { UsageRepository.getInstance(context) }
+    val settings = remember(context) { SettingsRepository.getInstance(context) }
     val scope = rememberCoroutineScope()
-    var isRunning by remember { mutableStateOf(false) }
-    var results by remember { mutableStateOf<List<ProbeResult>>(emptyList()) }
-
-    val defaultTargets = remember {
-        listOf(
-            ProbeTarget("Cloudflare DNS", "1.1.1.1", 53),
-            ProbeTarget("Google DNS", "8.8.8.8", 53),
-            ProbeTarget("Google Web", "www.google.com", 443),
-            ProbeTarget("Cloudflare Web", "www.cloudflare.com", 443),
-            ProbeTarget("Supabase Sync", "nrnvjidwgverzmumttjd.supabase.co", 443)
-        )
+    var granted by remember { mutableStateOf(UsageAccess.has(context)) }
+    var running by remember { mutableStateOf(false) }
+    var job by remember { mutableStateOf<Job?>(null) }
+    var output by remember { mutableStateOf<List<Pair<String, List<Any?>>>>(emptyList()) }
+    fun line(key: String, vararg args: Any?) = key to args.toList()
+    var error by remember { mutableStateOf<String?>(null) }
+    LaunchedOnResumeEffect(context) {
+        granted = UsageAccess.has(context)
+        try { awaitCancellation() } finally { job?.cancel() }
     }
-
-    fun runProbes() {
-        if (isRunning) return
-        isRunning = true
-        scope.launch {
-            val list = mutableListOf<ProbeResult>()
-            for (target in defaultTargets) {
-                val res = withContext(Dispatchers.IO) {
-                    val start = System.currentTimeMillis()
-                    try {
-                        val inetAddress = InetAddress.getByName(target.host)
-                        val socket = Socket()
-                        socket.connect(InetSocketAddress(inetAddress, target.port), 3000)
-                        val latency = System.currentTimeMillis() - start
-                        socket.close()
-                        ProbeResult(target.name, target.host, true, latency, inetAddress.hostAddress)
-                    } catch (_: Exception) {
-                        val latency = System.currentTimeMillis() - start
-                        ProbeResult(target.name, target.host, false, latency, null)
-                    }
-                }
-                list.add(res)
-                results = list.toList()
-            }
-            isRunning = false
+    fun run(block: suspend () -> Unit) {
+        if (running) return
+        job = scope.launch {
+            running = true
+            error = null
+            output = emptyList()
+            try { block() }
+            catch (e: CancellationException) { throw e }
+            catch (e: Exception) { error = e.message ?: e.javaClass.simpleName }
+            finally { running = false }
         }
     }
-
-    LaunchedEffect(Unit) {
-        runProbes()
+    val testTitle = tr("Test notification")
+    val testBody = tr("Usage alerts can be delivered on this device.")
+    val blocked = "Notifications are blocked. Enable them in Android settings."
+    fun sendTest() {
+        try {
+            if (!repo.sendNotification(4713, testTitle, testBody)) { error = blocked; return }
+            output = listOf(line("Test notification sent."))
+        } catch (e: Exception) { error = e.message ?: e.javaClass.simpleName }
+    }
+    val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        if (it) sendTest() else error = blocked
     }
 
-    Scaffold(
-        modifier = modifier.fillMaxSize(),
-        containerColor = DarkBackground
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text(
-                        text = "Diagnostics Probe",
-                        color = TextPrimary,
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "Latency & reachability test",
-                        color = TextSecondary,
-                        fontSize = 14.sp
-                    )
-                }
-
-                Button(
-                    onClick = { runProbes() },
-                    enabled = !isRunning,
-                    colors = ButtonDefaults.buttonColors(containerColor = AccentPrimary),
-                    shape = RoundedCornerShape(10.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.PlayArrow,
-                        contentDescription = "Run",
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Probe")
-                }
+    Scaffold(modifier = modifier.fillMaxSize(), containerColor = DarkBackground) { padding ->
+        Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(tr("Diagnostics Probe"), color = TextPrimary, style = MaterialTheme.typography.headlineSmall)
+            Text(if (granted) tr("Usage access granted") else tr("Usage access required"), color = if (granted) SuccessGreen else DangerRed)
+            if (!granted) Button(onClick = { UsageAccess.open(context) }) { Text(tr("Open usage access settings")) }
+            if (running) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                TextButton(onClick = { job?.cancel() }) { Text(tr("Stop probe")) }
             }
-
-            if (isRunning && results.isEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(color = AccentPrimary)
-                }
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    items(results) { res ->
-                        ProbeResultCard(result = res)
+            Card(colors = CardDefaults.cardColors(containerColor = DarkSurface)) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(tr("Usage queries (last 7 days)"), color = TextPrimary)
+                    listOf("MOBILE", "WIFI", "ALL").forEach { network ->
+                        Button(enabled = !running && granted, onClick = { run {
+                            val usage = repo.getUsage(RangeUtils.presetRange(PresetId.LAST_7D), network)
+                            output = listOf(line("%s: %s", network, repo.formatBytes(usage.sumOf { it.total }))) + usage.take(20).map { line("%s: %s (UID %d)", it.name, repo.formatBytes(it.total), it.uid) }
+                        } }) { Text(tr(network)) }
                     }
+                    Button(enabled = !running && granted, onClick = { run {
+                        val now = System.currentTimeMillis()
+                        val series = withContext(Dispatchers.IO) { StatsReader(context).series(SeriesQuery(now - RangeUtils.DAY_MS, now, "ALL", 60_000)) }
+                        output = listOf(line("%d bins; requested 60 s", series.bins.size), line("Coverage: %s - %s", java.util.Date(series.coveredStart), java.util.Date(series.coveredEnd))) +
+                            series.bins.filter { it.rxBytes + it.txBytes > 0 }.take(20).map { line("%s: %s", java.util.Date(it.start), repo.formatBytes(it.rxBytes + it.txBytes)) }
+                    } }) { Text(tr("Run granularity probe")) }
+                    Button(enabled = !running, onClick = { run {
+                        var previous = LiveProbe.counters()
+                        var last = android.os.SystemClock.elapsedRealtime()
+                        repeat(30) { i ->
+                            delay(1000)
+                            val now = android.os.SystemClock.elapsedRealtime()
+                            val counters = LiveProbe.counters()
+                            val elapsed = (now - last).coerceAtLeast(1) / 1000.0
+                            val down = (((counters["totalRx"] ?: 0) - (previous["totalRx"] ?: 0)).coerceAtLeast(0) / elapsed).toLong()
+                            val up = (((counters["totalTx"] ?: 0) - (previous["totalTx"] ?: 0)).coerceAtLeast(0) / elapsed).toLong()
+                            val foreground = withContext(Dispatchers.IO) { LiveProbe.foregroundPackage(context) }
+                            output = output + line("%ds: %s/s down; %s/s up | %s | %s%% | %s", i + 1, repo.formatBytes(down), repo.formatBytes(up), LiveProbe.connection(context), LiveProbe.batteryPercent(context), foreground)
+                            previous = counters
+                            last = now
+                        }
+                    } }) { Text(tr("Run device speed probe (30 seconds)")) }
+                    Button(enabled = !running && granted, onClick = { run {
+                        repeat(12) { i ->
+                            val now = System.currentTimeMillis()
+                            val apps = repo.getUsage(DateRange(now - 10_000, now), "ALL")
+                            output = output + line("%ds: %s", i * 5, apps.filter { it.total > 0 }.take(8).joinToString { "${it.name}: ${repo.formatBytes(it.total)}" })
+                            delay(5000)
+                        }
+                    } }) { Text(tr("Run per-app live probe (60 seconds)")) }
                 }
             }
+            Card(colors = CardDefaults.cardColors(containerColor = DarkSurface)) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(tr("Alerts and background checks"), color = TextPrimary)
+                    Button(enabled = !running, onClick = {
+                        if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
+                            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        else sendTest()
+                    }) { Text(tr("Send test notification")) }
+                    Button(enabled = !running && granted, onClick = { run {
+                        repo.performBackgroundCheck()
+                        output = listOf(line("%s", settings.loadSettings().alertedKeys))
+                    } }) { Text(tr("Run usage check")) }
+                    Button(enabled = !running, onClick = { settings.resetAlertKeys(); output = listOf(line("[]")) }) { Text(tr("Reset alerted keys")) }
+                }
+            }
+            Button(enabled = !running, onClick = { run {
+                for ((host, port) in listOf("1.1.1.1" to 53, "8.8.8.8" to 53, "www.google.com" to 443, "www.cloudflare.com" to 443)) {
+                    val result = withContext(Dispatchers.IO) {
+                        val start = android.os.SystemClock.elapsedRealtime()
+                        try {
+                            val address = InetAddress.getByName(host)
+                            Socket().use { it.connect(InetSocketAddress(address, port), 3000) }
+                            line("%s (%s): %d ms", host, address.hostAddress, android.os.SystemClock.elapsedRealtime() - start)
+                        } catch (e: CancellationException) { throw e }
+                        catch (e: Exception) { line("%s: %s", host, e.message ?: e.javaClass.simpleName) }
+                    }
+                    output = output + result
+                }
+            } }) { Text(tr("Test connectivity")) }
+            error?.let { Text(tr(it), color = DangerRed) }
+            if (output.isNotEmpty()) Text(buildString { output.forEach { appendLine(tr(it.first, *it.second.toTypedArray())) } }.trimEnd(), color = TextSecondary, style = MaterialTheme.typography.bodySmall)
         }
     }
 }
-
-@Composable
-fun ProbeResultCard(result: ProbeResult) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = DarkSurface)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column {
-                Text(
-                    text = result.name,
-                    color = TextPrimary,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    text = result.resolvedIp ?: result.host,
-                    color = TextMuted,
-                    fontSize = 12.sp
-                )
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = if (result.isReachable) "${result.latencyMs} ms" else "Timeout",
-                    color = if (result.isReachable) SuccessGreen else DangerRed,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Icon(
-                    imageVector = Icons.Default.CheckCircle,
-                    contentDescription = null,
-                    tint = if (result.isReachable) SuccessGreen else DangerRed,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-        }
-    }
-}
-

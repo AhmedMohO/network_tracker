@@ -6,7 +6,7 @@ import android.provider.Settings
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Settings
@@ -25,32 +25,50 @@ import com.anonymous.network_tracker.data.util.PresetId
 import com.anonymous.network_tracker.data.util.RangeUtils
 import com.anonymous.network_tracker.ui.components.AppIconImage
 import com.anonymous.network_tracker.ui.theme.*
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
+import com.anonymous.network_tracker.ui.*
+import com.anonymous.network_tracker.ui.components.UsageChart
+import com.anonymous.network_tracker.ui.components.UsageError
+import com.anonymous.network_tracker.data.repository.SettingsRepository
+import com.anonymous.network_tracker.data.model.WifiNetworkSlice
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 
 @Composable
 fun AppDetailScreen(
     uid: Int,
     onBack: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    usageState: UsageState = rememberUsageState()
 ) {
     val context = LocalContext.current
     val repo = remember(context) { UsageRepository.getInstance(context) }
-    val resolver = remember(context) { AppResolver(context) }
-    val scope = rememberCoroutineScope()
-
+    val settingsRepo = remember(context) { SettingsRepository.getInstance(context) }
+    var settings by remember { mutableStateOf(settingsRepo.loadSettings()) }
+    LaunchedOnResumeEffect(usageState.now) { settings = settingsRepo.loadSettings() }
+    val range = usageState.activeRange(settings.cycleStartDay)
+    val network = usageState.selectedNetwork
     var appItem by remember { mutableStateOf<AppUsageItem?>(null) }
+    var wifiSlices by remember { mutableStateOf<List<WifiNetworkSlice>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
-
-    LaunchedEffect(uid) {
-        scope.launch {
-            try {
-                val range = RangeUtils.presetRange(PresetId.LAST_30D)
-                val allApps = repo.getUsage(range)
-                appItem = allApps.find { it.uid == uid }
-            } finally {
-                isLoading = false
+    var error by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(uid, range, network, usageState.now) {
+        appItem = null
+        wifiSlices = emptyList()
+        error = null
+        isLoading = true
+        try {
+            appItem = repo.getUsage(range, network).find { it.uid == uid }
+            if (network != "MOBILE") {
+                wifiSlices = repo.getUsageByWifiNetwork(range).mapNotNull { slice ->
+                    val apps = slice.apps.filter { it.uid == uid }
+                    if (apps.isEmpty()) null else slice.copy(apps = apps, totals = com.anonymous.network_tracker.data.model.UsageTotals(
+                        apps.sumOf { it.download }, apps.sumOf { it.upload }, apps.sumOf { it.total }))
+                }
             }
-        }
+        } catch (e: CancellationException) { throw e }
+        catch (e: Exception) { error = e.message ?: e.javaClass.simpleName }
+        finally { isLoading = false }
     }
 
     Scaffold(
@@ -61,26 +79,28 @@ fun AppDetailScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .verticalScroll(rememberScrollState())
                 .padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onBack) {
                     Icon(
-                        imageVector = Icons.Default.ArrowBack,
-                        contentDescription = "Back",
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = tr("Back"),
                         tint = TextPrimary
                     )
                 }
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "App Details",
+                    text = tr("App Details"),
                     color = TextPrimary,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold
                 )
             }
 
+            UsageError(error) { usageState.refresh() }
             if (isLoading) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = AccentPrimary)
@@ -110,7 +130,7 @@ fun AppDetailScreen(
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = app.packageName ?: "System Process (UID $uid)",
+                                text = app.packageName ?: tr("System Process (UID %d)", uid),
                                 color = TextMuted,
                                 fontSize = 13.sp
                             )
@@ -122,7 +142,7 @@ fun AppDetailScreen(
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = "Total Data (Last 30 Days)",
+                                text = tr("Total Data") + " · " + tr(network) + " · " + java.text.DateFormat.getDateTimeInstance().format(java.util.Date(range.start)) + " – " + java.text.DateFormat.getDateTimeInstance().format(java.util.Date(range.end)),
                                 color = TextSecondary,
                                 fontSize = 12.sp
                             )
@@ -136,7 +156,7 @@ fun AppDetailScreen(
                     ) {
                         Column(modifier = Modifier.padding(18.dp)) {
                             Text(
-                                text = "Traffic Breakdown",
+                                text = tr("Traffic Breakdown"),
                                 color = TextPrimary,
                                 fontSize = 15.sp,
                                 fontWeight = FontWeight.Bold
@@ -154,7 +174,7 @@ fun AppDetailScreen(
                                         modifier = Modifier.size(16.dp)
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Download", color = TextSecondary, fontSize = 13.sp)
+                                    Text(tr("Download"), color = TextSecondary, fontSize = 13.sp)
                                 }
                                 Text(repo.formatBytes(app.download), color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                             }
@@ -171,7 +191,7 @@ fun AppDetailScreen(
                                         modifier = Modifier.size(16.dp)
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Upload", color = TextSecondary, fontSize = 13.sp)
+                                    Text(tr("Upload"), color = TextSecondary, fontSize = 13.sp)
                                 }
                                 Text(repo.formatBytes(app.upload), color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                             }
@@ -181,7 +201,7 @@ fun AppDetailScreen(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    Text("Foreground Usage", color = TextSecondary, fontSize = 13.sp)
+                                    Text(tr("Foreground Usage"), color = TextSecondary, fontSize = 13.sp)
                                     Text(repo.formatBytes(app.foreground), color = TextPrimary, fontSize = 13.sp)
                                 }
                                 Spacer(modifier = Modifier.height(6.dp))
@@ -189,12 +209,15 @@ fun AppDetailScreen(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    Text("Background Usage", color = TextSecondary, fontSize = 13.sp)
+                                    Text(tr("Background Usage"), color = TextSecondary, fontSize = 13.sp)
                                     Text(repo.formatBytes(app.background), color = TextPrimary, fontSize = 13.sp)
                                 }
                             }
                         }
                     }
+
+                    UsageChart(range, network, uid)
+                    if (wifiSlices.isNotEmpty()) WifiSlicesCard(wifiSlices, { repo.formatBytes(it) })
 
                     if (app.packageName != null) {
                         Button(
@@ -215,12 +238,12 @@ fun AppDetailScreen(
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Open System App Settings", color = AccentSecondary)
+                            Text(tr("Open System App Settings"), color = AccentSecondary)
                         }
                     }
                 } else {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("No data found for this application.", color = TextMuted)
+                        Text(tr("No data found for this application."), color = TextMuted)
                     }
                 }
             }

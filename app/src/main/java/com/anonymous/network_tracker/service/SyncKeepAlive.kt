@@ -9,9 +9,8 @@ import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
 import android.util.Log
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
+import com.anonymous.network_tracker.data.repository.AlertRules
+import com.anonymous.network_tracker.service.worker.UsageWork
 
 object SyncKeepAlive {
 
@@ -31,12 +30,12 @@ object SyncKeepAlive {
 
     fun setEnabled(context: Context, enabled: Boolean) {
         prefs(context).edit().putBoolean(KEY_ENABLED, enabled).apply()
-        if (enabled) arm(context) else cancel(context)
+        WifiWatchService.sync(context)
     }
 
     fun onTick(context: Context) {
-        WifiSessions.markSeen(context)
-        if (isEnabled(context)) {
+        if (WifiSessions.isEnabled(context)) WifiWatchService.sample(context)
+        if (AlertRules.needsWatch(isEnabled(context), WifiSessions.isEnabled(context))) {
             arm(context)
         }
         runBackgroundTasks(context)
@@ -77,16 +76,7 @@ object SyncKeepAlive {
     }
 
     fun runBackgroundTasks(context: Context) {
-        // Run background work asynchronously
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                // Check quotas and daily snapshots
-                val repo = com.anonymous.network_tracker.data.repository.UsageRepository.getInstance(context)
-                repo.performBackgroundCheck()
-            } catch (e: Exception) {
-                Log.w(TAG, "Background check error: ${e.message}")
-            }
-        }
+        UsageWork.enqueue(context)
     }
 
     fun isIgnoringBatteryOptimizations(context: Context): Boolean {
