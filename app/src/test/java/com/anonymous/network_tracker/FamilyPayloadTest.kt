@@ -47,4 +47,67 @@ class FamilyPayloadTest {
         assertTrue(shouldNotifyRequest(25, 10, null, null))
         assertFalse(shouldNotifyRequest(25, 10, null, 10))
     }
+
+    @Test fun testDeviceContextAndTodayTotalsParsing() {
+        val now = 1700000000000L
+        val app = listOf(AppUsageItem(10, "YouTube", "com.google.android.youtube", 500, 100, 600))
+        val payload = familyPayload(app, app, emptyList()).apply {
+            put("at", now - 10 * 60_000L)
+            put("coverage", JSONObject().put("start", now - 3600_000L).put("end", now))
+            put("context", JSONObject().apply {
+                put("foregroundPackage", "com.google.android.youtube")
+                put("batteryPercent", 85)
+                put("connection", "WIFI")
+            })
+        }
+        val recent = FamilySnapshot("child1", "Kid Phone", "recent", 0, payload, now - 10 * 60_000L)
+        val ctx = parseDeviceContext(recent, now)
+        assertNotNull(ctx)
+        assertEquals("com.google.android.youtube", ctx?.foregroundPackage)
+        assertEquals("YouTube", ctx?.foregroundAppName)
+        assertEquals(85, ctx?.batteryPercent)
+        assertEquals("WIFI", ctx?.connection)
+        assertFalse(ctx!!.isStale)
+
+        val totals = parseTodayTotals(recent, now)
+        assertNotNull(totals)
+        assertEquals(600L, totals?.mobile)
+        assertEquals(0L, totals?.wifi)
+        assertEquals(600L, totals?.total)
+        assertEquals(now - 3600_000L, totals?.coverageStart)
+        assertEquals(now, totals?.coverageEnd)
+    }
+
+    @Test fun testChildRequestAndGrantDetection() {
+        val reqPayload = JSONObject().put("askedBytes", 1024L * 1024L * 1024L).put("at", 5000L)
+        val reqSnap = FamilySnapshot("c1", "Kid", "request", 0, reqPayload, 5000L)
+        val pending = parseChildRequest(listOf(reqSnap))
+        assertNotNull(pending)
+        assertTrue(pending!!.isPending)
+        assertEquals(1024L * 1024L * 1024L, pending.askedBytes)
+
+        val grantPayload = JSONObject().put("grantedBytes", 1024L * 1024L * 1024L).put("requestAt", 5000L).put("at", 6000L)
+        val grantSnap = FamilySnapshot("c1", "Kid", "grant", 0, grantPayload, 6000L)
+        val answered = parseChildRequest(listOf(reqSnap, grantSnap))
+        assertNotNull(answered)
+        assertFalse(answered!!.isPending)
+    }
+
+    @Test fun testChildAppSeriesBuild() {
+        val day1 = RangeUtils.midnight(1700000000000L)
+        val day2 = RangeUtils.midnight(day1, 1)
+        val app1 = listOf(AppUsageItem(42, "Signal", "org.thoughtcrime.securesms", 200, 100, 300))
+        val snap1 = FamilySnapshot("c1", "Kid", "daily", day1, familyPayload(app1, app1, emptyList()), day1 + 1000)
+        val app2 = listOf(AppUsageItem(42, "Signal", "org.thoughtcrime.securesms", 300, 200, 500))
+        val snap2 = FamilySnapshot("c1", "Kid", "daily", day2, familyPayload(app2, app2, emptyList()), day2 + 1000)
+
+        val appSeries = buildChildAppSeries(listOf(snap1, snap2), 42, day1, RangeUtils.midnight(day2, 1))
+        assertEquals(42, appSeries.uid)
+        assertEquals("Signal", appSeries.appName)
+        assertEquals("org.thoughtcrime.securesms", appSeries.packageName)
+        assertEquals(800L, appSeries.total)
+        assertEquals(500L, appSeries.download)
+        assertEquals(300L, appSeries.upload)
+        assertEquals(2, appSeries.bins.size)
+    }
 }

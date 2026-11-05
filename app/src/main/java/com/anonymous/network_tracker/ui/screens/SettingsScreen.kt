@@ -1,19 +1,14 @@
 package com.anonymous.network_tracker.ui.screens
 
 import android.Manifest
-import android.os.Build
-import android.provider.Settings
-import android.content.pm.PackageManager
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.core.content.ContextCompat
-import com.anonymous.network_tracker.ui.UsageState
-import com.anonymous.network_tracker.ui.rememberUsageState
-import com.anonymous.network_tracker.ui.LaunchedOnResumeEffect
-import com.anonymous.network_tracker.data.util.UsageExport
-import com.anonymous.network_tracker.data.util.parseLimitGb
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
+import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -28,7 +23,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -36,22 +31,26 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
-import com.anonymous.network_tracker.core.UsageAccess
 import com.anonymous.network_tracker.data.repository.AppSettings
 import com.anonymous.network_tracker.data.repository.SettingsRepository
 import com.anonymous.network_tracker.data.repository.UsageRepository
 import com.anonymous.network_tracker.data.util.RangeUtils
+import com.anonymous.network_tracker.data.util.UsageExport
+import com.anonymous.network_tracker.data.util.parseLimitGb
 import com.anonymous.network_tracker.service.SyncKeepAlive
 import com.anonymous.network_tracker.service.WifiSessions
 import com.anonymous.network_tracker.service.WifiWatchService
+import com.anonymous.network_tracker.ui.LaunchedOnResumeEffect
+import com.anonymous.network_tracker.ui.UsageState
+import com.anonymous.network_tracker.ui.rememberUsageState
 import com.anonymous.network_tracker.ui.theme.*
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
-
-private const val GB_BYTES = 1024L * 1024L * 1024L
 
 @Composable
 fun SettingsScreen(
@@ -74,13 +73,15 @@ fun SettingsScreen(
 
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var isExporting by remember { mutableStateOf(false) }
+
     LaunchedOnResumeEffect(context) {
-            settings = settingsRepo.loadSettings()
-            wifiWatchEnabled = WifiSessions.isEnabled(context)
-            keepAliveEnabled = SyncKeepAlive.isEnabled(context)
-            wifiProblem = WifiWatchService.problem(context)
-            isIgnoringBattery = SyncKeepAlive.isIgnoringBatteryOptimizations(context)
-            }
+        settings = settingsRepo.loadSettings()
+        wifiWatchEnabled = WifiSessions.isEnabled(context)
+        keepAliveEnabled = SyncKeepAlive.isEnabled(context)
+        wifiProblem = WifiWatchService.problem(context)
+        isIgnoringBattery = SyncKeepAlive.isIgnoringBatteryOptimizations(context)
+    }
+
     fun save(change: (AppSettings) -> AppSettings): Boolean = try {
         settings = settingsRepo.update(change)
         errorMessage = null
@@ -89,6 +90,7 @@ fun SettingsScreen(
         errorMessage = e.message ?: "Unable to save settings. Try again."
         false
     }
+
     fun setWifiWatch(enabled: Boolean) {
         try {
             WifiSessions.setEnabled(context, enabled)
@@ -99,10 +101,12 @@ fun SettingsScreen(
             errorMessage = e.message ?: "Unable to start tracking. Try again."
         }
     }
+
     val locationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
         if (permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true) setWifiWatch(true)
         else errorMessage = "Location access is needed to identify Wi-Fi networks."
     }
+
     val exportTitle = tr("Export Usage")
     fun export(format: String) {
         val range = usageState.activeRange(settings.cycleStartDay)
@@ -123,9 +127,13 @@ fun SettingsScreen(
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
                 context.startActivity(Intent.createChooser(intent, exportTitle))
-            } catch (e: kotlinx.coroutines.CancellationException) { throw e
-            } catch (e: Exception) { errorMessage = e.message ?: "Export failed. Try again."
-            } finally { isExporting = false }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                errorMessage = e.message ?: "Export failed. Try again."
+            } finally {
+                isExporting = false
+            }
         }
     }
 
@@ -176,8 +184,11 @@ fun SettingsScreen(
                 Button(
                     onClick = {
                         val parsed = cycleDayDraft.toIntOrNull()
-                        if (parsed == null || parsed !in 1..31) errorMessage = "Enter a renewal day from 1 to 31."
-                        else if (save { it.copy(cycleStartDay = parsed) }) showCycleDialog = false
+                        if (parsed == null || parsed !in 1..31) {
+                            errorMessage = "Enter a renewal day from 1 to 31."
+                        } else if (save { it.copy(cycleStartDay = parsed) }) {
+                            showCycleDialog = false
+                        }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = AccentPrimary)
                 ) {
@@ -196,7 +207,7 @@ fun SettingsScreen(
     // Limit Dialog
     if (showLimitDialogFor != null) {
         val isMobile = showLimitDialogFor == "MOBILE"
-        val networkTitle = if (isMobile) "Mobile Data Limit" else "Wi-Fi Data Limit"
+        val networkTitle = if (isMobile) "Mobile Limit" else "Wi-Fi Limit"
         AlertDialog(
             onDismissRequest = { showLimitDialogFor = null },
             title = { Text(tr(networkTitle), color = TextPrimary, fontWeight = FontWeight.Bold) },
@@ -247,8 +258,12 @@ fun SettingsScreen(
                         val pct = warnPctDraft.toIntOrNull()
                         if (bytes == null || pct == null || pct !in 1..100) {
                             errorMessage = "Enter a positive data limit and a warning percentage from 1 to 100."
-                        } else if (save { if (isMobile) it.copy(mobileLimitBytes = bytes, mobileWarnAtPercent = pct)
-                            else it.copy(wifiLimitBytes = bytes, wifiWarnAtPercent = pct) }) showLimitDialogFor = null
+                        } else if (save {
+                            if (isMobile) it.copy(mobileLimitBytes = bytes, mobileWarnAtPercent = pct)
+                            else it.copy(wifiLimitBytes = bytes, wifiWarnAtPercent = pct)
+                        }) {
+                            showLimitDialogFor = null
+                        }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = AccentPrimary)
                 ) {
@@ -261,7 +276,9 @@ fun SettingsScreen(
                     if (hasExistingLimit) {
                         TextButton(
                             onClick = {
-                                if (save { if (isMobile) it.copy(mobileLimitBytes = null) else it.copy(wifiLimitBytes = null) }) showLimitDialogFor = null
+                                if (save { if (isMobile) it.copy(mobileLimitBytes = null) else it.copy(wifiLimitBytes = null) }) {
+                                    showLimitDialogFor = null
+                                }
                             }
                         ) {
                             Text(tr("Remove Limit"), color = AccentSecondary)
@@ -286,9 +303,10 @@ fun SettingsScreen(
                 .fillMaxSize()
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
-                .padding(20.dp),
+                .padding(horizontal = 16.dp, vertical = 20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // Header
             Column {
                 Text(
                     text = tr("Settings"),
@@ -296,474 +314,384 @@ fun SettingsScreen(
                     fontSize = 24.sp,
                     fontWeight = FontWeight.Bold
                 )
+                Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = tr("Tracking preferences, cycle & limits"),
                     color = TextSecondary,
-                    fontSize = 14.sp
+                    fontSize = 13.sp
                 )
             }
 
             if (errorMessage != null) {
-                Text(tr(errorMessage!!), color = MaterialTheme.colorScheme.error)
-                TextButton(onClick = { errorMessage = null }) { Text(tr("Dismiss")) }
-            }
-            Text(tr("Language"), style = MaterialTheme.typography.titleMedium)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("en" to "English", "ar" to "العربية").forEach { (code, label) ->
-                    FilterChip(selected = settings.language == code, onClick = {
-                        if (save { it.copy(language = code) }) onAppearanceChanged()
-                    }, label = { Text(label) })
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = DarkSurface),
+                    border = BorderStroke(1.dp, DangerRed.copy(alpha = 0.5f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(tr(errorMessage!!), color = DangerRed, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                        TextButton(onClick = { errorMessage = null }) { Text(tr("Dismiss"), color = TextMuted) }
+                    }
                 }
             }
-            Text(tr("Appearance"), style = MaterialTheme.typography.titleMedium)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("system" to "System", "light" to "Light", "dark" to "Dark").forEach { (mode, label) ->
-                    FilterChip(selected = settings.themeMode == mode, onClick = {
-                        if (save { it.copy(themeMode = mode) }) onAppearanceChanged()
-                    }, label = { Text(tr(label)) })
-                }
-            }
-            OutlinedButton(onClick = {
-                context.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName))
-            }) { Text(tr("Notification settings")) }
 
-            // 1. Monthly Plan Renewal Day Card
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = DarkSurface)
-            ) {
+            // 1. PREFERENCES GROUP
+            SettingSectionHeader("PREFERENCES")
+            SettingGroupCard {
+                // Language
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(18.dp),
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    SettingLeadingIcon(Icons.Default.Language)
+                    Spacer(modifier = Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.CalendarMonth, contentDescription = null, tint = AccentPrimary, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = tr("Monthly Plan Renewal Day"),
-                                color = TextPrimary,
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.SemiBold
+                        Text(tr("Language"), color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                        Text(if (settings.language == "ar") "العربية" else "English", color = TextMuted, fontSize = 12.sp)
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf("en" to "English", "ar" to "العربية").forEach { (code, label) ->
+                            FilterChip(
+                                selected = settings.language == code,
+                                onClick = {
+                                    if (save { it.copy(language = code) }) onAppearanceChanged()
+                                },
+                                label = { Text(label, fontSize = 12.sp) }
                             )
                         }
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = tr("Renews on day %d of each month. Drives 'This Cycle' date ranges.", settings.cycleStartDay),
-                            color = TextMuted,
-                            fontSize = 12.sp
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Button(
-                        onClick = {
-                            cycleDayDraft = settings.cycleStartDay.toString()
-                            showCycleDialog = true
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = DarkSurfaceVariant),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Text(tr("Day %d", settings.cycleStartDay), color = AccentPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                     }
                 }
-            }
 
-            // 2. Data Limits Card
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = DarkSurface)
-            ) {
-                Column(modifier = Modifier.padding(18.dp)) {
-                    Text(
-                        text = tr("Data Limits & Alerts"),
-                        color = TextPrimary,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = tr("Get notified before exceeding your monthly package quota."),
-                        color = TextMuted,
-                        fontSize = 12.sp
-                    )
-                    Spacer(modifier = Modifier.height(14.dp))
+                SettingDivider()
 
-                    // Mobile Limit Row
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.PhoneAndroid, contentDescription = null, tint = AccentPrimary, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(tr("Mobile Limit"), color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                            }
-                            val mobileText = if (settings.mobileLimitBytes != null) {
-                                tr("%.1f GB (Warn at %d%%)", settings.mobileLimitBytes!! / (1024.0 * 1024.0 * 1024.0), settings.mobileWarnAtPercent)
-                            } else {
-                                tr("No limit set")
-                            }
-                            Text(mobileText, color = TextMuted, fontSize = 12.sp)
-                        }
-                        Button(
-                            onClick = {
-                                limitGbDraft = if (settings.mobileLimitBytes != null) "%.1f".format(settings.mobileLimitBytes!! / (1024.0 * 1024.0 * 1024.0)) else ""
-                                warnPctDraft = settings.mobileWarnAtPercent.toString()
-                                showLimitDialogFor = "MOBILE"
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = DarkSurfaceVariant),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text(if (settings.mobileLimitBytes != null) tr("Edit") else tr("Set Limit"), color = AccentPrimary, fontSize = 12.sp)
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-                    HorizontalDivider(color = DarkBorder, thickness = 0.5.dp)
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    // Wi-Fi Limit Row
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.Wifi, contentDescription = null, tint = AccentPrimary, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(tr("Wi-Fi Limit"), color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                            }
-                            val wifiText = if (settings.wifiLimitBytes != null) {
-                                tr("%.1f GB (Warn at %d%%)", settings.wifiLimitBytes!! / (1024.0 * 1024.0 * 1024.0), settings.wifiWarnAtPercent)
-                            } else {
-                                tr("No limit set")
-                            }
-                            Text(wifiText, color = TextMuted, fontSize = 12.sp)
-                        }
-                        Button(
-                            onClick = {
-                                limitGbDraft = if (settings.wifiLimitBytes != null) "%.1f".format(settings.wifiLimitBytes!! / (1024.0 * 1024.0 * 1024.0)) else ""
-                                warnPctDraft = settings.wifiWarnAtPercent.toString()
-                                showLimitDialogFor = "WIFI"
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = DarkSurfaceVariant),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text(if (settings.wifiLimitBytes != null) tr("Edit") else tr("Set Limit"), color = AccentPrimary, fontSize = 12.sp)
-                        }
-                    }
-                }
-            }
-
-            // 3. System Apps Toggle Card
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = DarkSurface)
-            ) {
+                // Appearance
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(18.dp),
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    SettingLeadingIcon(Icons.Default.DarkMode)
+                    Spacer(modifier = Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Layers, contentDescription = null, tint = AccentPrimary, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = tr("Show System Apps"),
-                                color = TextPrimary,
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.SemiBold
+                        Text(tr("Appearance"), color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                        Text(tr(when (settings.themeMode) { "light" -> "Light"; "dark" -> "Dark"; else -> "System" }), color = TextMuted, fontSize = 12.sp)
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf("system" to "System", "light" to "Light", "dark" to "Dark").forEach { (mode, label) ->
+                            FilterChip(
+                                selected = settings.themeMode == mode,
+                                onClick = {
+                                    if (save { it.copy(themeMode = mode) }) onAppearanceChanged()
+                                },
+                                label = { Text(tr(label), fontSize = 12.sp) }
                             )
                         }
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = tr("Include low-level Android OS services and root processes in usage lists"),
-                            color = TextMuted,
-                            fontSize = 12.sp
-                        )
                     }
-                    val switchLabel = tr("Show System Apps")
-                    Switch(
-                        modifier = Modifier.semantics { contentDescription = switchLabel },
-                        checked = settings.showSystemApps,
-                        onCheckedChange = { checked ->
-                            save { it.copy(showSystemApps = checked) }
-                        },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = TextPrimary,
-                            checkedTrackColor = AccentPrimary,
-                            uncheckedThumbColor = TextMuted,
-                            uncheckedTrackColor = DarkSurfaceVariant
-                        )
-                    )
+                }
+
+                SettingDivider()
+
+                // System Notification Settings
+                SettingActionItem(
+                    icon = Icons.Default.Notifications,
+                    title = "System Notification Settings",
+                    subtitle = "Configure alert sounds, badges and priority",
+                    onClick = {
+                        context.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName))
+                    }
+                ) {
+                    Icon(Icons.Default.ChevronRight, contentDescription = null, tint = TextMuted, modifier = Modifier.size(18.dp))
                 }
             }
 
-            // 4. Wi-Fi Tracking Card
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = DarkSurface)
-            ) {
-                Column(modifier = Modifier.padding(18.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+            // 2. BILLING & DATA LIMITS GROUP
+            SettingSectionHeader("BILLING & CYCLES")
+            SettingGroupCard {
+                // Monthly Plan Renewal Day
+                SettingActionItem(
+                    icon = Icons.Default.CalendarMonth,
+                    title = "Monthly Plan Renewal Day",
+                    subtitle = "Renews on day %d of each month. Drives 'This Cycle' date ranges.",
+                    subtitleArgs = arrayOf(settings.cycleStartDay),
+                    onClick = {
+                        cycleDayDraft = settings.cycleStartDay.toString()
+                        showCycleDialog = true
+                    }
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(DarkSurfaceVariant)
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.WifiTethering, contentDescription = null, tint = AccentPrimary, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = tr("Wi-Fi Network Attribution"),
-                                    color = TextPrimary,
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = tr("Attribute Wi-Fi data usage by SSID network name (Home, Work, etc.)"),
-                                color = TextMuted,
-                                fontSize = 12.sp
-                            )
-                        }
-                        val switchLabel = tr("Wi-Fi Network Attribution")
-                        Switch(
-                            modifier = Modifier.semantics { contentDescription = switchLabel },
-                            checked = wifiWatchEnabled,
-                            onCheckedChange = { enabled ->
-                                if (enabled && ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-                                    locationPermission.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
-                                } else setWifiWatch(enabled)
-                            },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = TextPrimary,
-                                checkedTrackColor = AccentPrimary,
-                                uncheckedThumbColor = TextMuted,
-                                uncheckedTrackColor = DarkSurfaceVariant
-                            )
+                        Text(
+                            text = tr("Day %d", settings.cycleStartDay),
+                            color = AccentPrimary,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
                         )
                     }
+                }
+
+                SettingDivider()
+
+                // Mobile Data Limit
+                SettingActionItem(
+                    icon = Icons.Default.PhoneAndroid,
+                    title = "Mobile Limit",
+                    subtitle = if (settings.mobileLimitBytes != null) "%.1f GB (Warn at %d%%)" else "No limit set",
+                    subtitleArgs = if (settings.mobileLimitBytes != null) arrayOf<Any>(settings.mobileLimitBytes!! / (1024.0 * 1024.0 * 1024.0), settings.mobileWarnAtPercent) else emptyArray(),
+                    onClick = {
+                        limitGbDraft = if (settings.mobileLimitBytes != null) "%.1f".format(settings.mobileLimitBytes!! / (1024.0 * 1024.0 * 1024.0)) else ""
+                        warnPctDraft = settings.mobileWarnAtPercent.toString()
+                        showLimitDialogFor = "MOBILE"
+                    }
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(DarkSurfaceVariant)
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = if (settings.mobileLimitBytes != null) tr("Edit") else tr("Set Limit"),
+                            color = AccentPrimary,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+
+                SettingDivider()
+
+                // Wi-Fi Data Limit
+                SettingActionItem(
+                    icon = Icons.Default.Wifi,
+                    title = "Wi-Fi Limit",
+                    subtitle = if (settings.wifiLimitBytes != null) "%.1f GB (Warn at %d%%)" else "No limit set",
+                    subtitleArgs = if (settings.wifiLimitBytes != null) arrayOf<Any>(settings.wifiLimitBytes!! / (1024.0 * 1024.0 * 1024.0), settings.wifiWarnAtPercent) else emptyArray(),
+                    onClick = {
+                        limitGbDraft = if (settings.wifiLimitBytes != null) "%.1f".format(settings.wifiLimitBytes!! / (1024.0 * 1024.0 * 1024.0)) else ""
+                        warnPctDraft = settings.wifiWarnAtPercent.toString()
+                        showLimitDialogFor = "WIFI"
+                    }
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(DarkSurfaceVariant)
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = if (settings.wifiLimitBytes != null) tr("Edit") else tr("Set Limit"),
+                            color = AccentPrimary,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+            }
+
+            // 3. DATA ATTRIBUTION GROUP
+            SettingSectionHeader("DATA ATTRIBUTION")
+            SettingGroupCard {
+                // Show System Apps Toggle
+                SettingToggleItem(
+                    icon = Icons.Default.Layers,
+                    title = "Show System Apps",
+                    subtitle = "Include low-level Android OS services and root processes in usage lists",
+                    checked = settings.showSystemApps,
+                    onCheckedChange = { checked -> save { it.copy(showSystemApps = checked) } }
+                )
+
+                SettingDivider()
+
+                // Wi-Fi Network Attribution Toggle
+                Column {
+                    SettingToggleItem(
+                        icon = Icons.Default.WifiTethering,
+                        title = "Wi-Fi Network Attribution",
+                        subtitle = "Attribute Wi-Fi data usage by SSID network name (Home, Work, etc.)",
+                        checked = wifiWatchEnabled,
+                        onCheckedChange = { enabled ->
+                            if (enabled && ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+                                locationPermission.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+                            } else setWifiWatch(enabled)
+                        }
+                    )
 
                     if (wifiProblem != null) {
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text(tr(when (wifiProblem) {
-                            "permission" -> "Location access is needed to identify Wi-Fi networks."
-                            "background" -> "Allow location all the time for background Wi-Fi tracking."
-                            else -> "Turn on device location to identify Wi-Fi networks."
-                        }), color = TextSecondary)
-                        TextButton(onClick = { WifiWatchService.openFix(context) }) { Text(tr("Open location settings")) }
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 8.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(DarkSurfaceVariant)
+                                .padding(12.dp)
+                        ) {
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text(
+                                    tr(when (wifiProblem) {
+                                        "permission" -> "Location access is needed to identify Wi-Fi networks."
+                                        "background" -> "Allow location all the time for background Wi-Fi tracking."
+                                        else -> "Turn on device location to identify Wi-Fi networks."
+                                    }),
+                                    color = TextSecondary,
+                                    fontSize = 12.sp
+                                )
+                                TextButton(
+                                    onClick = { WifiWatchService.openFix(context) },
+                                    modifier = Modifier.align(Alignment.End)
+                                ) {
+                                    Text(tr("Open location settings"), color = AccentPrimary, fontSize = 12.sp)
+                                }
+                            }
+                        }
                     }
                 }
             }
 
-            // 5. Automatic Updates & Background Keep-Alive
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = DarkSurface)
-            ) {
-                Column(modifier = Modifier.padding(18.dp)) {
+            // 4. BACKGROUND SYNC GROUP
+            SettingSectionHeader("BACKGROUND SYNC")
+            SettingGroupCard {
+                SettingToggleItem(
+                    icon = Icons.Default.Schedule,
+                    title = "Regular Background Sync",
+                    subtitle = "Keep usage tracking fresh and accurate even when the app is closed.",
+                    checked = keepAliveEnabled,
+                    onCheckedChange = { enabled ->
+                        SyncKeepAlive.setEnabled(context, enabled)
+                        keepAliveEnabled = enabled
+                    }
+                )
+
+                if (!isIgnoringBattery) {
+                    SettingDivider()
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.Schedule, contentDescription = null, tint = AccentPrimary, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = tr("Regular Background Sync"),
-                                    color = TextPrimary,
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = tr("Keep usage tracking fresh and accurate even when the app is closed."),
-                                color = TextMuted,
-                                fontSize = 12.sp
-                            )
+                            Text(tr("Exempt from Battery Optimization"), color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                            Text(tr("Your phone may pause the app to save battery, which can delay updates."), color = TextMuted, fontSize = 11.sp)
                         }
-                        val switchLabel = tr("Regular Background Sync")
-                        Switch(
-                            modifier = Modifier.semantics { contentDescription = switchLabel },
-                            checked = keepAliveEnabled,
-                            onCheckedChange = { enabled ->
-                                SyncKeepAlive.setEnabled(context, enabled)
-                                keepAliveEnabled = enabled
-                            },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = TextPrimary,
-                                checkedTrackColor = AccentPrimary,
-                                uncheckedThumbColor = TextMuted,
-                                uncheckedTrackColor = DarkSurfaceVariant
-                            )
-                        )
-                    }
-
-                    if (!isIgnoringBattery) {
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.width(12.dp))
                         Button(
                             onClick = {
                                 SyncKeepAlive.requestIgnoreBatteryOptimizations(context)
                                 isIgnoringBattery = SyncKeepAlive.isIgnoringBatteryOptimizations(context)
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = DarkSurfaceVariant),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Text(tr("Exempt from Battery Optimization"), color = AccentSecondary, fontSize = 11.sp)
+                        }
+                    }
+                }
+            }
+
+            // 5. FAMILY GROUP
+            SettingSectionHeader("FAMILY & SYNC")
+            SettingGroupCard {
+                val statusText = when (settings.familyRole) {
+                    "parent" -> "Role: Parent (Active sync)"
+                    "child" -> "Role: Child (Linked to parent)"
+                    else -> "Not paired yet"
+                }
+                SettingActionItem(
+                    icon = Icons.Default.Group,
+                    title = "Family Sharing & Pairing",
+                    subtitle = statusText,
+                    onClick = onNavigateToFamily
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(tr("Open Family"), color = AccentPrimary, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = AccentPrimary, modifier = Modifier.size(16.dp))
+                    }
+                }
+            }
+
+            // 6. DATA MANAGEMENT & EXPORT GROUP
+            SettingSectionHeader("DATA EXPORT")
+            SettingGroupCard {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        SettingLeadingIcon(Icons.Default.Share)
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text(tr("Data Management"), color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                            Text(tr("Export the selected date range and network as CSV or JSON."), color = TextMuted, fontSize = 12.sp)
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Button(
+                            enabled = !isExporting,
+                            onClick = { export("csv") },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(containerColor = DarkSurfaceVariant),
                             shape = RoundedCornerShape(8.dp)
                         ) {
-                            Text(tr("Exempt from Battery Optimization"), color = AccentSecondary, fontSize = 12.sp)
+                            Icon(Icons.Default.Share, contentDescription = null, tint = AccentSecondary, modifier = Modifier.size(15.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(tr("Export CSV"), color = AccentSecondary, fontSize = 12.sp)
+                        }
+
+                        Button(
+                            enabled = !isExporting,
+                            onClick = { export("json") },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(containerColor = DarkSurfaceVariant),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Icon(Icons.Default.Share, contentDescription = null, tint = AccentSecondary, modifier = Modifier.size(15.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(tr("Export JSON"), color = AccentSecondary, fontSize = 12.sp)
                         }
                     }
                 }
             }
 
-            // 6. Family Sharing & Pairing
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = DarkSurface)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(18.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+            // 7. SOFTWARE UPDATES GROUP
+            SettingSectionHeader("SYSTEM")
+            SettingGroupCard {
+                SettingActionItem(
+                    icon = Icons.Default.SystemUpdate,
+                    title = "Software Updates",
+                    subtitle = "Check GitHub for new versions & release notes",
+                    onClick = onNavigateToUpdate
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Group, contentDescription = null, tint = AccentPrimary, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = tr("Family Sharing & Pairing"),
-                                color = TextPrimary,
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(4.dp))
-                        val status = when (settings.familyRole) {
-                            "parent" -> "Role: Parent (Active sync)"
-                            "child" -> "Role: Child (Linked to parent)"
-                            else -> "Not paired yet"
-                        }
-                        Text(
-                            text = tr(status),
-                            color = TextMuted,
-                            fontSize = 12.sp
-                        )
-                    }
-                    Button(
-                        onClick = onNavigateToFamily,
-                        colors = ButtonDefaults.buttonColors(containerColor = AccentPrimary),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Text(tr("Open Family"), color = MaterialTheme.colorScheme.onPrimary, fontSize = 13.sp)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(tr("Check"), color = AccentPrimary, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = AccentPrimary, modifier = Modifier.size(16.dp))
                     }
                 }
             }
 
-            // 7. Export Data Card
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = DarkSurface)
-            ) {
-                Column(modifier = Modifier.padding(18.dp)) {
-                    Text(
-                        text = tr("Data Management"),
-                        color = TextPrimary,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = tr("Export the selected date range and network as CSV or JSON."),
-                        color = TextMuted,
-                        fontSize = 12.sp
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Button(
-                        enabled = !isExporting,
-                        onClick = { export("csv") },
-                        colors = ButtonDefaults.buttonColors(containerColor = DarkSurfaceVariant),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Share,
-                            contentDescription = null,
-                            tint = AccentSecondary,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(tr("Export CSV"), color = AccentSecondary, fontSize = 13.sp)
-                    }
-                }
-            }
-
-            OutlinedButton(enabled = !isExporting, onClick = { export("json") }) { Text(tr("Export JSON")) }
-
-            // 8. App Updates Card
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = DarkSurface)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(18.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = tr("Software Updates"),
-                            color = TextPrimary,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Text(
-                            text = tr("Check GitHub for new versions & release notes"),
-                            color = TextMuted,
-                            fontSize = 12.sp
-                        )
-                    }
-                    Button(
-                        onClick = onNavigateToUpdate,
-                        colors = ButtonDefaults.buttonColors(containerColor = DarkSurfaceVariant),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.SystemUpdate,
-                            contentDescription = null,
-                            tint = AccentPrimary,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(tr("Check"), color = AccentPrimary, fontSize = 13.sp)
-                    }
-                }
-            }
-
-            // App Version Info
+            // Version info footer
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -773,9 +701,157 @@ fun SettingsScreen(
                 Text(
                     text = tr("NetTrack v2.0.0 (Native Kotlin)"),
                     color = TextMuted,
-                    fontSize = 13.sp
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium
                 )
             }
         }
+    }
+}
+
+// -------------------------------------------------------------------------------------------------
+// REUSABLE SETTING COMPONENTS
+// -------------------------------------------------------------------------------------------------
+
+@Composable
+private fun SettingSectionHeader(title: String) {
+    Text(
+        text = tr(title),
+        color = TextMuted,
+        fontSize = 11.sp,
+        fontWeight = FontWeight.Bold,
+        letterSpacing = 0.5.sp,
+        modifier = Modifier.padding(start = 4.dp, top = 6.dp, bottom = 2.dp)
+    )
+}
+
+@Composable
+private fun SettingGroupCard(
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = DarkSurface),
+        border = BorderStroke(1.dp, DarkBorder),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        content = content
+    )
+}
+
+@Composable
+private fun SettingLeadingIcon(icon: ImageVector) {
+    Box(
+        modifier = Modifier
+            .size(36.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(DarkSurfaceVariant),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = AccentPrimary,
+            modifier = Modifier.size(18.dp)
+        )
+    }
+}
+
+@Composable
+private fun SettingDivider() {
+    HorizontalDivider(
+        color = DarkBorder.copy(alpha = 0.6f),
+        thickness = 0.5.dp
+    )
+}
+
+@Composable
+private fun SettingToggleItem(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val switchLabel = tr(title)
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable { onCheckedChange(!checked) }
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        SettingLeadingIcon(icon)
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = tr(title),
+                color = TextPrimary,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = tr(subtitle),
+                color = TextMuted,
+                fontSize = 12.sp,
+                lineHeight = 16.sp
+            )
+        }
+        Spacer(modifier = Modifier.width(16.dp))
+        Switch(
+            modifier = Modifier.semantics { contentDescription = switchLabel },
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = TextPrimary,
+                checkedTrackColor = AccentPrimary,
+                uncheckedThumbColor = TextMuted,
+                uncheckedTrackColor = DarkSurfaceVariant
+            )
+        )
+    }
+}
+
+@Composable
+private fun SettingActionItem(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    subtitleArgs: Array<out Any> = emptyArray(),
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    trailing: @Composable () -> Unit
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        SettingLeadingIcon(icon)
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = tr(title),
+                color = TextPrimary,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = if (subtitleArgs.isEmpty()) tr(subtitle) else tr(subtitle, *subtitleArgs),
+                color = TextMuted,
+                fontSize = 12.sp,
+                lineHeight = 16.sp
+            )
+        }
+        Spacer(modifier = Modifier.width(12.dp))
+        trailing()
     }
 }
