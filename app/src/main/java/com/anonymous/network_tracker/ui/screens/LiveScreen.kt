@@ -76,7 +76,11 @@ fun LiveScreen(modifier: Modifier = Modifier) {
                 apps = repo.getUsage(DateRange(now - 10_000, now), "ALL").filter { it.total > 0 }.take(8)
                 error = null
             } catch (e: CancellationException) { throw e }
-            catch (e: Exception) { apps = emptyList(); error = e.message ?: e.javaClass.simpleName }
+            catch (e: Exception) {
+                if (apps.isEmpty()) {
+                    error = e.message ?: e.javaClass.simpleName
+                }
+            }
             delay(2_000)
         }
     }

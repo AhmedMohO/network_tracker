@@ -124,7 +124,7 @@ fun AppDetailScreen(
                             )
                             Spacer(modifier = Modifier.height(12.dp))
                             Text(
-                                text = app.name,
+                                text = tr(app.name),
                                 color = TextPrimary,
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.Bold

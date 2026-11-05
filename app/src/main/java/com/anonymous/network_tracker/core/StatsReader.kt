@@ -117,7 +117,7 @@ class StatsReader(private val context: Context) {
                 upload = tx,
                 total = total,
                 foreground = v[2] + v[3],
-                background = (rx - v[2]) + (tx - v[3]),
+                background = (rx - v[2]).coerceAtLeast(0) + (tx - v[3]).coerceAtLeast(0),
                 percentage = pct
             )
         }.sortedByDescending { it.total }
@@ -207,7 +207,7 @@ class StatsReader(private val context: Context) {
                     upload = tx,
                     total = total,
                     foreground = v[2] + v[3],
-                    background = (rx - v[2]) + (tx - v[3]),
+                    background = (rx - v[2]).coerceAtLeast(0) + (tx - v[3]).coerceAtLeast(0),
                     percentage = pct
                 )
             }.sortedByDescending { it.total }
@@ -251,7 +251,8 @@ class StatsReader(private val context: Context) {
                     s.getNextBucket(b)
                     if (b.tag != NetworkStats.Bucket.TAG_NONE) continue
 
-                    val idx = Math.floorDiv(b.startTimeStamp - q.start, q.bucketMs).toInt()
+                    val rawIdx = Math.floorDiv(b.startTimeStamp - q.start, q.bucketMs).toInt()
+                    val idx = if (rawIdx < 0 && b.endTimeStamp > q.start) 0 else rawIdx
                     if (idx in 0 until binCount) {
                         rx[idx] += b.rxBytes
                         tx[idx] += b.txBytes

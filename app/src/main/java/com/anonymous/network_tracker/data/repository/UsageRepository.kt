@@ -246,7 +246,14 @@ class UsageRepository(private val context: Context) {
             for (network in listOf("MOBILE", "WIFI")) {
                 isolated("$network alerts") { checkNetwork(network, now) }
             }
-            isolated("archive") { snapshotDay(RangeUtils.midnight(now, -1)) }
+            isolated("archive") {
+                for (i in 1..7) {
+                    val day = RangeUtils.midnight(now, -i)
+                    if (i == 1 || dao.getUsageAllNetworks(day, RangeUtils.midnight(day, 1)).isEmpty()) {
+                        snapshotDay(day)
+                    }
+                }
+            }
             isolated("prune") { pruneOldHistory() }
             isolated("family alerts") { family.checkAlerts(now) }
         }

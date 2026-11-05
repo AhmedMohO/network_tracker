@@ -104,7 +104,7 @@ fun OverviewScreen(
         if (settings.showSystemApps) {
             appList to emptyList()
         } else {
-            appList.partition { it.uid >= 10000 || it.uid == -5 }
+            appList.partition { it.uid >= 10000 || it.uid == -5 || it.uid == -4 }
         }
     }
 
@@ -693,7 +693,7 @@ fun AppUsageRow(
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = item.name,
+                    text = tr(item.name),
                     color = TextPrimary,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.SemiBold,

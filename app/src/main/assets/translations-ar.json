@@ -658,5 +658,7 @@
   "Safe pace: ~%s/day to stay within limit": "المعدل الآمن: ~%s/يومياً للبقاء ضمن الحد",
   "Will exceed limit by ~%s (Projected: %s). Safe pace: ~%s/day": "سيتجاوز الحد بنحو ~%s (المتوقع: %s). المعدل الآمن: ~%s/يومياً",
   "Developer options: Diagnostics tab enabled": "خيارات المطور: تم تفعيل تبويب الفحص",
-  "Developer options: Diagnostics tab disabled": "خيارات المطور: تم إخفاء تبويب الفحص"
+  "Developer options: Diagnostics tab disabled": "خيارات المطور: تم إخفاء تبويب الفحص",
+  "Removed apps": "تطبيقات محذوفة",
+  "Tethering": "نقطة الاتصال (Hotspot)"
 }

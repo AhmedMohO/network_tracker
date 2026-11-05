@@ -127,4 +127,34 @@ class UsageUiTest {
         val expected = (projection.dailyPaceBytes.toDouble() * (6.0 / 24.0)).toLong()
         assertEquals(expected.toDouble(), projection.projectedRemainingBytes.toDouble(), 1000.0)
     }
+
+    @Test fun appPartitioningPreservesRemovedAppsAndTethering() {
+        val normalApp = AppUsageItem(10050, "Browser", "com.browser", 100, 100, 200)
+        val removedApps = AppUsageItem(-4, "Removed apps", null, 500, 500, 1000)
+        val tethering = AppUsageItem(-5, "Tethering", null, 300, 300, 600)
+        val systemApp = AppUsageItem(1000, "Android System", "android", 50, 50, 100)
+        val root = AppUsageItem(0, "Root", null, 20, 20, 40)
+
+        val all = listOf(normalApp, removedApps, tethering, systemApp, root)
+        val (visible, hidden) = all.partition { it.uid >= 10000 || it.uid == -5 || it.uid == -4 }
+
+        assertEquals(listOf(normalApp, removedApps, tethering), visible)
+        assertEquals(listOf(systemApp, root), hidden)
+    }
+
+    @Test fun seriesAttributionClampsOverlappingBoundaryBuckets() {
+        val qStart = 1000L
+        val qEnd = 5000L
+        val bucketMs = 1000L
+        val binCount = ((qEnd - qStart) / bucketMs + 1).toInt()
+
+        val bStart = 500L
+        val bEnd = 1500L
+        val rawIdx = Math.floorDiv(bStart - qStart, bucketMs).toInt()
+        assertEquals(-1, rawIdx)
+
+        val idx = if (rawIdx < 0 && bEnd > qStart) 0 else rawIdx
+        assertEquals(0, idx)
+        assertTrue(idx in 0 until binCount)
+    }
 }

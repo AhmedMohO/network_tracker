@@ -69,8 +69,8 @@ fun CompareScreen(modifier: Modifier = Modifier, usageState: UsageState = rememb
                 val currentApps = repo.getUsage(currentRange, selectedNetwork)
                 val previousApps = repo.getUsage(previousRange, selectedNetwork)
 
-                val (visibleCurrent, _) = if (settings.showSystemApps) currentApps to emptyList() else currentApps.partition { it.uid >= 10000 || it.uid == -5 }
-                val (visiblePrevious, _) = if (settings.showSystemApps) previousApps to emptyList() else previousApps.partition { it.uid >= 10000 || it.uid == -5 }
+                val (visibleCurrent, _) = if (settings.showSystemApps) currentApps to emptyList() else currentApps.partition { it.uid >= 10000 || it.uid == -5 || it.uid == -4 }
+                val (visiblePrevious, _) = if (settings.showSystemApps) previousApps to emptyList() else previousApps.partition { it.uid >= 10000 || it.uid == -5 || it.uid == -4 }
 
                 currentTotal = currentApps.sumOf { it.total }
                 previousTotal = previousApps.sumOf { it.total }
@@ -283,7 +283,7 @@ fun CompareScreen(modifier: Modifier = Modifier, usageState: UsageState = rememb
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = comp.name,
+                                        text = tr(comp.name),
                                         color = TextPrimary,
                                         fontSize = 14.sp,
                                         fontWeight = FontWeight.SemiBold,
