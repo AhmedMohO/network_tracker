@@ -2,6 +2,7 @@ package com.anonymous.network_tracker.ui
 
 import android.Manifest
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -91,6 +92,18 @@ fun MainAppHost(initialPairLink: String? = null, onPairConsumed: () -> Unit = {}
     var isInUpdateScreen by rememberSaveable { mutableStateOf(false) }
     val usageState = rememberUsageState()
     val context = LocalContext.current
+    val isDebuggable = (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+    val devPrefs = remember { context.getSharedPreferences("dev_mode", 0) }
+    var devModeEnabled by remember { mutableStateOf(devPrefs.getBoolean("diagnostics_enabled", false)) }
+    val showDiagnostics = isDebuggable || devModeEnabled
+    val destinations = remember(showDiagnostics) {
+        AppDestination.entries.filter { it != AppDestination.PROBE || showDiagnostics }
+    }
+    LaunchedEffect(showDiagnostics) {
+        if (!showDiagnostics && currentDestination == AppDestination.PROBE) {
+            currentDestination = AppDestination.OVERVIEW
+        }
+    }
     val asked = remember { context.getSharedPreferences("notification-permission", 0) }
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         asked.edit().putBoolean("asked", true).apply()
@@ -115,7 +128,7 @@ fun MainAppHost(initialPairLink: String? = null, onPairConsumed: () -> Unit = {}
         modifier = Modifier.fillMaxSize(), containerColor = DarkBackground,
         bottomBar = {
             if (selectedUidForDetail == null && !isInFamilyScreen && !isInUpdateScreen) NavigationBar(containerColor = DarkSurface, tonalElevation = 0.dp) {
-                AppDestination.entries.forEach { destination ->
+                destinations.forEach { destination ->
                     NavigationBarItem(
                         selected = currentDestination == destination,
                         onClick = { currentDestination = destination },
@@ -143,7 +156,7 @@ fun MainAppHost(initialPairLink: String? = null, onPairConsumed: () -> Unit = {}
                 AppDestination.COMPARE -> CompareScreen(modifier = modifier, usageState = usageState)
                 AppDestination.LIVE -> LiveScreen(modifier = modifier)
                 AppDestination.PROBE -> ProbeScreen(modifier = modifier)
-                AppDestination.SETTINGS -> SettingsScreen(onNavigateToFamily = { isInFamilyScreen = true }, onNavigateToUpdate = { isInUpdateScreen = true }, modifier = modifier, usageState = usageState, onAppearanceChanged = onAppearanceChanged)
+                AppDestination.SETTINGS -> SettingsScreen(onNavigateToFamily = { isInFamilyScreen = true }, onNavigateToUpdate = { isInUpdateScreen = true }, modifier = modifier, usageState = usageState, onAppearanceChanged = onAppearanceChanged, onDiagnosticsToggled = { devModeEnabled = devPrefs.getBoolean("diagnostics_enabled", false) })
             }
         }
     }

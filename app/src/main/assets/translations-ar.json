@@ -656,5 +656,7 @@
   "Remaining %d days: ~%s expected at current pace (~%s/day)": "متبقٍ %d يوماً: يُتوقع ~%s بالمعدل الحالي (~%s/يومياً)",
   "Remaining %d hours: ~%s expected at current pace (~%s/day)": "متبقٍ %d ساعة: يُتوقع ~%s بالمعدل الحالي (~%s/يومياً)",
   "Safe pace: ~%s/day to stay within limit": "المعدل الآمن: ~%s/يومياً للبقاء ضمن الحد",
-  "Will exceed limit by ~%s (Projected: %s). Safe pace: ~%s/day": "سيتجاوز الحد بنحو ~%s (المتوقع: %s). المعدل الآمن: ~%s/يومياً"
+  "Will exceed limit by ~%s (Projected: %s). Safe pace: ~%s/day": "سيتجاوز الحد بنحو ~%s (المتوقع: %s). المعدل الآمن: ~%s/يومياً",
+  "Developer options: Diagnostics tab enabled": "خيارات المطور: تم تفعيل تبويب الفحص",
+  "Developer options: Diagnostics tab disabled": "خيارات المطور: تم إخفاء تبويب الفحص"
 }

@@ -11,6 +11,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -58,7 +60,8 @@ fun SettingsScreen(
     onNavigateToUpdate: () -> Unit,
     modifier: Modifier = Modifier,
     usageState: UsageState = rememberUsageState(),
-    onAppearanceChanged: () -> Unit = {}
+    onAppearanceChanged: () -> Unit = {},
+    onDiagnosticsToggled: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val settingsRepo = remember(context) { SettingsRepository.getInstance(context) }
@@ -691,11 +694,38 @@ fun SettingsScreen(
                 }
             }
 
-            // Version info footer
+            // Version info footer (tap 7 times to toggle developer Diagnostics tab)
+            var devTapCount by remember { mutableIntStateOf(0) }
+            var lastDevTapMs by remember { mutableLongStateOf(0L) }
+            val devPrefs = remember { context.getSharedPreferences("dev_mode", 0) }
+            val devModeEnabledMsg = tr("Developer options: Diagnostics tab enabled")
+            val devModeDisabledMsg = tr("Developer options: Diagnostics tab disabled")
+
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 12.dp),
+                    .padding(vertical = 12.dp)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) {
+                        val now = System.currentTimeMillis()
+                        if (now - lastDevTapMs > 1500L) {
+                            devTapCount = 1
+                        } else {
+                            devTapCount++
+                        }
+                        lastDevTapMs = now
+
+                        if (devTapCount >= 7) {
+                            devTapCount = 0
+                            val updated = !devPrefs.getBoolean("diagnostics_enabled", false)
+                            devPrefs.edit().putBoolean("diagnostics_enabled", updated).apply()
+                            val msg = if (updated) devModeEnabledMsg else devModeDisabledMsg
+                            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                            onDiagnosticsToggled()
+                        }
+                    },
                 contentAlignment = Alignment.Center
             ) {
                 Text(
