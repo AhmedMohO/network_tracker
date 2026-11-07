@@ -1,5 +1,7 @@
 package com.anonymous.network_tracker.ui.screens
 
+import com.anonymous.network_tracker.BuildConfig
+
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -57,14 +59,7 @@ fun UpdateScreen(
             .build()
     }
 
-    val currentVersion = remember {
-        try {
-            val pInfo = context.packageManager.getPackageInfo(context.packageName, 0)
-            pInfo.versionName ?: "2.0.0"
-        } catch (_: Exception) {
-            "2.0.0"
-        }
-    }
+    val currentVersion = BuildConfig.VERSION_NAME
 
     var isLoading by remember { mutableStateOf(true) }
     var release by remember { mutableStateOf<GithubRelease?>(null) }

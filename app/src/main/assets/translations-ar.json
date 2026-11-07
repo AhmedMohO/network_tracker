@@ -354,7 +354,7 @@
   "Mobile Limit": "حد الهاتف",
   "Monthly Plan Renewal Day": "يوم تجديد الباقة الشهرية",
   "NEW": "جديد",
-  "NetTrack v2.0.0 (Native Kotlin)": "NetTrack v2.0.0 (Native Kotlin)",
+  "NetTrack v%s (Native Kotlin)": "NetTrack v%s (Native Kotlin)",
   "No data found for this application.": "لا توجد بيانات لهذا التطبيق.",
   "No limit set": "لا يوجد حد",
   "No previous usage": "لا يوجد استهلاك سابق",
@@ -663,5 +663,12 @@
   "Tethering": "نقطة الاتصال (Hotspot)",
   "Some usage values are estimates.": "بعض قيم الاستخدام تقديرية.",
   "Network shares and state breakdowns are estimates.": "حصص الشبكات وتوزيع الاستخدام بين المقدمة والخلفية تقديرية.",
-  "Unavailable": "غير متاح"
+  "Unavailable": "غير متاح",
+  "Wi-Fi limit network": "شبكة حد استخدام الواي فاي",
+  "All Wi-Fi networks": "كل شبكات الواي فاي",
+  "No Wi-Fi networks recorded yet": "لم تُسجّل أي شبكة واي فاي بعد",
+  "Only attributed usage for this network is counted.": "يُحتسب فقط الاستخدام المنسوب إلى هذه الشبكة.",
+  "Enable Wi-Fi Network Attribution in Settings for network-specific usage.": "فعّل إسناد استخدام الواي فاي للشبكات من الإعدادات لعرض استخدام شبكة محددة.",
+  "Loading usage…": "جارٍ تحميل الاستخدام…",
+  "Usage unavailable": "الاستخدام غير متاح"
 }

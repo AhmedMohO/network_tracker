@@ -16,6 +16,7 @@ data class AppSettings(
     val deviceLabel: String? = null,
     val pairedLabel: String? = null,
     val lastSyncOkAt: Long? = null,
-    val lastSyncErrorAt: Long? = null
+    val lastSyncErrorAt: Long? = null,
+    val wifiLimitSsid: String? = null
 )
 

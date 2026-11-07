@@ -1,6 +1,10 @@
 package com.anonymous.network_tracker.data.repository
 
+import java.net.URLEncoder
+
 object AlertRules {
+    fun scopedKey(key: String, ssid: String?): String =
+        if (ssid == null) key else "$key:ssid=${URLEncoder.encode(ssid, "UTF-8")}"
     fun limitKey(network: String, state: String, cycle: Long, limit: Long, warn: Int) =
         if (state == "over") "$network:over:$cycle:$limit" else "$network:warn:$cycle:$limit:$warn"
     fun liveKeys(keys: Set<String>, cycle: Long, today: String): Set<String> = keys.filter { key ->

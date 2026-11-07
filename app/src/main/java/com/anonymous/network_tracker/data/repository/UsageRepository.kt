@@ -40,6 +40,7 @@ import com.anonymous.network_tracker.data.util.archiveApps
 import com.anonymous.network_tracker.data.util.archiveWifiSlices
 import com.anonymous.network_tracker.data.util.preserveWifiAttribution
 import com.anonymous.network_tracker.data.util.snapshotRetainsUsage
+import com.anonymous.network_tracker.data.util.wifiLimitUsedBytes
 import com.anonymous.network_tracker.service.WifiSessions
 import com.anonymous.network_tracker.service.WifiWatchService
 import kotlinx.coroutines.Dispatchers
@@ -182,6 +183,10 @@ class UsageRepository(private val context: Context) {
         return UsageTotals(rx, tx, rx + tx)
     }
 
+    suspend fun getLimitUsedBytes(range: DateRange, network: String, wifiSsid: String? = null): Long =
+        if (network == "WIFI" && wifiSsid != null) wifiLimitUsedBytes(getUsageByWifiNetwork(range), wifiSsid)
+        else getTotals(range, network).total
+
     suspend fun getDayUsage(range: DateRange, network: String): List<AppUsageItem> = withContext(Dispatchers.IO) {
         getUsage(range, network)
     }
@@ -248,6 +253,8 @@ class UsageRepository(private val context: Context) {
     private suspend fun checkNetwork(network: String, now: Long) {
         if (!UsageAccess.has(context)) return
         val settings = settingsRepo.loadSettings()
+        val ssid = if (network == "WIFI") settings.wifiLimitSsid else null
+        if (ssid != null && !WifiSessions.isEnabled(context)) return
         val cycle = RangeUtils.billingCycleRange(settings.cycleStartDay, now)
         val lower = network.lowercase(Locale.US)
         val today = dayKey(now)
@@ -255,25 +262,25 @@ class UsageRepository(private val context: Context) {
         val limit = if(network == "MOBILE") settings.mobileLimitBytes else settings.wifiLimitBytes
         val warn = if(network == "MOBILE") settings.mobileWarnAtPercent else settings.wifiWarnAtPercent
         if (limit != null && limit > 0) {
-            val used = getTotals(cycle, network).total
+            val used = getLimitUsedBytes(cycle, network, ssid)
             val percent = used.toDouble() / limit * 100
             val state = if (used >= limit) "over" else if(percent >= warn) "warn" else null
             if (state != null) {
-                val key = AlertRules.limitKey(lower, state, cycle.start, limit, warn)
+                val key = AlertRules.scopedKey(AlertRules.limitKey(lower, state, cycle.start, limit, warn), ssid)
                 alertOnce(key, if(network == "MOBILE") 1001 else 1002,
-                    localized(if(state == "over") "%s data limit reached" else "%s data warning", localized(network)),
+                    localized(if(state == "over") "%s data limit reached" else "%s data warning", ssid ?: localized(network)),
                     localized("You have used %s%% of your %s data limit.",percent.toInt(),formatBytes(limit)))
                 return
             }
         }
         if (network == "WIFI" && (limit == null || limit <= 0)) return
-        val spikeKey = "$lower:spike:$today"
+        val spikeKey = AlertRules.scopedKey("$lower:spike:$today", ssid)
         if (settingsRepo.loadSettings().alertedKeys.contains(spikeKey)) return
-        val todayTotal = getTotals(DateRange(RangeUtils.midnight(now), now), network).total
-        val history = (1..14).map { getTotals(RangeUtils.calendarDayRange(now,-it),network).total }
+        val todayTotal = getLimitUsedBytes(DateRange(RangeUtils.midnight(now), now), network, ssid)
+        val history = (1..14).map { getLimitUsedBytes(RangeUtils.calendarDayRange(now,-it), network, ssid) }
         if (AlertRules.detectSpike(history,todayTotal)) {
             alertOnce(spikeKey, if(network == "MOBILE") 1003 else 1004,
-                localized("Unusual %s data usage", localized(network)),
+                localized("Unusual %s data usage", ssid ?: localized(network)),
                 localized("%s used today, at least 3 times your usual daily usage.",formatBytes(todayTotal)))
         }
     }

@@ -13,8 +13,8 @@ android {
         applicationId = "com.anonymous.network_tracker"
         minSdk = 24
         targetSdk = 36
-        versionCode = 14
-        versionName = "2.0.0"
+        versionCode = 15
+        versionName = "2.0.1"
 
         testInstrumentationRunner = "com.anonymous.network_tracker.ValidationTestRunner"
     }
@@ -55,6 +55,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     sourceSets.getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/firebaseAssets"))
 }

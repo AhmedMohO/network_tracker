@@ -7,6 +7,24 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SettingsCodecTest {
+    @Test fun wifiLimitSelectionRoundTripsWithoutChangingTheSharedQuota() {
+        val json = JSONObject("""{"wifiLimitBytes":12345,"wifiWarnAtPercent":70,"wifiLimitSsid":"منزل: Home \"5G\"","futureSetting":9}""")
+        val loaded = SettingsCodec.decode(json, AppSettings())
+        SettingsCodec.encode(json, loaded.copy(showSystemApps = true))
+        assertEquals("منزل: Home \"5G\"", json.optString("wifiLimitSsid"))
+        val restored = SettingsCodec.decode(json, AppSettings())
+        assertEquals("منزل: Home \"5G\"", restored.wifiLimitSsid)
+        assertEquals(12345L, restored.wifiLimitBytes)
+        assertEquals(70, restored.wifiWarnAtPercent)
+        assertEquals(9, json.getInt("futureSetting"))
+    }
+
+    @Test fun legacySettingsDefaultToAllWifiAndTheSelectionCanBeCleared() {
+        assertNull(SettingsCodec.decode(JSONObject("""{"wifiLimitBytes":12345}"""), AppSettings()).wifiLimitSsid)
+        val json = JSONObject("""{"wifiLimitSsid":"Home"}""")
+        SettingsCodec.encode(json, AppSettings())
+        assertTrue(json.isNull("wifiLimitSsid"))
+    }
     @Test fun legacyWarningPercentageSurvivesUpgrade() {
         assertEquals(45, SettingsCodec.decode(JSONObject("{\"warnAtPercent\":45}"), AppSettings()).mobileWarnAtPercent)
     }

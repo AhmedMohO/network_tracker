@@ -9,6 +9,7 @@ Use JDK 17 or newer, an installed Android SDK, and the Gradle wrapper:
 ```powershell
 ./gradlew.bat :app:testDebugUnitTest :app:lintDebug :app:assembleRelease
 python docs/test-archive-migration.py
+python scripts/test-archive-migration.py
 ```
 
 The release APK is written to app/build/outputs/apk/release/app-release.apk. It retains package com.anonymous.network_tracker and the existing signing key so it can update the previous app in place. Do not uninstall or clear app data to upgrade.
@@ -17,7 +18,7 @@ The app opens the existing Expo usage archive and key/value database in place. L
 
 ## Features
 
-- Mobile/Wi-Fi/all-network usage, per-app details, foreground/background breakdown, selected/custom date ranges, charts, and billing-cycle limits.
+- Mobile/Wi-Fi/all-network usage, per-app details, foreground/background breakdown, selected/custom date ranges, charts, and billing-cycle limits with selectable Wi-Fi network scope.
 - Live device speed/history and recent per-app traffic; native diagnostic and notification probes.
 - CSV/JSON export of the selected range/network with safe CSV encoding.
 - English/Arabic and RTL; system, light, and dark appearance.

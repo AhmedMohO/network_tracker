@@ -13,6 +13,7 @@ class SettingsRepository(private val context: Context) {
         mobileWarnAtPercent = prefs.getInt(KEY_MOBILE_WARN_PCT,80),
         wifiLimitBytes = if(prefs.contains(KEY_WIFI_LIMIT)) prefs.getLong(KEY_WIFI_LIMIT,0) else null,
         wifiWarnAtPercent = prefs.getInt(KEY_WIFI_WARN_PCT,80),
+        wifiLimitSsid = prefs.getString(KEY_WIFI_LIMIT_SSID, null),
         showSystemApps = prefs.getBoolean(KEY_SHOW_SYSTEM_APPS,false),
         alertedKeys = prefs.getStringSet(KEY_ALERTED_KEYS,emptySet())?.toSet() ?: emptySet(),
         language = ExpoStorageBridge.getItem(context,KEY_EXPO_LANG) ?: prefs.getString(KEY_LANGUAGE,null)
@@ -80,6 +81,8 @@ class SettingsRepository(private val context: Context) {
         } else {
             editor.remove(KEY_WIFI_LIMIT)
         }
+        if (settings.wifiLimitSsid != null) editor.putString(KEY_WIFI_LIMIT_SSID, settings.wifiLimitSsid)
+        else editor.remove(KEY_WIFI_LIMIT_SSID)
 
         if (settings.familyRole != null) editor.putString(KEY_FAMILY_ROLE, settings.familyRole) else editor.remove(KEY_FAMILY_ROLE)
         if (settings.pairToken != null) editor.putString(KEY_PAIR_TOKEN, settings.pairToken) else editor.remove(KEY_PAIR_TOKEN)
@@ -102,6 +105,7 @@ class SettingsRepository(private val context: Context) {
         private const val KEY_MOBILE_WARN_PCT = "mobileWarnAtPercent"
         private const val KEY_WIFI_LIMIT = "wifiLimitBytes"
         private const val KEY_WIFI_WARN_PCT = "wifiWarnAtPercent"
+        private const val KEY_WIFI_LIMIT_SSID = "wifiLimitSsid"
         private const val KEY_SHOW_SYSTEM_APPS = "showSystemApps"
         private const val KEY_ALERTED_KEYS = "alertedKeys"
         private const val KEY_LANGUAGE = "language"

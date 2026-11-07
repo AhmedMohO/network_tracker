@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import com.anonymous.network_tracker.data.repository.AppSettings
+import com.anonymous.network_tracker.BuildConfig
 import com.anonymous.network_tracker.data.repository.SettingsRepository
 import com.anonymous.network_tracker.data.repository.UsageRepository
 import com.anonymous.network_tracker.data.util.RangeUtils
@@ -48,6 +49,7 @@ import com.anonymous.network_tracker.ui.LaunchedOnResumeEffect
 import com.anonymous.network_tracker.ui.UsageState
 import com.anonymous.network_tracker.ui.rememberUsageState
 import com.anonymous.network_tracker.ui.theme.*
+import com.anonymous.network_tracker.ui.components.WifiLimitNetworkPicker
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -147,7 +149,9 @@ fun SettingsScreen(
     // Dialog state for Data Limit
     var showLimitDialogFor by remember { mutableStateOf<String?>(null) } // "MOBILE" or "WIFI"
     var limitGbDraft by remember { mutableStateOf("") }
+    var limitAmountEdited by remember { mutableStateOf(false) }
     var warnPctDraft by remember { mutableStateOf("80") }
+    var wifiLimitSsidDraft by remember { mutableStateOf(settings.wifiLimitSsid) }
 
     // Cycle Day Dialog
     if (showCycleDialog) {
@@ -215,8 +219,14 @@ fun SettingsScreen(
             onDismissRequest = { showLimitDialogFor = null },
             title = { Text(tr(networkTitle), color = TextPrimary, fontWeight = FontWeight.Bold) },
             text = {
-                Column {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                     if (errorMessage != null) Text(tr(errorMessage!!), color = MaterialTheme.colorScheme.error)
+                    if (!isMobile) {
+                        WifiLimitNetworkPicker(wifiLimitSsidDraft,
+                            remember { WifiSessions.knownNetworks(context) }, wifiWatchEnabled,
+                            onSelect = { wifiLimitSsidDraft = it })
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
                     Text(
                         tr("Set a monthly data limit in GB and warning threshold. You will receive an alert notification when reaching the threshold."),
                         color = TextSecondary,
@@ -225,7 +235,7 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.height(16.dp))
                     OutlinedTextField(
                         value = limitGbDraft,
-                        onValueChange = { limitGbDraft = it },
+                        onValueChange = { limitGbDraft = it; limitAmountEdited = true },
                         label = { Text(tr("Limit in GB (e.g. 20, 50)")) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         singleLine = true,
@@ -257,13 +267,14 @@ fun SettingsScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        val bytes = parseLimitGb(limitGbDraft)
+                        val existingLimit = if (isMobile) settings.mobileLimitBytes else settings.wifiLimitBytes
+                        val bytes = if (!limitAmountEdited && existingLimit != null) existingLimit else parseLimitGb(limitGbDraft)
                         val pct = warnPctDraft.toIntOrNull()
-                        if (bytes == null || pct == null || pct !in 1..100) {
+                        if (bytes == null || bytes <= 0 || pct == null || pct !in 1..100) {
                             errorMessage = "Enter a positive data limit and a warning percentage from 1 to 100."
                         } else if (save {
                             if (isMobile) it.copy(mobileLimitBytes = bytes, mobileWarnAtPercent = pct)
-                            else it.copy(wifiLimitBytes = bytes, wifiWarnAtPercent = pct)
+                            else it.copy(wifiLimitBytes = bytes, wifiWarnAtPercent = pct, wifiLimitSsid = wifiLimitSsidDraft)
                         }) {
                             showLimitDialogFor = null
                         }
@@ -457,6 +468,7 @@ fun SettingsScreen(
                     subtitleArgs = if (settings.mobileLimitBytes != null) arrayOf<Any>(settings.mobileLimitBytes!! / (1024.0 * 1024.0 * 1024.0), settings.mobileWarnAtPercent) else emptyArray(),
                     onClick = {
                         limitGbDraft = if (settings.mobileLimitBytes != null) "%.1f".format(settings.mobileLimitBytes!! / (1024.0 * 1024.0 * 1024.0)) else ""
+                        limitAmountEdited = false
                         warnPctDraft = settings.mobileWarnAtPercent.toString()
                         showLimitDialogFor = "MOBILE"
                     }
@@ -486,7 +498,9 @@ fun SettingsScreen(
                     subtitleArgs = if (settings.wifiLimitBytes != null) arrayOf<Any>(settings.wifiLimitBytes!! / (1024.0 * 1024.0 * 1024.0), settings.wifiWarnAtPercent) else emptyArray(),
                     onClick = {
                         limitGbDraft = if (settings.wifiLimitBytes != null) "%.1f".format(settings.wifiLimitBytes!! / (1024.0 * 1024.0 * 1024.0)) else ""
+                        limitAmountEdited = false
                         warnPctDraft = settings.wifiWarnAtPercent.toString()
+                        wifiLimitSsidDraft = settings.wifiLimitSsid
                         showLimitDialogFor = "WIFI"
                     }
                 ) {
@@ -729,7 +743,7 @@ fun SettingsScreen(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = tr("NetTrack v2.0.0 (Native Kotlin)"),
+                    text = tr("NetTrack v%s (Native Kotlin)", BuildConfig.VERSION_NAME),
                     color = TextMuted,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Medium

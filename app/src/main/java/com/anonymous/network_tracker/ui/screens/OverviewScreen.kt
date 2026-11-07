@@ -39,6 +39,8 @@ import com.anonymous.network_tracker.ui.*
 import com.anonymous.network_tracker.ui.components.UsageRangePicker
 import com.anonymous.network_tracker.ui.components.UsageChart
 import com.anonymous.network_tracker.ui.components.UsageError
+import com.anonymous.network_tracker.ui.components.WifiLimitNetworkPicker
+import com.anonymous.network_tracker.service.WifiSessions
 import com.anonymous.network_tracker.data.util.customRangeProblem
 import com.anonymous.network_tracker.data.util.quotaPercent
 import com.anonymous.network_tracker.data.util.calculateCycleProjection
@@ -66,10 +68,13 @@ fun OverviewScreen(
     var error by remember { mutableStateOf<String?>(null) }
     var quotaError by remember { mutableStateOf<String?>(null) }
     var cycleTotal by remember { mutableLongStateOf(0) }
+    var quotaLoading by remember { mutableStateOf(false) }
+    var wifiWatchEnabled by remember { mutableStateOf(WifiSessions.isEnabled(context)) }
     var hasPermission by remember { mutableStateOf(UsageAccess.has(context)) }
     LaunchedOnResumeEffect(usageState.now) {
         hasPermission = UsageAccess.has(context)
         settings = settingsRepo.loadSettings()
+        wifiWatchEnabled = WifiSessions.isEnabled(context)
     }
     val activeRange = usageState.activeRange(settings.cycleStartDay)
     LaunchedEffect(activeRange, selectedNetwork, hasPermission, usageState.now) {
@@ -89,14 +94,22 @@ fun OverviewScreen(
         }
     }
     val cycleRange = RangeUtils.billingCycleRange(settings.cycleStartDay, usageState.now)
-    LaunchedEffect(cycleRange, selectedNetwork, hasPermission, settings.mobileLimitBytes, settings.wifiLimitBytes) {
+    LaunchedEffect(cycleRange, selectedNetwork, hasPermission, settings.mobileLimitBytes, settings.wifiLimitBytes,
+        settings.wifiLimitSsid, wifiWatchEnabled) {
         cycleTotal = 0
         quotaError = null
-        if (hasPermission && selectedNetwork != "ALL") {
-            try { cycleTotal = repo.getUsage(cycleRange, selectedNetwork).sumOf { it.total } }
+        quotaLoading = hasPermission && selectedNetwork != "ALL"
+        if (!hasPermission) quotaError = "Usage Access Required"
+        if (quotaLoading) {
+            try { cycleTotal = repo.getLimitUsedBytes(cycleRange, selectedNetwork, settings.wifiLimitSsid) }
             catch (e: CancellationException) { throw e }
             catch (e: Exception) { quotaError = e.message ?: e.javaClass.simpleName }
+            finally { quotaLoading = false }
         }
+    }
+    val wifiLimitNetworks = remember(wifiSlices, settings.wifiLimitSsid, usageState.now) {
+        (WifiSessions.knownNetworks(context) + wifiSlices.mapNotNull { it.ssid } + listOfNotNull(settings.wifiLimitSsid))
+            .distinct().sorted()
     }
 
     // Partition apps: hide low-level system apps (< 10000, except Tethering -5) if showSystemApps is false
@@ -230,142 +243,168 @@ fun OverviewScreen(
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = tr("%.1f%% used", percent),
+                                text = if (quotaLoading || quotaError != null) "—" else tr("%.1f%% used", percent),
                                 color = if (isWarning) AccentSecondary else AccentPrimary,
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold
                             )
                         }
+                        if (selectedNetwork == "WIFI") {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            WifiLimitNetworkPicker(settings.wifiLimitSsid, wifiLimitNetworks, wifiWatchEnabled, onSelect = { ssid ->
+                                if (ssid != settings.wifiLimitSsid) {
+                                    try {
+                                        settings = settingsRepo.update { it.copy(wifiLimitSsid = ssid) }
+                                        quotaLoading = true
+                                        quotaError = null
+                                    } catch (e: Exception) {
+                                        quotaError = e.message ?: "Unable to save settings. Try again."
+                                    }
+                                }
+                            })
+                        }
                         Spacer(modifier = Modifier.height(6.dp))
-                        LinearProgressIndicator(
-                            progress = { usedPct },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(6.dp)
-                                .clip(RoundedCornerShape(3.dp)),
-                            color = if (isWarning) AccentSecondary else AccentPrimary,
-                            trackColor = DarkSurfaceVariant
-                        )
+                        if (quotaLoading) {
+                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = AccentPrimary,
+                                trackColor = DarkSurfaceVariant)
+                        } else {
+                            LinearProgressIndicator(
+                                progress = { usedPct },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(6.dp)
+                                    .clip(RoundedCornerShape(3.dp)),
+                                color = if (isWarning) AccentSecondary else AccentPrimary,
+                                trackColor = DarkSurfaceVariant
+                            )
+                        }
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            text = tr("%s of %s limit", repo.formatBytes(cycleTotal), repo.formatBytes(activeLimitBytes)),
+                            text = when {
+                                quotaLoading -> tr("Loading usage…")
+                                quotaError != null -> tr("Usage unavailable")
+                                else -> tr("%s of %s limit", repo.formatBytes(cycleTotal), repo.formatBytes(activeLimitBytes))
+                            },
                             color = TextMuted,
                             fontSize = 12.sp
                         )
 
-                        val projection = remember(cycleTotal, activeLimitBytes, settings.cycleStartDay, usageState.now) {
-                            calculateCycleProjection(
-                                usedBytes = cycleTotal,
-                                limitBytes = activeLimitBytes,
-                                cycleStartDay = settings.cycleStartDay,
-                                now = usageState.now
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(10.dp))
-                        HorizontalDivider(color = DarkSurfaceVariant, thickness = 1.dp)
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        // Usage forecast in remaining time
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.Top,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Icon(
-                                imageVector = if (projection.isOverLimit || projection.willExceed) Icons.AutoMirrored.Filled.TrendingUp else Icons.Default.Schedule,
-                                contentDescription = null,
-                                tint = if (projection.isOverLimit) DangerRed else if (projection.willExceed) WarningAmber else AccentPrimary,
-                                modifier = Modifier
-                                    .size(16.dp)
-                                    .padding(top = 2.dp)
-                            )
-                            Column(modifier = Modifier.weight(1f)) {
-                                val remainingText = when {
-                                    projection.usedBytes == 0L -> {
-                                        tr("No usage recorded yet this cycle")
-                                    }
-                                    projection.remainingMs <= 0L -> {
-                                        tr("Billing cycle is renewing today")
-                                    }
-                                    projection.remainingDays > 1 -> {
-                                        tr(
-                                            "Remaining %d days: ~%s expected at current pace (~%s/day)",
-                                            projection.remainingDays,
-                                            repo.formatBytes(projection.projectedRemainingBytes),
-                                            repo.formatBytes(projection.dailyPaceBytes)
-                                        )
-                                    }
-                                    projection.remainingDays == 1 && projection.remainingHours > 1 -> {
-                                        tr(
-                                            "Remaining %d hours: ~%s expected at current pace (~%s/day)",
-                                            projection.remainingHours,
-                                            repo.formatBytes(projection.projectedRemainingBytes),
-                                            repo.formatBytes(projection.dailyPaceBytes)
-                                        )
-                                    }
-                                    else -> {
-                                        tr(
-                                            "Cycle ends today: ~%s expected at current pace",
-                                            repo.formatBytes(projection.projectedRemainingBytes)
-                                        )
-                                    }
-                                }
-
-                                Text(
-                                    text = remainingText,
-                                    color = TextPrimary,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Medium
+                        if (!quotaLoading && quotaError == null &&
+                            !(selectedNetwork == "WIFI" && settings.wifiLimitSsid != null && !wifiWatchEnabled)) {
+                            val projection = remember(cycleTotal, activeLimitBytes, settings.cycleStartDay, usageState.now) {
+                                calculateCycleProjection(
+                                    usedBytes = cycleTotal,
+                                    limitBytes = activeLimitBytes,
+                                    cycleStartDay = settings.cycleStartDay,
+                                    now = usageState.now
                                 )
-                                Spacer(modifier = Modifier.height(2.dp))
+                            }
 
-                                val outcomeText = when {
-                                    projection.isOverLimit -> {
-                                        tr(
-                                            "Exceeded limit by %s (Projected total: %s)",
-                                            repo.formatBytes(projection.usedBytes - projection.limitBytes),
-                                            repo.formatBytes(projection.projectedTotalBytes)
-                                        )
-                                    }
-                                    projection.willExceed -> {
-                                        tr(
-                                            "Will exceed limit by ~%s (Projected: %s). Safe pace: ~%s/day",
-                                            repo.formatBytes(projection.excessBytes),
-                                            repo.formatBytes(projection.projectedTotalBytes),
-                                            repo.formatBytes(projection.safeDailyAllowanceBytes)
-                                        )
-                                    }
-                                    projection.usedBytes == 0L -> {
-                                        tr(
-                                            "Safe pace: ~%s/day to stay within limit",
-                                            repo.formatBytes(projection.safeDailyAllowanceBytes)
-                                        )
-                                    }
-                                    projection.remainingMs <= 0L -> {
-                                        tr(
-                                            "Finished cycle with ~%s remaining buffer",
-                                            repo.formatBytes(projection.bufferBytes)
-                                        )
-                                    }
-                                    else -> {
-                                        tr(
-                                            "On track: ~%s buffer left (Projected total: %s)",
-                                            repo.formatBytes(projection.bufferBytes),
-                                            repo.formatBytes(projection.projectedTotalBytes)
-                                        )
-                                    }
-                                }
+                            Spacer(modifier = Modifier.height(10.dp))
+                            HorizontalDivider(color = DarkSurfaceVariant, thickness = 1.dp)
+                            Spacer(modifier = Modifier.height(8.dp))
 
-                                Text(
-                                    text = outcomeText,
-                                    color = when {
-                                        projection.isOverLimit -> DangerRed
-                                        projection.willExceed -> WarningAmber
-                                        else -> SuccessGreen
-                                    },
-                                    fontSize = 11.sp
+                            // Usage forecast in remaining time
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.Top,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (projection.isOverLimit || projection.willExceed) Icons.AutoMirrored.Filled.TrendingUp else Icons.Default.Schedule,
+                                    contentDescription = null,
+                                    tint = if (projection.isOverLimit) DangerRed else if (projection.willExceed) WarningAmber else AccentPrimary,
+                                    modifier = Modifier
+                                        .size(16.dp)
+                                        .padding(top = 2.dp)
                                 )
+                                Column(modifier = Modifier.weight(1f)) {
+                                    val remainingText = when {
+                                        projection.usedBytes == 0L -> {
+                                            tr("No usage recorded yet this cycle")
+                                        }
+                                        projection.remainingMs <= 0L -> {
+                                            tr("Billing cycle is renewing today")
+                                        }
+                                        projection.remainingDays > 1 -> {
+                                            tr(
+                                                "Remaining %d days: ~%s expected at current pace (~%s/day)",
+                                                projection.remainingDays,
+                                                repo.formatBytes(projection.projectedRemainingBytes),
+                                                repo.formatBytes(projection.dailyPaceBytes)
+                                            )
+                                        }
+                                        projection.remainingDays == 1 && projection.remainingHours > 1 -> {
+                                            tr(
+                                                "Remaining %d hours: ~%s expected at current pace (~%s/day)",
+                                                projection.remainingHours,
+                                                repo.formatBytes(projection.projectedRemainingBytes),
+                                                repo.formatBytes(projection.dailyPaceBytes)
+                                            )
+                                        }
+                                        else -> {
+                                            tr(
+                                                "Cycle ends today: ~%s expected at current pace",
+                                                repo.formatBytes(projection.projectedRemainingBytes)
+                                            )
+                                        }
+                                    }
+
+                                    Text(
+                                        text = remainingText,
+                                        color = TextPrimary,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+
+                                    val outcomeText = when {
+                                        projection.isOverLimit -> {
+                                            tr(
+                                                "Exceeded limit by %s (Projected total: %s)",
+                                                repo.formatBytes(projection.usedBytes - projection.limitBytes),
+                                                repo.formatBytes(projection.projectedTotalBytes)
+                                            )
+                                        }
+                                        projection.willExceed -> {
+                                            tr(
+                                                "Will exceed limit by ~%s (Projected: %s). Safe pace: ~%s/day",
+                                                repo.formatBytes(projection.excessBytes),
+                                                repo.formatBytes(projection.projectedTotalBytes),
+                                                repo.formatBytes(projection.safeDailyAllowanceBytes)
+                                            )
+                                        }
+                                        projection.usedBytes == 0L -> {
+                                            tr(
+                                                "Safe pace: ~%s/day to stay within limit",
+                                                repo.formatBytes(projection.safeDailyAllowanceBytes)
+                                            )
+                                        }
+                                        projection.remainingMs <= 0L -> {
+                                            tr(
+                                                "Finished cycle with ~%s remaining buffer",
+                                                repo.formatBytes(projection.bufferBytes)
+                                            )
+                                        }
+                                        else -> {
+                                            tr(
+                                                "On track: ~%s buffer left (Projected total: %s)",
+                                                repo.formatBytes(projection.bufferBytes),
+                                                repo.formatBytes(projection.projectedTotalBytes)
+                                            )
+                                        }
+                                    }
+
+                                    Text(
+                                        text = outcomeText,
+                                        color = when {
+                                            projection.isOverLimit -> DangerRed
+                                            projection.willExceed -> WarningAmber
+                                            else -> SuccessGreen
+                                        },
+                                        fontSize = 11.sp
+                                    )
+                                }
                             }
                         }
                     }

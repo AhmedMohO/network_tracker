@@ -10,6 +10,7 @@ object SettingsCodec {
         mobileWarnAtPercent = json.optInt("mobileWarnAtPercent", json.optInt("warnAtPercent",80)).coerceIn(1,100),
         wifiLimitBytes = nullableLong(json, "wifiLimitBytes"),
         wifiWarnAtPercent = json.optInt("wifiWarnAtPercent",80).coerceIn(1,100),
+        wifiLimitSsid = nullableString(json, "wifiLimitSsid")?.takeIf { it.isNotBlank() },
         showSystemApps = json.optBoolean("showSystemApps", false),
         language = json.optString("language", fallback.language),
         themeMode = json.optString("themeMode", fallback.themeMode),
@@ -25,6 +26,7 @@ object SettingsCodec {
         put("mobileWarnAtPercent", settings.mobileWarnAtPercent)
         put("wifiLimitBytes", settings.wifiLimitBytes ?: JSONObject.NULL)
         put("wifiWarnAtPercent", settings.wifiWarnAtPercent)
+        put("wifiLimitSsid", settings.wifiLimitSsid ?: JSONObject.NULL)
         put("showSystemApps", settings.showSystemApps)
         put("alertedKeys", JSONArray(settings.alertedKeys))
         put("language", settings.language)
