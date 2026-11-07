@@ -43,6 +43,18 @@ interface DailyUsageDao {
     @Query("DELETE FROM daily_usage WHERE day_start = :dayStart")
     suspend fun deleteDay(dayStart: Long)
 
+    @Query("SELECT day_start FROM archived_days WHERE day_start >= :start AND day_start < :end")
+    suspend fun getCompletedDays(start: Long, end: Long): List<Long>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun markCompleted(day: ArchivedDayEntity)
+
+    @Query("DELETE FROM archived_days WHERE day_start < :cutoff")
+    suspend fun pruneCompletedDays(cutoff: Long)
+
+    @Query("SELECT * FROM daily_usage WHERE day_start >= :start AND day_start < :end")
+    suspend fun getRows(start: Long, end: Long): List<DailyUsageEntity>
+
     @Query("""
         SELECT uid,
                MAX(app_name)     AS app_name,

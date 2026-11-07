@@ -7,6 +7,15 @@ import org.junit.Test
 import org.json.JSONObject
 
 class UsageUiTest {
+    @Test fun exportDistinguishesMissingStateHistoryAndIncludesTheEstimateFlag() {
+        val apps = listOf(AppUsageItem(7, "Browser", null, 12, 3, 15, isEstimated = true))
+        val app = JSONObject(UsageExport.toJson(apps, DateRange(0, 1000), "WIFI"))
+            .getJSONArray("apps").getJSONObject(0)
+        assertTrue(app.isNull("foreground"))
+        assertTrue(app.isNull("background"))
+        assertTrue(app.getBoolean("isEstimated"))
+        assertTrue(UsageExport.toCsv(apps, DateRange(0, 1000), "WIFI").contains(",12,3,15,,,true"))
+    }
     @Test fun jsonExportIsAParsableDocumentAndWhitespaceCannotHideFormulas() {
         val apps = listOf(AppUsageItem(7, "  =SUM(1,2)", "a.quoted", 12, 3, 15))
         val csv = UsageExport.toCsv(apps, DateRange(0, 1000), "WIFI")
@@ -142,19 +151,4 @@ class UsageUiTest {
         assertEquals(listOf(systemApp, root), hidden)
     }
 
-    @Test fun seriesAttributionClampsOverlappingBoundaryBuckets() {
-        val qStart = 1000L
-        val qEnd = 5000L
-        val bucketMs = 1000L
-        val binCount = ((qEnd - qStart) / bucketMs + 1).toInt()
-
-        val bStart = 500L
-        val bEnd = 1500L
-        val rawIdx = Math.floorDiv(bStart - qStart, bucketMs).toInt()
-        assertEquals(-1, rawIdx)
-
-        val idx = if (rawIdx < 0 && bEnd > qStart) 0 else rawIdx
-        assertEquals(0, idx)
-        assertTrue(idx in 0 until binCount)
-    }
 }

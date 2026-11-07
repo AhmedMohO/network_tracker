@@ -136,11 +136,11 @@ object UsageExport {
     }
 
     fun toCsv(apps: List<AppUsageItem>, range: DateRange, network: String): String = buildString {
-        append("app,package,uid,network,range_start,range_end,download_bytes,upload_bytes,total_bytes,foreground_bytes,background_bytes\n")
+        append("app,package,uid,network,range_start,range_end,download_bytes,upload_bytes,total_bytes,foreground_bytes,background_bytes,is_estimated\n")
         apps.forEach { a ->
             append(listOf(csv(a.name), csv(a.packageName.orEmpty()), a.uid, network,
                 Instant.ofEpochMilli(range.start), Instant.ofEpochMilli(range.end),
-                a.download, a.upload, a.total, a.foreground, a.background).joinToString(","))
+                a.download, a.upload, a.total, a.foreground ?: "", a.background ?: "", a.isEstimated).joinToString(","))
             append('\n')
         }
     }
@@ -150,6 +150,6 @@ object UsageExport {
             "\"rangeStart\":${json(Instant.ofEpochMilli(range.start).toString())},\"rangeEnd\":${json(Instant.ofEpochMilli(range.end).toString())}," +
             "\"apps\":[" + apps.joinToString(",") { a ->
                 "{\"uid\":${a.uid},\"name\":${json(a.name)},\"packageName\":${a.packageName?.let(::json) ?: "null"}," +
-                    "\"download\":${a.download},\"upload\":${a.upload},\"total\":${a.total},\"foreground\":${a.foreground},\"background\":${a.background}}"
+                    "\"download\":${a.download},\"upload\":${a.upload},\"total\":${a.total},\"foreground\":${a.foreground},\"background\":${a.background},\"isEstimated\":${a.isEstimated}}"
             } + "]}"
 }

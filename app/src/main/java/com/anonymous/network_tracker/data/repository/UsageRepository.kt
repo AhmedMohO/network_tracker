@@ -19,17 +19,14 @@ import com.anonymous.network_tracker.ui.theme.Translations
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
-import android.content.Intent
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import com.anonymous.network_tracker.NetTrackApplication
 import com.anonymous.network_tracker.R
-import com.anonymous.network_tracker.core.AppResolver
-import com.anonymous.network_tracker.core.LiveUsageResult
 import com.anonymous.network_tracker.core.StatsReader
 import com.anonymous.network_tracker.core.UsageAccess
-import com.anonymous.network_tracker.data.db.DailyUsageDao
 import com.anonymous.network_tracker.data.db.DailyUsageEntity
+import com.anonymous.network_tracker.data.db.ArchivedDayEntity
 import com.anonymous.network_tracker.data.db.UsageDatabase
 import com.anonymous.network_tracker.data.model.AppUsageItem
 import com.anonymous.network_tracker.data.model.UsageQuery
@@ -38,6 +35,11 @@ import com.anonymous.network_tracker.data.model.WifiNetworkSlice
 import com.anonymous.network_tracker.data.model.WifiUsageQuery
 import com.anonymous.network_tracker.data.util.DateRange
 import com.anonymous.network_tracker.data.util.RangeUtils
+import com.anonymous.network_tracker.data.util.mergeUsage
+import com.anonymous.network_tracker.data.util.archiveApps
+import com.anonymous.network_tracker.data.util.archiveWifiSlices
+import com.anonymous.network_tracker.data.util.preserveWifiAttribution
+import com.anonymous.network_tracker.data.util.snapshotRetainsUsage
 import com.anonymous.network_tracker.service.WifiSessions
 import com.anonymous.network_tracker.service.WifiWatchService
 import kotlinx.coroutines.Dispatchers
@@ -48,7 +50,6 @@ class UsageRepository(private val context: Context) {
     private val db = UsageDatabase.getInstance(context)
     private val dao = db.dailyUsageDao()
     private val statsReader = StatsReader(context)
-    private val resolver = AppResolver(context)
     private val settingsRepo = SettingsRepository.getInstance(context)
 
     suspend fun getUsage(range: DateRange, network: String = "ALL"): List<AppUsageItem> = withContext(Dispatchers.IO) {
@@ -89,90 +90,48 @@ class UsageRepository(private val context: Context) {
     }
 
     private suspend fun readArchive(start: Long, end: Long, network: String): List<AppUsageItem> {
-        val rows = if (network == "ALL") {
-            dao.getUsageAllNetworks(start, end)
-        } else {
-            dao.getUsageByNetwork(start, end, network)
-        }
-
-        val grandTotal = rows.sumOf { it.download + it.upload }
-        return rows.map { r ->
-            val total = r.download + r.upload
-            val pct = if (grandTotal > 0) (total.toDouble() / grandTotal.toDouble()) * 100.0 else 0.0
-            AppUsageItem(
-                uid = r.uid,
-                name = r.app_name ?: (r.package_name ?: "UID ${r.uid}"),
-                packageName = r.package_name,
-                download = r.download,
-                upload = r.upload,
-                total = total,
-                foreground = 0,
-                background = 0,
-                percentage = pct
-            )
-        }
+        val rows = dao.getRows(RangeUtils.midnight(start, -1), end)
+            .filter { network == "ALL" || it.network == network }
+        return archiveApps(rows, DateRange(start, end))
     }
 
     private suspend fun readArchiveByWifiNetwork(start: Long, end: Long): List<WifiNetworkSlice> {
-        val rows = dao.getUsageByWifiNetwork(start, end)
-        val bySsid = LinkedHashMap<String?, MutableList<AppUsageItem>>()
-
-        for (r in rows) {
-            val ssid = r.ssid.takeIf { it.isNotEmpty() }
-            val total = r.download + r.upload
-            val item = AppUsageItem(
-                uid = r.uid,
-                name = r.app_name ?: (r.package_name ?: "UID ${r.uid}"),
-                packageName = r.package_name,
-                download = r.download,
-                upload = r.upload,
-                total = total,
-                foreground = 0,
-                background = 0,
-                percentage = 0.0
-            )
-            bySsid.getOrPut(ssid) { ArrayList() }.add(item)
-        }
-
-        return bySsid.map { (ssid, apps) ->
-            val rx = apps.sumOf { it.download }
-            val tx = apps.sumOf { it.upload }
-            val tot = rx + tx
-            apps.sortByDescending { it.total }
-            WifiNetworkSlice(
-                ssid = ssid,
-                apps = apps,
-                totals = UsageTotals(download = rx, upload = tx, total = tot)
-            )
-        }.sortedByDescending { it.totals.total }
+        val rows = dao.getRows(RangeUtils.midnight(start, -1), end)
+        return archiveWifiSlices(rows, DateRange(start, end))
     }
 
     suspend fun snapshotDay(dayStart: Long) = withContext(Dispatchers.IO) {
         if (!UsageAccess.has(context)) return@withContext
         val range = RangeUtils.calendarDayRange(dayStart)
+        require(range.end <= System.currentTimeMillis()) { "Only completed days can be archived" }
         val perNetwork = WifiSessions.isEnabled(context)
+        val previous = dao.getRows(range.start, range.end)
 
         val mobile = statsReader.appUsage(UsageQuery(range.start, range.end, "MOBILE"))
-        val wifiSlices = if (perNetwork) {
+        val freshWifi = if (perNetwork) {
             statsReader.appUsageByWifiNetwork(WifiUsageQuery(range.start, range.end)).networks
         } else {
             val w = statsReader.appUsage(UsageQuery(range.start, range.end, "WIFI"))
             listOf(WifiNetworkSlice(ssid = null, apps = w.apps, totals = UsageTotals(0, 0, 0)))
         }
+        val wifiSlices = preserveWifiAttribution(freshWifi, archiveWifiSlices(previous, range))
 
         val entities = ArrayList<DailyUsageEntity>()
 
         for (a in mobile.apps) {
             entities.add(
                 DailyUsageEntity(
-                    dayStart = dayStart,
+                    dayStart = range.start,
                     uid = a.uid,
                     network = "MOBILE",
                     ssid = "",
                     appName = a.name,
                     packageName = a.packageName,
                     download = a.download,
-                    upload = a.upload
+                    upload = a.upload,
+                    foreground = a.foreground,
+                    background = a.background,
+                    dayEnd = range.end
                 )
             )
         }
@@ -182,28 +141,38 @@ class UsageRepository(private val context: Context) {
             for (a in slice.apps) {
                 entities.add(
                     DailyUsageEntity(
-                        dayStart = dayStart,
+                        dayStart = range.start,
                         uid = a.uid,
                         network = "WIFI",
                         ssid = ssidVal,
                         appName = a.name,
                         packageName = a.packageName,
                         download = a.download,
-                        upload = a.upload
+                        upload = a.upload,
+                        foreground = a.foreground,
+                        background = a.background,
+                        dayEnd = range.end
                     )
                 )
             }
         }
 
         db.withTransaction {
-            dao.deleteDay(dayStart)
+            // Android may have pruned history sooner than our recovery window.
+            if (!snapshotRetainsUsage(dao.getRows(range.start, range.end), entities)) return@withTransaction
+            dao.deleteDay(range.start)
             dao.insertAll(entities)
+            dao.markCompleted(ArchivedDayEntity(range.start, System.currentTimeMillis()))
         }
     }
 
     suspend fun pruneOldHistory(): Int = withContext(Dispatchers.IO) {
         val cutoff = RangeUtils.historyCutoff()
-        dao.pruneOlderThan(cutoff)
+        db.withTransaction {
+            val removed = dao.pruneOlderThan(cutoff)
+            dao.pruneCompletedDays(cutoff)
+            removed
+        }
     }
 
     suspend fun getTotals(range: DateRange, network: String = "ALL"): UsageTotals {
@@ -214,17 +183,22 @@ class UsageRepository(private val context: Context) {
     }
 
     suspend fun getDayUsage(range: DateRange, network: String): List<AppUsageItem> = withContext(Dispatchers.IO) {
-        val saved = readArchive(range.start, range.end, network)
-        if (saved.isNotEmpty()) saved else getUsage(range, network)
+        getUsage(range, network)
     }
 
     suspend fun getSeries(range: DateRange, network: String = "ALL", uid: Int? = null): List<SeriesPoint> = withContext(Dispatchers.IO) {
         require(range.start < range.end) { "Start must be before end" }
         val split = RangeUtils.splitRange(range)
         val archived = split.archived?.let { old ->
-            dao.getSeries(old.start, old.end, network, uid).map {
-                SeriesPoint(it.day_start, RangeUtils.midnight(it.day_start, 1), it.download, it.upload)
-            }
+            dao.getRows(RangeUtils.midnight(old.start, -1), old.end)
+                .filter { (network == "ALL" || it.network == network) && (uid == null || it.uid == uid) }
+                .groupBy { it.dayStart }.mapNotNull { (day, rows) ->
+                val from = maxOf(day, old.start)
+                val to = minOf(rows.first().dayEnd ?: RangeUtils.midnight(day, 1), old.end)
+                if (from >= to) return@mapNotNull null
+                val apps = archiveApps(rows, DateRange(from, to))
+                SeriesPoint(from, to, apps.sumOf { it.download }, apps.sumOf { it.upload }, apps.any { it.isEstimated })
+            }.sortedBy { it.start }
         }.orEmpty()
         val live = split.live
         if (live == null || !UsageAccess.has(context)) return@withContext archived
@@ -247,10 +221,12 @@ class UsageRepository(private val context: Context) {
                 isolated("$network alerts") { checkNetwork(network, now) }
             }
             isolated("archive") {
-                for (i in 1..7) {
-                    val day = RangeUtils.midnight(now, -i)
-                    if (i == 1 || dao.getUsageAllNetworks(day, RangeUtils.midnight(day, 1)).isEmpty()) {
-                        snapshotDay(day)
+                if (UsageAccess.has(context)) {
+                    val savedDays = dao.getCompletedDays(
+                        RangeUtils.archiveCutoff(now), RangeUtils.midnight(now)
+                    ).toSet()
+                    for (day in archiveDaysToSnapshot(now, savedDays)) {
+                        isolated("archive $day") { snapshotDay(day) }
                     }
                 }
             }
@@ -334,32 +310,6 @@ class UsageRepository(private val context: Context) {
         if (mb < 1024) return String.format("%.1f MB", mb)
         val gb = mb / 1024.0
         return String.format("%.2f GB", gb)
-    }
-
-    private fun mergeUsage(a: List<AppUsageItem>, b: List<AppUsageItem>): List<AppUsageItem> {
-        val byUid = LinkedHashMap<Int, AppUsageItem>()
-        for (item in (a + b)) {
-            val existing = byUid[item.uid]
-            if (existing == null) {
-                byUid[item.uid] = item.copy()
-            } else {
-                val rx = existing.download + item.download
-                val tx = existing.upload + item.upload
-                byUid[item.uid] = existing.copy(
-                    download = rx,
-                    upload = tx,
-                    total = rx + tx,
-                    foreground = existing.foreground + item.foreground,
-                    background = existing.background + item.background
-                )
-            }
-        }
-        val merged = byUid.values.toList()
-        val grandTotal = merged.sumOf { it.total }
-        return merged.map {
-            val pct = if (grandTotal > 0) (it.total.toDouble() / grandTotal.toDouble()) * 100.0 else 0.0
-            it.copy(percentage = pct)
-        }.sortedByDescending { it.total }
     }
 
     private fun mergeWifiSlices(a: List<WifiNetworkSlice>, b: List<WifiNetworkSlice>): List<WifiNetworkSlice> {

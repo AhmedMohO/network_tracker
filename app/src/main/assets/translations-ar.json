@@ -660,5 +660,8 @@
   "Developer options: Diagnostics tab enabled": "خيارات المطور: تم تفعيل تبويب الفحص",
   "Developer options: Diagnostics tab disabled": "خيارات المطور: تم إخفاء تبويب الفحص",
   "Removed apps": "تطبيقات محذوفة",
-  "Tethering": "نقطة الاتصال (Hotspot)"
+  "Tethering": "نقطة الاتصال (Hotspot)",
+  "Some usage values are estimates.": "بعض قيم الاستخدام تقديرية.",
+  "Network shares and state breakdowns are estimates.": "حصص الشبكات وتوزيع الاستخدام بين المقدمة والخلفية تقديرية.",
+  "Unavailable": "غير متاح"
 }

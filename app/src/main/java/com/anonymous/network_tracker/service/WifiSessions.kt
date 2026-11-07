@@ -33,12 +33,39 @@ object WifiSessions {
         WifiWatchService.sync(context)
     }
 
+    @Synchronized
     fun markSeen(context: Context, at: Long = System.currentTimeMillis()) {
-        prefs(context).edit().putLong(KEY_SEEN, at).apply()
+        val seen = lastSeen(context)
+        val editor = prefs(context).edit()
+        if (at < seen) {
+            val log = readLog(context)
+            // Wall-clock ranges now overlap; retain only history before the new observation.
+            while (log.length() > 0 && log.getJSONObject(log.length() - 1).getLong("at") >= at) {
+                log.remove(log.length() - 1)
+            }
+            log.put(JSONObject().put("at", at).put("ssid", JSONObject.NULL))
+            editor.putString(KEY_LOG, trim(log, at).toString())
+        } else if (seen > 0 && at - seen > LIVENESS_GRACE_MS) {
+            val log = readLog(context)
+            val last = log.optJSONObject(log.length() - 1)
+            val gapStart = seen + LIVENESS_GRACE_MS
+            if (last != null && !last.isNull("ssid") && gapStart > last.getLong("at")) {
+                // Persist the old cutoff before a fresh heartbeat can extend it.
+                log.put(JSONObject().put("at", gapStart).put("ssid", JSONObject.NULL))
+                editor.putString(KEY_LOG, trim(log, at).toString())
+            }
+        }
+        editor.putLong(KEY_SEEN, at).apply()
     }
 
     fun lastSeen(context: Context): Long =
         prefs(context).getLong(KEY_SEEN, 0L)
+
+    @Synchronized
+    fun record(context: Context, ssid: String?) {
+        // Capture time under the same lock so queued callbacks cannot look like clock rollback.
+        record(context, System.currentTimeMillis(), ssid)
+    }
 
     @Synchronized
     fun record(context: Context, at: Long, ssid: String?) {
@@ -51,7 +78,8 @@ object WifiSessions {
             val lastSsid = if (last.isNull("ssid")) null else last.getString("ssid").takeIf { it.isNotBlank() }
             val lastAt = last.getLong("at")
             if (lastSsid == normalized) return
-            if (at <= lastAt) return
+            if (at < lastAt) return
+            if (at == lastAt) log.remove(log.length() - 1)
         }
 
         val entry = JSONObject().apply {
@@ -87,6 +115,7 @@ object WifiSessions {
 
     data class Session(val ssid: String, val start: Long, val end: Long)
 
+    @Synchronized
     fun sessions(context: Context, start: Long, end: Long, now: Long = System.currentTimeMillis()): List<Session> {
         val log = readLog(context)
         if (log.length() == 0) return emptyList()

@@ -1,6 +1,13 @@
 package com.anonymous.network_tracker.data.db
 
 object ArchiveMigration {
+    const val UPGRADE_SQL = """
+        ALTER TABLE daily_usage ADD COLUMN foreground INTEGER;
+        ALTER TABLE daily_usage ADD COLUMN background INTEGER;
+        ALTER TABLE daily_usage ADD COLUMN day_end INTEGER;
+        CREATE TABLE IF NOT EXISTS archived_days (
+            day_start INTEGER NOT NULL PRIMARY KEY, captured_at INTEGER NOT NULL);
+    """
     const val LEGACY_SQL = """
         ALTER TABLE daily_usage RENAME TO daily_usage_old;
         CREATE TABLE daily_usage (

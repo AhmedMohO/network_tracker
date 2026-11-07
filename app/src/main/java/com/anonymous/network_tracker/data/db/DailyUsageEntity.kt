@@ -17,6 +17,9 @@ data class DailyUsageEntity(
     @ColumnInfo(name = "app_name") val appName: String? = null,
     @ColumnInfo(name = "package_name") val packageName: String? = null,
     @ColumnInfo(name = "download") val download: Long,
-    @ColumnInfo(name = "upload") val upload: Long
+    @ColumnInfo(name = "upload") val upload: Long,
+    @ColumnInfo(name = "foreground") val foreground: Long? = null,
+    @ColumnInfo(name = "background") val background: Long? = null,
+    @ColumnInfo(name = "day_end") val dayEnd: Long? = null
 )
 

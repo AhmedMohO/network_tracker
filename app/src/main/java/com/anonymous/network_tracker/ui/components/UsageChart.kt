@@ -32,6 +32,12 @@ fun UsageError(message: String?, onRetry: () -> Unit) {
 }
 
 @Composable
+fun UsageEstimateNote(estimated: Boolean) {
+    if (estimated) Text(tr("Some usage values are estimates."), color = TextMuted,
+        style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(12.dp))
+}
+
+@Composable
 fun UsageChart(range: DateRange, network: String, uid: Int? = null, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val repo = remember(context) { UsageRepository.getInstance(context) }
@@ -54,6 +60,7 @@ fun UsageChart(range: DateRange, network: String, uid: Int? = null, modifier: Mo
             Text(tr("Usage over time"), color = TextPrimary)
             if (loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             UsageError(error) { retry++ }
+            UsageEstimateNote(points.any { it.isEstimated })
             if (!loading && error == null) {
                 if (points.isEmpty()) Text(tr("No usage in this range."), color = TextMuted)
                 else {

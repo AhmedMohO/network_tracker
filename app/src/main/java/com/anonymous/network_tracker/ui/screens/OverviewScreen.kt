@@ -394,6 +394,7 @@ fun OverviewScreen(
 
             UsageChart(activeRange, selectedNetwork, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
             UsageError(error) { usageState.refresh() }
+            com.anonymous.network_tracker.ui.components.UsageEstimateNote(appList.any { it.isEstimated })
 
             // Apps List Header with System Apps counter
             Row(
@@ -636,6 +637,7 @@ fun WifiSlicesCard(
             }
             Spacer(modifier = Modifier.height(10.dp))
             val grandSliceTotal = slices.sumOf { it.totals.total }.coerceAtLeast(1L)
+            Text(tr("Network shares and state breakdowns are estimates."), color = TextMuted, fontSize = 12.sp)
             slices.forEach { slice ->
                 val sliceName = if (slice.ssid.isNullOrEmpty()) "Other networks" else slice.ssid
                 val sliceTotal = slice.totals.total

@@ -26,9 +26,10 @@ data class AppUsageItem(
     val download: Long,
     val upload: Long,
     val total: Long,
-    val foreground: Long = 0,
-    val background: Long = 0,
-    val percentage: Double = 0.0
+    val foreground: Long? = null,
+    val background: Long? = null,
+    val percentage: Double = 0.0,
+    val isEstimated: Boolean = false
 )
 
 data class WifiNetworkSlice(

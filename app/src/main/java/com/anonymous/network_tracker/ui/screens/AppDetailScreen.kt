@@ -195,14 +195,14 @@ fun AppDetailScreen(
                                 }
                                 Text(repo.formatBytes(app.upload), color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                             }
-                            if (app.foreground > 0 || app.background > 0) {
+                            if (app.total > 0) {
                                 Divider(color = DarkBorder, modifier = Modifier.padding(vertical = 10.dp))
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     Text(tr("Foreground Usage"), color = TextSecondary, fontSize = 13.sp)
-                                    Text(repo.formatBytes(app.foreground), color = TextPrimary, fontSize = 13.sp)
+                                    Text(app.foreground?.let(repo::formatBytes) ?: tr("Unavailable"), color = TextPrimary, fontSize = 13.sp)
                                 }
                                 Spacer(modifier = Modifier.height(6.dp))
                                 Row(
@@ -210,12 +210,13 @@ fun AppDetailScreen(
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     Text(tr("Background Usage"), color = TextSecondary, fontSize = 13.sp)
-                                    Text(repo.formatBytes(app.background), color = TextPrimary, fontSize = 13.sp)
+                                    Text(app.background?.let(repo::formatBytes) ?: tr("Unavailable"), color = TextPrimary, fontSize = 13.sp)
                                 }
                             }
                         }
                     }
 
+                    com.anonymous.network_tracker.ui.components.UsageEstimateNote(app.isEstimated)
                     UsageChart(range, network, uid)
                     if (wifiSlices.isNotEmpty()) WifiSlicesCard(wifiSlices, { repo.formatBytes(it) })
 

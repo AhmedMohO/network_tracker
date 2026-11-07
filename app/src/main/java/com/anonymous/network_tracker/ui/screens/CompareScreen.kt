@@ -53,6 +53,7 @@ fun CompareScreen(modifier: Modifier = Modifier, usageState: UsageState = rememb
     var comparisonList by remember { mutableStateOf<List<AppComparison>>(emptyList()) }
     var currentTotal by remember { mutableLongStateOf(0L) }
     var previousTotal by remember { mutableLongStateOf(0L) }
+    var isEstimated by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(false) }
 
     var error by remember { mutableStateOf<String?>(null) }
@@ -65,9 +66,11 @@ fun CompareScreen(modifier: Modifier = Modifier, usageState: UsageState = rememb
         comparisonList = emptyList()
         currentTotal = 0
         previousTotal = 0
+        isEstimated = false
         try {
                 val currentApps = repo.getUsage(currentRange, selectedNetwork)
                 val previousApps = repo.getUsage(previousRange, selectedNetwork)
+                isEstimated = (currentApps + previousApps).any { it.isEstimated }
 
                 val (visibleCurrent, _) = if (settings.showSystemApps) currentApps to emptyList() else currentApps.partition { it.uid >= 10000 || it.uid == -5 || it.uid == -4 }
                 val (visiblePrevious, _) = if (settings.showSystemApps) previousApps to emptyList() else previousApps.partition { it.uid >= 10000 || it.uid == -5 || it.uid == -4 }
@@ -194,6 +197,7 @@ fun CompareScreen(modifier: Modifier = Modifier, usageState: UsageState = rememb
             UsageRangePicker(usageState, settings.cycleStartDay)
 
             UsageError(error) { usageState.refresh() }
+            com.anonymous.network_tracker.ui.components.UsageEstimateNote(isEstimated)
 
             // Summary Comparison Card
             Card(

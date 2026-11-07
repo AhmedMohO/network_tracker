@@ -76,29 +76,10 @@ class WifiWatchService : Service() {
             return name(info)
         }
 
-        fun onWifi(context: Context): Boolean {
-            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE)
-                as? ConnectivityManager ?: return false
-            @Suppress("DEPRECATION")
-            return runCatching {
-                cm.allNetworks.any { network ->
-                    cm.getNetworkCapabilities(network)?.let {
-                        it.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) &&
-                            it.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-                    } == true
-                }
-            }.getOrDefault(false)
-        }
-
         fun sample(context: Context) {
             if (!WifiSessions.isEnabled(context)) return
-            val at = System.currentTimeMillis()
             val ssid = currentSsid(context)
-            if (ssid != null || !onWifi(context)) {
-                WifiSessions.record(context, at, ssid)
-            } else {
-                WifiSessions.markSeen(context, at)
-            }
+            WifiSessions.record(context, ssid)
         }
 
         fun problem(context: Context): String? {
@@ -188,7 +169,7 @@ class WifiWatchService : Service() {
         val cb = callback ?: return
         runCatching { connectivity?.unregisterNetworkCallback(cb) }
         callback = null
-        WifiSessions.record(this, System.currentTimeMillis(), null)
+        WifiSessions.record(this, null)
     }
 
     private fun register() {
@@ -206,7 +187,6 @@ class WifiWatchService : Service() {
                 reported = network
                 WifiSessions.record(
                     this@WifiWatchService,
-                    System.currentTimeMillis(),
                     currentSsid(this@WifiWatchService, caps)
                 )
             }
@@ -214,7 +194,7 @@ class WifiWatchService : Service() {
             override fun onLost(network: Network) {
                 if (network != reported) return
                 reported = null
-                WifiSessions.record(this@WifiWatchService, System.currentTimeMillis(), null)
+                WifiSessions.record(this@WifiWatchService, null)
             }
         }
 

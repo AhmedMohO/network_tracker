@@ -4,7 +4,6 @@ import android.app.usage.NetworkStats
 import android.app.usage.NetworkStatsManager
 import android.content.Context
 import android.net.ConnectivityManager
-import android.os.Build
 import com.anonymous.network_tracker.data.model.AppUsageItem
 import com.anonymous.network_tracker.data.model.SeriesQuery
 import com.anonymous.network_tracker.data.model.UsageQuery
@@ -26,13 +25,6 @@ data class WifiUsageResult(
     val networks: List<WifiNetworkSlice>,
     val coveredStart: Long,
     val coveredEnd: Long
-)
-
-data class SeriesBin(
-    val start: Long,
-    val end: Long,
-    val rxBytes: Long,
-    val txBytes: Long
 )
 
 data class SeriesResult(
@@ -180,7 +172,24 @@ class StatsReader(private val context: Context) {
             }
         }
 
-        if (byNetwork.isEmpty()) {
+        val summary = HashMap<Int, LongArray>()
+        coveredStart = Long.MAX_VALUE
+        coveredEnd = Long.MIN_VALUE
+        forEachBucket(ConnectivityManager.TYPE_WIFI, q.start, q.end) { b ->
+            if (b.tag != NetworkStats.Bucket.TAG_NONE) return@forEachBucket
+            val slot = summary.getOrPut(b.uid) { LongArray(4) }
+            slot[0] += b.rxBytes
+            slot[1] += b.txBytes
+            if (b.state == NetworkStats.Bucket.STATE_FOREGROUND) {
+                slot[2] += b.rxBytes
+                slot[3] += b.txBytes
+            }
+            coveredStart = minOf(coveredStart, b.startTimeStamp)
+            coveredEnd = maxOf(coveredEnd, b.endTimeStamp)
+        }
+        reconcileWifiBytes(byNetwork, summary)
+
+        if (summary.isEmpty()) {
             coveredStart = q.start
             coveredEnd = q.end
         }
@@ -208,7 +217,8 @@ class StatsReader(private val context: Context) {
                     total = total,
                     foreground = v[2] + v[3],
                     background = (rx - v[2]).coerceAtLeast(0) + (tx - v[3]).coerceAtLeast(0),
-                    percentage = pct
+                    percentage = pct,
+                    isEstimated = true
                 )
             }.sortedByDescending { it.total }
 
@@ -224,59 +234,18 @@ class StatsReader(private val context: Context) {
 
     @Suppress("DEPRECATION")
     fun series(q: SeriesQuery): SeriesResult {
-        require(q.bucketMs > 0) { "bucketMs must be positive" }
-        val binCountLong = (q.end - q.start) / q.bucketMs + 1
-        require(binCountLong <= 2000) { "Requested range needs $binCountLong bins; widen bucketMs" }
-        val binCount = binCountLong.toInt()
-
-        val rx = LongArray(binCount)
-        val tx = LongArray(binCount)
-        var coveredStart = Long.MAX_VALUE
-        var coveredEnd = Long.MIN_VALUE
-
-        for (type in networkTypes(q.network)) {
-            val stats = try {
-                if (q.uid != null) {
-                    nsm.queryDetailsForUid(type, null, q.start, q.end, q.uid)
-                } else {
-                    nsm.queryDetails(type, null, q.start, q.end)
-                }
-            } catch (_: SecurityException) {
-                throw UsageAccessDeniedException()
-            }
-
-            stats.use { s ->
-                val b = NetworkStats.Bucket()
-                while (s.hasNextBucket()) {
-                    s.getNextBucket(b)
-                    if (b.tag != NetworkStats.Bucket.TAG_NONE) continue
-
-                    val rawIdx = Math.floorDiv(b.startTimeStamp - q.start, q.bucketMs).toInt()
-                    val idx = if (rawIdx < 0 && b.endTimeStamp > q.start) 0 else rawIdx
-                    if (idx in 0 until binCount) {
-                        rx[idx] += b.rxBytes
-                        tx[idx] += b.txBytes
+        val bins = summarySeries(q.start, q.end, q.bucketMs) { to ->
+            val total = LongArray(2)
+            for (type in networkTypes(q.network)) {
+                forEachBucket(type, q.start, to) { b ->
+                    if (b.tag == NetworkStats.Bucket.TAG_NONE && (q.uid == null || b.uid == q.uid)) {
+                        total[0] += b.rxBytes
+                        total[1] += b.txBytes
                     }
-                    if (b.startTimeStamp < coveredStart) coveredStart = b.startTimeStamp
-                    if (b.endTimeStamp > coveredEnd) coveredEnd = b.endTimeStamp
                 }
             }
+            total
         }
-
-        if (coveredStart == Long.MAX_VALUE) {
-            coveredStart = q.start
-            coveredEnd = q.end
-        }
-
-        val bins = (0 until binCount).map { i ->
-            SeriesBin(
-                start = q.start + i * q.bucketMs,
-                end = q.start + (i + 1) * q.bucketMs,
-                rxBytes = rx[i],
-                txBytes = tx[i]
-            )
-        }
-        return SeriesResult(bins, coveredStart, coveredEnd)
+        return SeriesResult(bins, q.start, q.end)
     }
 }
-
