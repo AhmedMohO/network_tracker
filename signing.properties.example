@@ -1,0 +1,6 @@
+# Copy to signing.properties (ignored), or use the NETTRACK_KEYSTORE_* environment variables.
+# Use an absolute path outside the repository for durable private key storage.
+storeFile=C:/private/nettrack-release.jks
+storePassword=REPLACE_WITH_PRIVATE_PASSWORD
+keyAlias=nettrack-release
+keyPassword=REPLACE_WITH_PRIVATE_PASSWORD

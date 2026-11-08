@@ -26,14 +26,13 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import androidx.core.location.LocationManagerCompat
-import com.anonymous.network_tracker.R
+import androidx.annotation.RequiresApi
 
 class WifiWatchService : Service() {
 
     companion object {
         const val CHANNEL_ID = "wifi-watch"
         private const val NOTIFICATION_ID = 4711
-        private const val QUOTE = '"'
         private const val TAG = "WifiWatch"
         private const val NOTIFICATION_TINT = 0xFF0284C7.toInt()
 
@@ -60,26 +59,40 @@ class WifiWatchService : Service() {
             }
         }
 
-        private fun name(info: WifiInfo?): String? {
-            val ssid = info?.ssid?.trim(QUOTE) ?: return null
-            if (ssid.isEmpty() || ssid == WifiManager.UNKNOWN_SSID.trim(QUOTE)) return null
-            return ssid
+        private fun isWifi(caps: NetworkCapabilities): Boolean =
+            caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) &&
+                !caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN) &&
+                caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+
+        private fun connectedName(context: Context, networks: Collection<NetworkCapabilities>): String? = try {
+            val names = networks.map { caps ->
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    normalizeWifiSsid((caps.transportInfo as? WifiInfo)?.ssid)
+                } else null
+            }
+            connectedWifiSsid(names) {
+                @Suppress("DEPRECATION")
+                val info = (context.applicationContext
+                    .getSystemService(Context.WIFI_SERVICE) as? WifiManager)?.connectionInfo
+                normalizeWifiSsid(info?.ssid)
+            }
+        } catch (_: SecurityException) {
+            null
         }
 
-        fun currentSsid(context: Context, caps: NetworkCapabilities? = null): String? {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                name(caps?.transportInfo as? WifiInfo)?.let { return it }
-            }
-            @Suppress("DEPRECATION")
-            val info = (context.applicationContext
-                .getSystemService(Context.WIFI_SERVICE) as? WifiManager)?.connectionInfo
-            return name(info)
+        fun currentSsid(context: Context): String? = try {
+            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            val networks = cm?.allNetworks.orEmpty().mapNotNull { cm?.getNetworkCapabilities(it) }.filter(::isWifi)
+            connectedName(context, networks)
+        } catch (_: SecurityException) {
+            null
         }
 
         fun sample(context: Context) {
-            if (!WifiSessions.isEnabled(context)) return
-            val ssid = currentSsid(context)
-            WifiSessions.record(context, ssid)
+            synchronized(WifiSessions) {
+                if (!WifiSessions.isEnabled(context)) return
+                WifiSessions.observe(context, currentSsid(context))
+            }
         }
 
         fun problem(context: Context): String? {
@@ -165,13 +178,15 @@ class WifiWatchService : Service() {
         super.onDestroy()
     }
 
+    @Synchronized
     private fun unregister() {
-        val cb = callback ?: return
-        runCatching { connectivity?.unregisterNetworkCallback(cb) }
+        val cb = callback
         callback = null
         WifiSessions.record(this, null)
+        if (cb != null) runCatching { connectivity?.unregisterNetworkCallback(cb) }
     }
 
+    @Synchronized
     private fun register() {
         if (callback != null) return
         val cm = connectivity ?: return
@@ -180,25 +195,44 @@ class WifiWatchService : Service() {
             .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
             .build()
 
-        val cb = object : ConnectivityManager.NetworkCallback() {
-            private var reported: Network? = null
+        val cb = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            WifiCallback(ConnectivityManager.NetworkCallback.FLAG_INCLUDE_LOCATION_INFO)
+        } else {
+            WifiCallback()
+        }
+        callback = cb
+        runCatching { cm.registerNetworkCallback(request, cb) }.onFailure {
+            callback = null
+            WifiSessions.observe(this, null)
+            Log.w(TAG, "Wi-Fi observation unavailable", it)
+        }
+    }
 
-            override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
-                reported = network
-                WifiSessions.record(
-                    this@WifiWatchService,
-                    currentSsid(this@WifiWatchService, caps)
-                )
-            }
+    private inner class WifiCallback : ConnectivityManager.NetworkCallback {
+        constructor() : super()
+        @RequiresApi(Build.VERSION_CODES.S)
+        constructor(flags: Int) : super(flags)
 
-            override fun onLost(network: Network) {
-                if (network != reported) return
-                reported = null
-                WifiSessions.record(this@WifiWatchService, null)
+        private val networks = LinkedHashMap<Network, NetworkCapabilities>()
+
+        override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
+            synchronized(this@WifiWatchService) {
+                if (callback !== this) return
+                if (isWifi(caps)) networks[network] = caps else networks.remove(network)
+                publish()
             }
         }
 
-        runCatching { cm.registerNetworkCallback(request, cb) }.onSuccess { callback = cb }
+        override fun onLost(network: Network) {
+            synchronized(this@WifiWatchService) {
+                if (callback !== this || networks.remove(network) == null) return
+                publish()
+            }
+        }
+
+        private fun publish() = synchronized(WifiSessions) {
+            WifiSessions.observe(this@WifiWatchService, connectedName(this@WifiWatchService, networks.values))
+        }
     }
 
     private fun smallIconRes(): Int {

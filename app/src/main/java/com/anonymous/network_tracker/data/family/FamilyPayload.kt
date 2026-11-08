@@ -3,6 +3,8 @@ package com.anonymous.network_tracker.data.family
 import com.anonymous.network_tracker.data.model.AppUsageItem
 import com.anonymous.network_tracker.data.model.WifiNetworkSlice
 import com.anonymous.network_tracker.data.util.RangeUtils
+import com.anonymous.network_tracker.data.util.DateRange
+import com.anonymous.network_tracker.core.proportionalBytes
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -24,11 +26,16 @@ fun mergeFamilyCache(existing: List<FamilySnapshot>, fresh: List<FamilySnapshot>
         val key = Triple(row.deviceId, row.kind, row.day)
         if (row.updatedAt >= (rows[key]?.updatedAt ?: Long.MIN_VALUE)) rows[key] = row
     }
-    return rows.values.toList()
+    val removed = rows.values.filter { it.kind == "recent" && it.payload.optBoolean("unpaired") }
+        .associate { it.deviceId to it.updatedAt }
+    return rows.values.filter { row ->
+        val removedAt = removed[row.deviceId]
+        removedAt == null || row.updatedAt > removedAt || (row.kind == "recent" && row.payload.optBoolean("unpaired"))
+    }
 }
 
 data class FamilyChild(val id: String, val label: String, val lastSeen: Long)
-fun familyChildren(rows: List<FamilySnapshot>): List<FamilyChild> = rows.filter { it.kind != "grant" }
+fun familyChildren(rows: List<FamilySnapshot>): List<FamilyChild> = rows.filter { it.kind != "grant" && !it.payload.optBoolean("unpaired") }
     .groupBy { it.deviceId }.map { (id, snapshots) ->
         val newest = snapshots.maxBy { it.updatedAt }
         FamilyChild(id, newest.deviceLabel.ifBlank { id }, newest.updatedAt)
@@ -43,6 +50,8 @@ fun familyPayload(all: List<AppUsageItem>, mobile: List<AppUsageItem>, wifi: Lis
                 .put("pkg", a.packageName ?: JSONObject.NULL).put("dl", a.download).put("ul", a.upload)) }
         })
         result.put(tailKey, used.drop(50).sumOf { it.total })
+        result.put("${tailKey}Download", used.drop(50).sumOf { it.download })
+        result.put("${tailKey}Upload", used.drop(50).sumOf { it.upload })
     }
     result.put("totals", JSONObject().put("mobile", mobile.sumOf { it.total }).put("wifi", wifi.sumOf { it.total }))
     networks?.let { list -> result.put("wifiNetworks", JSONArray().apply {
@@ -57,7 +66,8 @@ fun payloadApps(payload: JSONObject, network: String): List<AppUsageItem> {
     val prefix = when (network) { "MOBILE" -> "mobile"; "WIFI" -> "wifi"; else -> "" }
     val split = prefix.isNotEmpty() && payload.optJSONArray("${prefix}Apps") != null
     val list = payload.optJSONArray(if (split) "${prefix}Apps" else "apps") ?: return emptyList()
-    val tail = payload.optLong(if (split) "${prefix}OtherBytes" else "otherBytes").coerceAtLeast(0)
+    val tailKey = if (split) "${prefix}OtherBytes" else "otherBytes"
+    val tail = payload.optLong(tailKey).coerceAtLeast(0)
     val apps = (0 until list.length()).mapNotNull { i ->
         val row = list.optJSONObject(i) ?: return@mapNotNull null
         val dl = row.optLong("dl").coerceAtLeast(0)
@@ -65,16 +75,33 @@ fun payloadApps(payload: JSONObject, network: String): List<AppUsageItem> {
         AppUsageItem(row.optInt("uid"), row.optString("name", "Unknown app"),
             if (row.isNull("pkg")) null else row.optString("pkg"), dl, ul, dl + ul)
     }.toMutableList()
-    if (tail > 0) apps.add(AppUsageItem(-100, "Other apps", null, 0, 0, tail))
+    if (tail > 0) apps.add(AppUsageItem(-100, "Other apps", null,
+        payload.optLong("${tailKey}Download").coerceAtLeast(0), payload.optLong("${tailKey}Upload").coerceAtLeast(0), tail))
     val total = apps.sumOf { it.total }
     return apps.map { it.copy(percentage = if (total > 0) it.total * 100.0 / total else 0.0) }
 }
 
-data class FamilyDay(val day: Long, val total: Long, val download: Long, val upload: Long)
+data class FamilyDay(val day: Long, val total: Long, val download: Long, val upload: Long) {
+    val directionsKnown: Boolean get() = total == download + upload
+}
 data class FamilyNetwork(val ssid: String?, val total: Long)
 data class FamilySeries(val apps: List<AppUsageItem>, val bins: List<FamilyDay>, val total: Long,
     val mobile: Long?, val wifi: Long?, val missingDays: Int, val splitMissingDays: Int, val partialDay: Long?,
-    val wifiNetworks: List<FamilyNetwork> = emptyList())
+    val wifiNetworks: List<FamilyNetwork> = emptyList()) {
+    val isEstimated: Boolean get() = apps.any { it.isEstimated }
+    val directionsKnown: Boolean get() = bins.all { it.directionsKnown }
+}
+
+private fun familyCoverage(row: FamilySnapshot): DateRange {
+    val day = if (row.kind == "daily") row.day else RangeUtils.midnight(row.payload.optLong("at", row.updatedAt))
+    val dayEnd = RangeUtils.midnight(day, 1)
+    if (row.kind == "daily") return DateRange(day, dayEnd)
+    val coverage = row.payload.optJSONObject("coverage")
+    val at = minOf(row.payload.optLong("at", row.updatedAt), row.updatedAt).coerceIn(day, dayEnd)
+    val from = (coverage?.optLong("start", day) ?: day).coerceIn(day, at)
+    val to = (coverage?.optLong("end", at) ?: at).coerceIn(from, at)
+    return DateRange(from, to)
+}
 
 fun buildFamilySeries(rows: List<FamilySnapshot>, start: Long, end: Long, network: String = "ALL", now: Long = System.currentTimeMillis(), uid: Int? = null): FamilySeries {
     val first = RangeUtils.midnight(start)
@@ -86,24 +113,37 @@ fun buildFamilySeries(rows: List<FamilySnapshot>, start: Long, end: Long, networ
         val day = RangeUtils.midnight(recent.payload.optLong("at", recent.updatedAt))
         if (day >= first && day < last && day !in days) { days[day] = recent; partial = day }
     }
+    days.entries.removeAll { (_, row) -> familyCoverage(row).let { it.end <= it.start || it.end <= start || it.start >= end } }
+    partial = partial?.takeIf { it in days }
     var mobile = 0L; var wifi = 0L; var splitMissing = 0
     val wifiNetworks = LinkedHashMap<String?, Long>()
     val allApps = ArrayList<AppUsageItem>()
     val bins = days.toSortedMap().map { (day, row) ->
-        val apps = payloadApps(row.payload, network).filter { uid == null || it.uid == uid }
+        val coverage = familyCoverage(row)
+        val from = maxOf(start, coverage.start) - coverage.start
+        val to = minOf(end, coverage.end) - coverage.start
+        val span = coverage.end - coverage.start
+        fun portion(bytes: Long) = proportionalBytes(bytes.coerceAtLeast(0), from, to, span)
+        val estimated = from != 0L || to != span
+        // shortcut: partial family snapshots assume even traffic; share finer buckets to remove this estimate.
+        val apps = payloadApps(row.payload, network).filter { uid == null || it.uid == uid }.map {
+            val dl = portion(it.download)
+            val ul = portion(it.upload)
+            it.copy(download = dl, upload = ul, total = if (it.total == it.download + it.upload) dl + ul else portion(it.total), isEstimated = estimated)
+        }
         allApps.addAll(apps)
         val networks = row.payload.optJSONArray("wifiNetworks")
         if (networks != null) for (i in 0 until networks.length()) {
             val entry = networks.optJSONObject(i) ?: continue
             val ssid = if (entry.isNull("ssid")) null else entry.optString("ssid")
-            wifiNetworks[ssid] = (wifiNetworks[ssid] ?: 0) + entry.optLong("dl") + entry.optLong("ul")
+            wifiNetworks[ssid] = (wifiNetworks[ssid] ?: 0) + portion(entry.optLong("dl")) + portion(entry.optLong("ul"))
         }
         val totals = row.payload.optJSONObject("totals")
         if (totals != null && totals.has("mobile") && totals.has("wifi")) {
-            mobile += totals.optLong("mobile"); wifi += totals.optLong("wifi")
+            mobile += portion(totals.optLong("mobile")); wifi += portion(totals.optLong("wifi"))
         } else if (row.payload.has("mobileApps") && row.payload.has("wifiApps")) {
-            mobile += payloadApps(row.payload, "MOBILE").sumOf { it.total }
-            wifi += payloadApps(row.payload, "WIFI").sumOf { it.total }
+            mobile += portion(payloadApps(row.payload, "MOBILE").sumOf { it.total })
+            wifi += portion(payloadApps(row.payload, "WIFI").sumOf { it.total })
         } else splitMissing++
         FamilyDay(day, apps.sumOf { it.total }, apps.sumOf { it.download }, apps.sumOf { it.upload })
     }
@@ -111,7 +151,7 @@ fun buildFamilySeries(rows: List<FamilySnapshot>, start: Long, end: Long, networ
     val apps = allApps.groupBy { it.uid }.map { (_, list) ->
         val sum = list.sumOf { it.total }
         list.first().copy(download = list.sumOf { it.download }, upload = list.sumOf { it.upload }, total = sum,
-            percentage = if (total > 0) sum * 100.0 / total else 0.0)
+            percentage = if (total > 0) sum * 100.0 / total else 0.0, isEstimated = list.any { it.isEstimated })
     }.sortedByDescending { it.total }
     var day = first; var count = 0
     while (day < last) { count++; day = RangeUtils.midnight(day, 1) }
@@ -165,8 +205,8 @@ fun parseChildRequest(snapshots: List<FamilySnapshot>): ChildRequestInfo? {
 }
 
 data class TodayTotalsInfo(
-    val mobile: Long,
-    val wifi: Long,
+    val mobile: Long?,
+    val wifi: Long?,
     val total: Long,
     val asOf: Long,
     val coverageStart: Long?,
@@ -181,15 +221,23 @@ fun parseTodayTotals(recent: FamilySnapshot?, now: Long = System.currentTimeMill
     val dayEnd = RangeUtils.midnight(now, 1)
     val isToday = at in dayStart until dayEnd
     val totals = recent.payload.optJSONObject("totals")
-    val mobile = totals?.optLong("mobile") ?: payloadApps(recent.payload, "MOBILE").sumOf { it.total }
-    val wifi = totals?.optLong("wifi") ?: payloadApps(recent.payload, "WIFI").sumOf { it.total }
+    fun networkTotal(key: String, network: String): Long? = when {
+        totals?.has(key) == true && !totals.isNull(key) -> totals.optLong(key).coerceAtLeast(0)
+        recent.payload.optJSONArray("${key}Apps") != null -> payloadApps(recent.payload, network).sumOf { it.total }
+        else -> null
+    }
+    val mobile = networkTotal("mobile", "MOBILE")
+    val wifi = networkTotal("wifi", "WIFI")
+    val total = if (mobile != null && wifi != null) mobile + wifi else payloadApps(recent.payload, "ALL").sumOf { it.total }
     val coverage = recent.payload.optJSONObject("coverage")
     val covStart = if (coverage != null && !coverage.isNull("start")) coverage.optLong("start").takeIf { it > 0 } else null
     val covEnd = if (coverage != null && !coverage.isNull("end")) coverage.optLong("end").takeIf { it > 0 } else null
-    return TodayTotalsInfo(mobile, wifi, mobile + wifi, at, covStart, covEnd, isToday)
+    return TodayTotalsInfo(mobile, wifi, total, at, covStart, covEnd, isToday)
 }
 
-data class ChildAppDay(val day: Long, val download: Long, val upload: Long, val total: Long)
+data class ChildAppDay(val day: Long, val download: Long, val upload: Long, val total: Long) {
+    val directionsKnown: Boolean get() = total == download + upload
+}
 data class ChildAppSeries(
     val uid: Int,
     val appName: String,
@@ -197,8 +245,11 @@ data class ChildAppSeries(
     val download: Long,
     val upload: Long,
     val total: Long,
-    val bins: List<ChildAppDay>
-)
+    val bins: List<ChildAppDay>,
+    val isEstimated: Boolean = false
+) {
+    val directionsKnown: Boolean get() = total == download + upload
+}
 
 fun buildChildAppSeries(snapshots: List<FamilySnapshot>, uid: Int, start: Long, end: Long): ChildAppSeries {
     var discoveredName = ""
@@ -214,27 +265,9 @@ fun buildChildAppSeries(snapshots: List<FamilySnapshot>, uid: Int, start: Long, 
         }
     }
     val name = discoveredName.ifBlank { "App $uid" }
-    val first = RangeUtils.midnight(start)
-    val last = if (end > start) RangeUtils.midnight(end - 1, 1) else first
-    val days = snapshots.filter { it.kind == "daily" && it.day >= first && it.day < last }
-        .groupBy { it.day }.mapValues { (_, list) -> list.maxBy { it.updatedAt } }.toMutableMap()
-    snapshots.filter { it.kind == "recent" }.maxByOrNull { it.updatedAt }?.let { recent ->
-        val day = RangeUtils.midnight(recent.payload.optLong("at", recent.updatedAt))
-        if (day >= first && day < last && day !in days) { days[day] = recent }
-    }
-    var totalDl = 0L
-    var totalUl = 0L
-    val bins = ArrayList<ChildAppDay>()
-    for ((day, row) in days.toSortedMap()) {
-        val apps = payloadApps(row.payload, "ALL")
-        val match = apps.firstOrNull { it.uid == uid }
-        if (match != null && match.total > 0) {
-            totalDl += match.download
-            totalUl += match.upload
-            bins.add(ChildAppDay(day, match.download, match.upload, match.total))
-        }
-    }
-    return ChildAppSeries(uid, name, discoveredPkg, totalDl, totalUl, totalDl + totalUl, bins)
+    val series = buildFamilySeries(snapshots, start, end, uid = uid)
+    val bins = series.bins.filter { it.total > 0 }.map { ChildAppDay(it.day, it.download, it.upload, it.total) }
+    return ChildAppSeries(uid, name, discoveredPkg, bins.sumOf { it.download }, bins.sumOf { it.upload }, series.total, bins, series.isEstimated)
 }
 
 data class ChildDeviceSummary(

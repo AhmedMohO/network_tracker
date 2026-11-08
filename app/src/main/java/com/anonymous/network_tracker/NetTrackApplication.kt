@@ -7,10 +7,17 @@ import android.content.Context
 import android.os.Build
 import com.anonymous.network_tracker.data.db.UsageDatabase
 import com.anonymous.network_tracker.service.WifiWatchService
+import com.anonymous.network_tracker.service.WifiSessions
 
 class NetTrackApplication : Application() {
 
     val database: UsageDatabase by lazy { UsageDatabase.getInstance(this) }
+
+    override fun attachBaseContext(base: Context) {
+        super.attachBaseContext(base)
+        // Close interrupted tracking before WorkManager's provider can restore background jobs.
+        WifiSessions.interrupt(base)
+    }
 
     override fun onCreate() {
         super.onCreate()

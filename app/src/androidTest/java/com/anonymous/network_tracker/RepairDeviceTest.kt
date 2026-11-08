@@ -97,7 +97,7 @@ class RepairDeviceTest {
 
         shell("appops set ${context.packageName} GET_USAGE_STATS deny")
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
-            compose.onNodeWithText("Usage Access Required").assertIsDisplayed()
+            compose.onNodeWithText("Grant").assertIsDisplayed().assertHasClickAction()
             scenario.moveToState(Lifecycle.State.CREATED)
             shell("appops set ${context.packageName} GET_USAGE_STATS allow")
             assertTrue("Usage Access must actually be granted by the test fixture", UsageAccess.has(context))
@@ -117,7 +117,7 @@ class RepairDeviceTest {
             compose.onNodeWithText("Dark").performClick()
             screenshot("english-dark.png")
             compose.onNodeWithText("Open Family").performScrollTo().performClick()
-            compose.onNodeWithText("Pair your family").assertIsDisplayed()
+            compose.onNodeWithText("Parent Setup").assertIsDisplayed()
             scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
             compose.onNodeWithText("Language").performScrollTo().assertIsDisplayed()
 
@@ -132,9 +132,10 @@ class RepairDeviceTest {
             assertTrue(SyncKeepAlive.isEnabled(context))
             SyncKeepAlive.setEnabled(context, false)
             compose.waitUntil(5_000) { manager.activeNotifications.none { it.id == 4711 } }
+            SyncKeepAlive.setEnabled(context, true)
             UsageWork.schedule(context)
             UsageWork.schedule(context)
-            assertEquals(1, WorkManager.getInstance(context).getWorkInfosForUniqueWork("usage-threshold-check-native").get(10, TimeUnit.SECONDS).size)
+            assertEquals(1, WorkManager.getInstance(context).getWorkInfosForUniqueWork("usage-threshold-check-native").get(10, TimeUnit.SECONDS).count { !it.state.isFinished })
         }
         WorkManager.getInstance(context).cancelAllWork().result.get(10, TimeUnit.SECONDS)
         manager.cancelAll()

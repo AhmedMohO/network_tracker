@@ -16,6 +16,16 @@ class ArchiveUsageTest {
         assertTrue(snapshotRetainsUsage(listOf(row(0, 24, 100, 20)), listOf(row(0, 24, 110, 20))))
     }
 
+    @Test fun removedUidCanAbsorbUninstalledTrafficWithoutBlockingNewUsage() {
+        val before = listOf(row(0, 24, 100, 20))
+        val removed = row(0, 24, 100, 20).copy(uid = -4)
+        val added = row(0, 24, 50, 10).copy(uid = 11)
+        assertTrue(snapshotRetainsUsage(before, listOf(removed, added)))
+        assertFalse(snapshotRetainsUsage(before, listOf(removed.copy(download = 99), added)))
+        assertFalse(snapshotRetainsUsage(before, listOf(removed.copy(network = "MOBILE"), added)))
+        assertFalse(snapshotRetainsUsage(before + removed, listOf(removed, added)))
+    }
+
     @Test fun noonToNoonUsesBothDaysAndOnlyTheirOverlappingPortions() {
         val rows = listOf(row(0, 24, 240, 24, 120, 144), row(24, 48, 480, 48, 240, 288))
         val result = archiveApps(rows, DateRange(12, 36)).single()

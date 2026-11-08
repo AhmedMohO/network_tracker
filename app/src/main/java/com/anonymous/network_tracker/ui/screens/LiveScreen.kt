@@ -195,7 +195,7 @@ fun LiveScreen(modifier: Modifier = Modifier) {
                     ContextRow(
                         icon = Icons.Default.SignalCellularAlt,
                         label = tr("Foreground App"),
-                        value = fgApp ?: tr("None (Background)"),
+                        value = fgApp ?: tr("No foreground app observed"),
                         valueColor = TextSecondary
                     )
                 }

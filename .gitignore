@@ -5,8 +5,15 @@ local.properties
 .DS_Store
 build/
 app/build/
+dist/
 .kotlin/
 captures/
 .externalNativeBuild/
 .cxx/
 google-services.json
+credentials/
+signing.properties
+*.jks
+*.keystore
+*.p12
+*.pk8

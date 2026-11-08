@@ -7,17 +7,26 @@ import com.anonymous.network_tracker.data.model.WifiNetworkSlice
 import com.anonymous.network_tracker.data.model.UsageTotals
 
 internal fun snapshotRetainsUsage(previous: List<DailyUsageEntity>, fresh: List<DailyUsageEntity>): Boolean {
-    val totals = fresh.groupBy { it.uid to it.network }
-    return previous.groupBy { it.uid to it.network }.all { (key, rows) ->
-        val updated = totals[key].orEmpty()
-        updated.sumOf { it.download } >= rows.sumOf { it.download } &&
-            updated.sumOf { it.upload } >= rows.sumOf { it.upload }
+    return previous.groupBy { it.network }.all { (network, oldRows) ->
+        val updated = fresh.filter { it.network == network }.groupBy { it.uid }
+        val oldRemoved = oldRows.filter { it.uid == -4 }
+        val removed = updated[-4].orEmpty()
+        // Android reattributes uninstalled UIDs to UID_REMOVED; only that increase can cover lost UID bytes.
+        val rxAvailable = removed.sumOf { it.download } - oldRemoved.sumOf { it.download }
+        val txAvailable = removed.sumOf { it.upload } - oldRemoved.sumOf { it.upload }
+        var rxMissing = 0L
+        var txMissing = 0L
+        for ((uid, rows) in oldRows.filter { it.uid != -4 }.groupBy { it.uid }) {
+            rxMissing += (rows.sumOf { it.download } - updated[uid].orEmpty().sumOf { it.download }).coerceAtLeast(0)
+            txMissing += (rows.sumOf { it.upload } - updated[uid].orEmpty().sumOf { it.upload }).coerceAtLeast(0)
+        }
+        rxAvailable >= rxMissing && txAvailable >= txMissing
     }
 }
 
 internal fun archiveWifiSlices(rows: List<DailyUsageEntity>, range: DateRange): List<WifiNetworkSlice> =
     rows.filter { it.network == "WIFI" }.groupBy { it.ssid.takeIf(String::isNotEmpty) }.map { (ssid, saved) ->
-        val apps = archiveApps(saved, range)
+        val apps = archiveApps(saved, range).map { it.copy(isEstimated = true) }
         val rx = apps.sumOf { it.download }
         val tx = apps.sumOf { it.upload }
         WifiNetworkSlice(ssid, apps, UsageTotals(rx, tx, rx + tx))

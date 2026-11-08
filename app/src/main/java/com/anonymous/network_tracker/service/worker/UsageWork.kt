@@ -7,15 +7,22 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import java.util.concurrent.TimeUnit
+import com.anonymous.network_tracker.service.SyncKeepAlive
 
 object UsageWork {
     fun schedule(context: Context) {
+        if (!SyncKeepAlive.isEnabled(context)) {
+            WorkManager.getInstance(context).cancelUniqueWork("usage-threshold-check-native")
+            WorkManager.getInstance(context).cancelUniqueWork("usage-check-now")
+            return
+        }
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(
             "usage-threshold-check-native", ExistingPeriodicWorkPolicy.KEEP,
             PeriodicWorkRequestBuilder<DailySnapshotWorker>(15, TimeUnit.MINUTES).build()
         )
     }
     fun enqueue(context: Context) {
+        if (!SyncKeepAlive.isEnabled(context)) return
         WorkManager.getInstance(context).enqueueUniqueWork(
             "usage-check-now", ExistingWorkPolicy.KEEP,
             OneTimeWorkRequestBuilder<DailySnapshotWorker>().build()

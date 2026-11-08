@@ -47,11 +47,14 @@ class FamilyRepository private constructor(private val context: Context) {
     } }
 
     suspend fun unpair() = withContext(Dispatchers.IO) { mutex.withLock {
-        val token = settings.loadSettings().pairToken ?: return@withLock
-        SupabaseRpc.familyForget(token)
+        val current = settings.loadSettings()
+        val token = current.pairToken ?: return@withLock
+        if (current.familyRole == "child") {
+            SupabaseRpc.familyRemoveDevice(token, requireNotNull(current.deviceId) { "Missing child device ID" })
+        } else SupabaseRpc.familyForget(token)
         ExpoStorageBridge.removeItem(context, "family.cache.$token")
         settings.updateWithExtras { current, extra ->
-            for (key in listOf("pushToken", "nativeFcmToken", "backfillDoneUntil", "pendingLimitRequest", "appliedGrantRequestAt",
+            for (key in listOf("pushToken", "nativeFcmToken", "backfillDoneUntil", "familyUploadedDays", "pendingLimitRequest", "appliedGrantRequestAt",
                 "syncErrorNotifiedAt", "childQuietNotifiedAt", "childRequestNotifiedAt", "familyNotificationKeys", "childLimits")) extra.put(key, JSONObject.NULL)
             current.copy(familyRole = null, pairToken = null, deviceId = null, deviceLabel = null,
                 pairedLabel = null, lastSyncOkAt = null, lastSyncErrorAt = null)
@@ -137,16 +140,14 @@ class FamilyRepository private constructor(private val context: Context) {
             }
         }
 
-        val yesterday = RangeUtils.midnight(now, -1)
-        pushDay(token, id, label, yesterday)
         val oldestWanted = RangeUtils.midnight(now, -30)
-        val progress = settings.readExtras().optLong("backfillDoneUntil", Long.MAX_VALUE)
-        if (progress <= oldestWanted) return
-        for (i in 1..30) {
-            val day = RangeUtils.midnight(now, -i)
-            if (day >= progress) continue
+        val saved = settings.readExtras().optJSONArray("familyUploadedDays") ?: JSONArray()
+        val uploaded = (0 until saved.length()).map { saved.optLong(it) }
+            .filter { it >= oldestWanted && it < RangeUtils.midnight(now) }.toMutableSet()
+        for (day in familyDaysToUpload(now, uploaded)) {
             pushDay(token, id, label, day)
-            settings.patchExtras(JSONObject().put("backfillDoneUntil", day))
+            uploaded.add(day)
+            settings.patchExtras(JSONObject().put("familyUploadedDays", JSONArray(uploaded.sorted())))
         }
     }
 

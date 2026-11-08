@@ -8,11 +8,11 @@ Use JDK 17 or newer, an installed Android SDK, and the Gradle wrapper:
 
 ```powershell
 ./gradlew.bat :app:testDebugUnitTest :app:lintDebug :app:assembleRelease
-python docs/test-archive-migration.py
 python scripts/test-archive-migration.py
+python scripts/test-family-removal.py
 ```
 
-The release APK is written to app/build/outputs/apk/release/app-release.apk. It retains package com.anonymous.network_tracker and the existing signing key so it can update the previous app in place. Do not uninstall or clear app data to upgrade.
+Release signing requires private credentials and a new signing certificate. See [release signing and key migration](docs/release-signing.md) before building or distributing an APK; the exposed key used through 2.0.1 is rejected. Do not uninstall or clear app data to upgrade.
 
 The app opens the existing Expo usage archive and key/value database in place. Legacy archives without Wi-Fi names are migrated transactionally. Settings, family pairing/cache, and notification identities retain their existing formats. Usage history is retained for seven calendar months.
 
@@ -25,6 +25,6 @@ The app opens the existing Expo usage archive and key/value database in place. L
 - Optional Wi-Fi network attribution and shared keep-alive service/alarm, plus periodic WorkManager fallback.
 - Family QR/deep-link pairing, cached parent/child usage, requests/grants, limits, daily/recent synchronization and resumable history backfill.
 
-Family synchronization uses the original Supabase RPC contract in docs/family-schema.sql. Native FCM wake-ups retain the existing Expo push-token contract; Firebase/EAS credentials must be supplied for actual push delivery. See docs/push-setup.md.
+Family synchronization requires the Supabase RPC contract in docs/family-schema.sql. Existing servers must apply [the device-removal migration](docs/migrations/2026-11-08-family-remove-device.sql) before distributing these fixes. Child unpairing fails safely if that RPC is absent; it never falls back to deleting the family. Native FCM wake-ups retain the existing Expo push-token contract; Firebase/EAS credentials must be supplied for actual push delivery. See docs/push-setup.md.
 
 See docs/reviews/kotlin-conversion-repair-status.md for the repair checklist and verification limits.

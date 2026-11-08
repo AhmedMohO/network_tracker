@@ -323,7 +323,9 @@ fun FamilyScreen(onBack: () -> Unit, modifier: Modifier = Modifier, initialPairL
             onDismissRequest = { if (!busy) showUnpairDialog = false },
             title = { Text(tr("Unpair Family?")) },
             text = {
-                Text(tr("This removes shared family snapshots from the server for paired devices. Your local usage records remain safely on this device. An active internet connection is required."))
+                Text(tr(if (settings.familyRole == "child")
+                    "This stops sharing and removes only this device's shared data. Other family devices and your local usage records are kept. An active internet connection is required."
+                else "This removes shared family snapshots from the server for paired devices. Your local usage records remain safely on this device. An active internet connection is required."))
             },
             confirmButton = {
                 Button(
@@ -655,11 +657,11 @@ private fun ParentChildCard(
                             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Icon(Icons.Default.PhoneAndroid, contentDescription = null, modifier = Modifier.size(13.dp), tint = TextSecondary)
-                                    Text(usage.formatBytes(tt.mobile), style = MaterialTheme.typography.bodySmall, color = TextPrimary, fontWeight = FontWeight.SemiBold)
+                                    Text(tt.mobile?.let { usage.formatBytes(it) } ?: tr("Unknown"), style = MaterialTheme.typography.bodySmall, color = TextPrimary, fontWeight = FontWeight.SemiBold)
                                 }
                                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Icon(Icons.Default.Wifi, contentDescription = null, modifier = Modifier.size(13.dp), tint = TextSecondary)
-                                    Text(usage.formatBytes(tt.wifi), style = MaterialTheme.typography.bodySmall, color = TextPrimary, fontWeight = FontWeight.SemiBold)
+                                    Text(tt.wifi?.let { usage.formatBytes(it) } ?: tr("Unknown"), style = MaterialTheme.typography.bodySmall, color = TextPrimary, fontWeight = FontWeight.SemiBold)
                                 }
                             }
                             Text(tr("Today: %s", usage.formatBytes(tt.total)), style = MaterialTheme.typography.bodySmall, color = AccentPrimary, fontWeight = FontWeight.Bold)
@@ -874,7 +876,7 @@ private fun FamilyChildDetailView(
                             Icon(Icons.Default.ArrowDownward, contentDescription = null, tint = AccentPrimary, modifier = Modifier.size(16.dp))
                             Column {
                                 Text(tr("Download"), style = MaterialTheme.typography.labelSmall, color = TextMuted)
-                                Text(usage.formatBytes(series.bins.sumOf { it.download }), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                                Text(if (series.directionsKnown) usage.formatBytes(series.bins.sumOf { it.download }) else tr("Unknown"), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -883,7 +885,7 @@ private fun FamilyChildDetailView(
                             Icon(Icons.Default.ArrowUpward, contentDescription = null, tint = AccentSecondary, modifier = Modifier.size(16.dp))
                             Column {
                                 Text(tr("Upload"), style = MaterialTheme.typography.labelSmall, color = TextMuted)
-                                Text(usage.formatBytes(series.bins.sumOf { it.upload }), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                                Text(if (series.directionsKnown) usage.formatBytes(series.bins.sumOf { it.upload }) else tr("Unknown"), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -895,6 +897,8 @@ private fun FamilyChildDetailView(
                     }
                 }
 
+                if (series.isEstimated) Text(tr("Partial-day usage is estimated from shared snapshots."), color = TextMuted, style = MaterialTheme.typography.labelSmall)
+                if (!series.directionsKnown) Text(tr("Some older snapshots lack download/upload breakdowns."), color = TextMuted, style = MaterialTheme.typography.labelSmall)
                 if (series.partialDay != null) Text(tr("The latest day is partial, as of the child's last check-in."), color = TextMuted, style = MaterialTheme.typography.labelSmall)
                 if (series.missingDays > 0) Text(tr("%d days have no shared data; they are not zero usage.", series.missingDays), color = TextMuted, style = MaterialTheme.typography.labelSmall)
                 if (series.splitMissingDays > 0) Text(tr("Some historical snapshots lack network splits; combined totals are shown for those days."), color = TextMuted, style = MaterialTheme.typography.labelSmall)
@@ -1002,7 +1006,7 @@ private fun FamilyChildDetailView(
                         Column(Modifier.weight(1f)) {
                             Text(if (app.uid == -100) tr("Other apps") else app.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text(
-                                "↓ ${usage.formatBytes(app.download)} / ↑ ${usage.formatBytes(app.upload)}",
+                                if (app.total == app.download + app.upload) "↓ ${usage.formatBytes(app.download)} / ↑ ${usage.formatBytes(app.upload)}" else tr("Download/upload unavailable"),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = TextMuted
                             )
@@ -1165,7 +1169,7 @@ private fun FamilyChildAppDetailView(
                             Icon(Icons.Default.ArrowDownward, contentDescription = null, tint = AccentPrimary, modifier = Modifier.size(16.dp))
                             Column {
                                 Text(tr("Download"), style = MaterialTheme.typography.labelSmall, color = TextMuted)
-                                Text(usage.formatBytes(appSeries.download), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                                Text(if (appSeries.directionsKnown) usage.formatBytes(appSeries.download) else tr("Unknown"), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -1174,12 +1178,13 @@ private fun FamilyChildAppDetailView(
                             Icon(Icons.Default.ArrowUpward, contentDescription = null, tint = AccentSecondary, modifier = Modifier.size(16.dp))
                             Column {
                                 Text(tr("Upload"), style = MaterialTheme.typography.labelSmall, color = TextMuted)
-                                Text(usage.formatBytes(appSeries.upload), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                                Text(if (appSeries.directionsKnown) usage.formatBytes(appSeries.upload) else tr("Unknown"), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
                 }
 
+                if (appSeries.isEstimated) Text(tr("Partial-day usage is estimated from shared snapshots."), color = TextMuted, style = MaterialTheme.typography.labelSmall)
                 // Daily App Chart
                 ChildAppBars(bins = appSeries.bins, usage = usage)
             }
@@ -1242,7 +1247,7 @@ private fun ChildAppBars(bins: List<ChildAppDay>, usage: UsageRepository) {
             }
             val shown = selected ?: bins.last()
             Text(
-                "${familyDay(shown.day)}: ${usage.formatBytes(shown.total)} · ↓ ${usage.formatBytes(shown.download)} / ↑ ${usage.formatBytes(shown.upload)}",
+                "${familyDay(shown.day)}: ${usage.formatBytes(shown.total)} · " + if (shown.directionsKnown) "↓ ${usage.formatBytes(shown.download)} / ↑ ${usage.formatBytes(shown.upload)}" else tr("Download/upload unavailable"),
                 color = TextSecondary,
                 style = MaterialTheme.typography.bodySmall
             )

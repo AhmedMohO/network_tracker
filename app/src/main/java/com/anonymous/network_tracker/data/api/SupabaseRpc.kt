@@ -71,6 +71,11 @@ object SupabaseRpc {
         rpc("family_forget", body)
     }
 
+    suspend fun familyRemoveDevice(token: String, deviceId: String) {
+        // Never fall back to family_forget: that deletes every sibling's data.
+        rpc("family_remove_device", JSONObject().put("p_token", token).put("p_device", deviceId))
+    }
+
     suspend fun registerPushToken(token: String, deviceId: String, pushToken: String) {
         val body = JSONObject().apply {
             put("p_token", token)

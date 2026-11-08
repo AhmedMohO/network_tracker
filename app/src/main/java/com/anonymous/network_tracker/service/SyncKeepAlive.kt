@@ -30,6 +30,8 @@ object SyncKeepAlive {
 
     fun setEnabled(context: Context, enabled: Boolean) {
         prefs(context).edit().putBoolean(KEY_ENABLED, enabled).apply()
+        UsageWork.schedule(context)
+        if (enabled) UsageWork.enqueue(context)
         WifiWatchService.sync(context)
     }
 

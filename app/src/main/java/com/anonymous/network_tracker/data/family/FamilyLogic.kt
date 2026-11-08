@@ -5,6 +5,10 @@ import java.net.URLDecoder
 import java.net.URLEncoder
 import java.security.SecureRandom
 import java.time.OffsetDateTime
+import com.anonymous.network_tracker.data.util.RangeUtils
+
+internal fun familyDaysToUpload(now: Long, uploaded: Set<Long>): List<Long> =
+    (1..30).map { RangeUtils.midnight(now, -it) }.filterIndexed { index, day -> index == 0 || day !in uploaded }
 
 data class Pairing(val token: String, val label: String)
 private val TOKEN = Regex("[0-9a-f]{32}")

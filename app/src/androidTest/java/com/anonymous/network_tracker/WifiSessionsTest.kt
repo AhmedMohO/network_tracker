@@ -2,6 +2,8 @@ package com.anonymous.network_tracker
 
 import android.content.Context
 import android.content.ContextWrapper
+import android.content.ComponentName
+import android.content.Intent
 import android.content.SharedPreferences
 import androidx.test.platform.app.InstrumentationRegistry
 import com.anonymous.network_tracker.service.WifiSessions
@@ -22,12 +24,39 @@ class WifiSessionsTest {
         preferences = base.getSharedPreferences("wifi-session-test-${UUID.randomUUID()}", Context.MODE_PRIVATE)
         context = object : ContextWrapper(base) {
             override fun getSharedPreferences(name: String, mode: Int): SharedPreferences = preferences
+            override fun getSystemService(name: String): Any? =
+                if (name == Context.ALARM_SERVICE) null else super.getSystemService(name)
+            override fun startService(service: Intent): ComponentName? = null
+            override fun startForegroundService(service: Intent): ComponentName? = null
+            override fun stopService(service: Intent): Boolean = true
         }
     }
 
     @After
     fun tearDown() {
         preferences.edit().clear().commit()
+    }
+
+    @Test fun disablingTrackingClosesTheSessionBeforeTheServiceResponds() {
+        preferences.edit().putBoolean("watch-enabled", true).commit()
+        val before = System.currentTimeMillis()
+        WifiSessions.record(context, before - 1_000, "Home")
+        WifiSessions.setEnabled(context, false)
+        val after = System.currentTimeMillis()
+        val sessions = WifiSessions.sessions(context, before - 1_000, after + 60_000, after + 60_000)
+        assertEquals("Home", sessions.single().ssid)
+        assertTrue(sessions.single().end in before..after)
+        assertTrue(!WifiSessions.isEnabled(context))
+    }
+
+    @Test fun aLateObservationCannotReopenDisabledTracking() {
+        preferences.edit().putBoolean("watch-enabled", true).commit()
+        val now = System.currentTimeMillis()
+        WifiSessions.record(context, now - 1_000, "Home")
+        WifiSessions.setEnabled(context, false)
+        WifiSessions.observe(context, "Cafe")
+        assertEquals(listOf("Home"), WifiSessions.knownNetworks(context))
+        assertTrue(WifiSessions.sessions(context, now, now + 60_000, now + 60_000).none { it.ssid == "Cafe" })
     }
 
     @Test

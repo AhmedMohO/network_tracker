@@ -3,8 +3,18 @@ package com.anonymous.network_tracker
 import com.anonymous.network_tracker.data.family.*
 import org.junit.Assert.*
 import org.junit.Test
+import com.anonymous.network_tracker.data.util.RangeUtils
 
 class FamilyLogicTest {
+    @Test fun uploadRecoveryIncludesOfflineGapsAndResumesAfterSuccess() {
+        val now = 1794139200000L
+        val days = (1..30).map { RangeUtils.midnight(now, -it) }
+        assertEquals(days, familyDaysToUpload(now, emptySet()))
+        val uploadedBeforeOffline = days.drop(4).toSet()
+        assertEquals(days.take(4), familyDaysToUpload(now, uploadedBeforeOffline))
+        assertEquals(listOf(days[0], days[2], days[3]), familyDaysToUpload(now, uploadedBeforeOffline + days[1]))
+        assertEquals(listOf(days[0]), familyDaysToUpload(now, days.toSet()))
+    }
     @Test fun pairingRejectsForeignLinksAndExtractsBearerToken() {
         val token = "0123456789abcdef0123456789abcdef"
         assertEquals(Pairing(token, "Mum & Dad"), parsePairLink("nettrack://pair?t=$token&label=Mum%20%26%20Dad"))

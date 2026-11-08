@@ -1,9 +1,24 @@
+import java.util.Properties
+import java.security.KeyStore
+import java.security.MessageDigest
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.devtools.ksp")
 }
+
+val releaseSecrets = Properties().apply {
+    rootProject.file("signing.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
+}
+fun signingValue(key: String, environment: String): String? =
+    providers.environmentVariable(environment).orNull ?: releaseSecrets.getProperty(key)
+val privateStore = signingValue("storeFile", "NETTRACK_KEYSTORE_FILE")
+val privateStorePassword = signingValue("storePassword", "NETTRACK_KEYSTORE_PASSWORD")
+val privateAlias = signingValue("keyAlias", "NETTRACK_KEY_ALIAS")
+val privateKeyPassword = signingValue("keyPassword", "NETTRACK_KEY_PASSWORD")
+val hasReleaseKey = listOf(privateStore, privateStorePassword, privateAlias, privateKeyPassword).all { !it.isNullOrBlank() }
 
 android {
     namespace = "com.anonymous.network_tracker"
@@ -13,29 +28,29 @@ android {
         applicationId = "com.anonymous.network_tracker"
         minSdk = 24
         targetSdk = 36
-        versionCode = 15
-        versionName = "2.0.1"
+        versionCode = 16
+        versionName = "2.0.2"
 
         testInstrumentationRunner = "com.anonymous.network_tracker.ValidationTestRunner"
     }
 
     signingConfigs {
-        create("release") {
-            storeFile = file("../credentials/release.keystore")
-            storePassword = "android"
-            keyAlias = "androiddebugkey"
-            keyPassword = "android"
+        if (hasReleaseKey) create("release") {
+            storeFile = rootProject.file(privateStore!!)
+            storePassword = privateStorePassword
+            keyAlias = privateAlias
+            keyPassword = privateKeyPassword
         }
     }
 
     buildTypes {
         debug {
-            signingConfig = signingConfigs.getByName("release")
+            applicationIdSuffix = ".debug"
         }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            signingConfig = signingConfigs.getByName("release")
+            if (hasReleaseKey) signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -58,6 +73,24 @@ android {
         buildConfig = true
     }
     sourceSets.getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/firebaseAssets"))
+}
+
+val validatePrivateReleaseKey by tasks.registering {
+    doLast {
+        check(hasReleaseKey) { "Release signing requires private signing.properties or NETTRACK_KEYSTORE_* inputs. See docs/release-signing.md." }
+        val store = KeyStore.getInstance(rootProject.file(privateStore!!), privateStorePassword!!.toCharArray())
+        val certificate = requireNotNull(store.getCertificate(privateAlias)) { "Release key alias not found" }
+        check(store.isKeyEntry(privateAlias)) { "Release alias must contain a private key" }
+        val fingerprint = MessageDigest.getInstance("SHA-256").digest(certificate.encoded)
+            .joinToString("") { "%02x".format(it.toInt() and 255) }
+        check(fingerprint != "fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c") {
+            "The exposed legacy release key must not sign new releases. See docs/release-signing.md."
+        }
+        check(!certificate.toString().contains("CN=Android Debug")) { "A debug certificate must not sign releases" }
+    }
+}
+tasks.matching { it.name in setOf("validateSigningRelease", "packageRelease", "signReleaseBundle", "assembleRelease", "bundleRelease") }.configureEach {
+    dependsOn(validatePrivateReleaseKey)
 }
 
 val copyFirebaseConfiguration by tasks.registering {

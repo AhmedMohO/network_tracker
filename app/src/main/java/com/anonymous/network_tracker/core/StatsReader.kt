@@ -126,19 +126,6 @@ class StatsReader(private val context: Context) {
         var coveredStart = Long.MAX_VALUE
         var coveredEnd = Long.MIN_VALUE
 
-        fun add(ssid: String?, uid: Int, b: NetworkStats.Bucket, share: Double) {
-            if (share <= 0.0) return
-            val slot = byNetwork.getOrPut(ssid) { HashMap() }.getOrPut(uid) { LongArray(4) }
-            val rx = (b.rxBytes * share).toLong()
-            val tx = (b.txBytes * share).toLong()
-            slot[0] += rx
-            slot[1] += tx
-            if (b.state == NetworkStats.Bucket.STATE_FOREGROUND) {
-                slot[2] += rx
-                slot[3] += tx
-            }
-        }
-
         val stats = try {
             nsm.queryDetails(ConnectivityManager.TYPE_WIFI, null, q.start, q.end)
         } catch (_: SecurityException) {
@@ -151,23 +138,12 @@ class StatsReader(private val context: Context) {
                 s.getNextBucket(b)
                 if (b.tag != NetworkStats.Bucket.TAG_NONE) continue
 
-                if (b.startTimeStamp < coveredStart) coveredStart = b.startTimeStamp
-                if (b.endTimeStamp > coveredEnd) coveredEnd = b.endTimeStamp
-
-                val from = maxOf(b.startTimeStamp, q.start)
-                val to = minOf(b.endTimeStamp, q.end)
-                val span = to - from
-                if (span <= 0) continue
-
-                var assigned = 0L
-                for (session in sessions) {
-                    val overlap = minOf(to, session.end) - maxOf(from, session.start)
-                    if (overlap <= 0) continue
-                    add(session.ssid, b.uid, b, overlap.toDouble() / span)
-                    assigned += overlap
-                }
-                if (assigned < span) {
-                    add(null, b.uid, b, (span - assigned).toDouble() / span)
+                for ((ssid, bytes) in wifiBucketShares(
+                    b.startTimeStamp, b.endTimeStamp, b.rxBytes, b.txBytes, sessions, q
+                )) {
+                    val slot = byNetwork.getOrPut(ssid) { HashMap() }.getOrPut(b.uid) { LongArray(4) }
+                    slot[0] += bytes[0]
+                    slot[1] += bytes[1]
                 }
             }
         }

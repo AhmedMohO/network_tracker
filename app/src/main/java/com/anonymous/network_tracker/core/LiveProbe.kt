@@ -7,8 +7,11 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.TrafficStats
 import android.os.BatteryManager
+import android.os.PowerManager
 
 object LiveProbe {
+    private var foregroundState = ForegroundState()
+    private var checkedAt = 0L
 
     fun counters(): Map<String, Long> = mapOf(
         "mobileRx" to TrafficStats.getMobileRxBytes(),
@@ -17,20 +20,26 @@ object LiveProbe {
         "totalTx" to TrafficStats.getTotalTxBytes()
     )
 
-    fun foregroundPackage(context: Context, lookbackMs: Long = 15 * 60_000L): String? {
+    @Synchronized
+    fun foregroundPackage(context: Context): String? {
         val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
             ?: return null
         val now = System.currentTimeMillis()
-        val events = usm.queryEvents(now - lookbackMs, now)
+        if (checkedAt == 0L || now < checkedAt) {
+            foregroundState = ForegroundState()
+            checkedAt = now - 7 * 86_400_000L
+        }
+        val events = usm.queryEvents(checkedAt, now) ?: return null
         val event = UsageEvents.Event()
-        var latest: String? = null
         while (events.hasNextEvent()) {
             events.getNextEvent(event)
-            if (event.eventType == UsageEvents.Event.MOVE_TO_FOREGROUND) {
-                latest = event.packageName
-            }
+            foregroundState.event(event.eventType, event.packageName, event.className, event.timeStamp)
         }
-        return latest
+        checkedAt = now
+        if ((context.getSystemService(Context.POWER_SERVICE) as? PowerManager)?.isInteractive == false) {
+            foregroundState.clear()
+        }
+        return foregroundState.packageName
     }
 
     fun batteryPercent(context: Context): Int? {

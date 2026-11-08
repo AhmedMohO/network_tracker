@@ -670,5 +670,10 @@
   "Only attributed usage for this network is counted.": "يُحتسب فقط الاستخدام المنسوب إلى هذه الشبكة.",
   "Enable Wi-Fi Network Attribution in Settings for network-specific usage.": "فعّل إسناد استخدام الواي فاي للشبكات من الإعدادات لعرض استخدام شبكة محددة.",
   "Loading usage…": "جارٍ تحميل الاستخدام…",
-  "Usage unavailable": "الاستخدام غير متاح"
+  "Usage unavailable": "الاستخدام غير متاح",
+  "Partial-day usage is estimated from shared snapshots.": "استهلاك أجزاء اليوم تقديري بناءً على اللقطات المشتركة.",
+  "Some older snapshots lack download/upload breakdowns.": "بعض اللقطات القديمة لا تتضمن تفاصيل التنزيل والرفع.",
+  "Download/upload unavailable": "تفاصيل التنزيل والرفع غير متاحة",
+  "No foreground app observed": "لم يتم رصد تطبيق نشط",
+  "This stops sharing and removes only this device's shared data. Other family devices and your local usage records are kept. An active internet connection is required.": "يوقف هذا المشاركة ويحذف البيانات المشتركة لهذا الجهاز فقط. تبقى أجهزة العائلة الأخرى وسجلات الاستهلاك المحلية محفوظة. يلزم اتصال بالإنترنت."
 }
